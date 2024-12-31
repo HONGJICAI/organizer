@@ -1,0 +1,8 @@
+[project]
+name = "be"
+version = "0.0.1"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.4",
+]

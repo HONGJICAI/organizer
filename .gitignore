@@ -1,0 +1,3 @@
+nginx/html/
+nginx/logs/
+*.sqlite
