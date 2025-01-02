@@ -1,6 +1,16 @@
 [project]
 name = "be"
 version = "0.0.1"
+dependencies = [
+    "cachetools>=5.5.0",
+    "flasgger>=0.9.7.1",
+    "flask-compress>=1.17",
+    "flask-cors>=5.0.0",
+    "pillow>=11.0.0",
+    "rarfile>=4.2",
+    "rich>=13.9.4",
+    "sqlmodel>=0.0.22",
+]
 
 [dependency-groups]
 dev = [

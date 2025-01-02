@@ -125,18 +125,22 @@ class RarComicfile(ZipRarComicfile):
 class DirectoryComicfile(Comicfile):
     _page: int = None
     _namelist: List[str] = None
+    _filepath: str
 
     def __init__(self, filepath: str):
-        self.filepath = filepath
+        self._filepath = filepath
+
+    def open(self):
         self._namelist = self._valid_entries = list(
             filter(
                 lambda x: x.is_file() and os.path.splitext(x.name)[-1] in allowImgs,
-                list(os.scandir(filepath)),
+                list(os.scandir(self._filepath)),
             )
         )
         self._page = len(self._namelist)
 
     def __enter__(self):
+        self.open()
         return self
 
     def __exit__(self, type, value, trace):
@@ -149,5 +153,5 @@ class DirectoryComicfile(Comicfile):
     def read(self, page):
         if page >= self._page:
             return False, None
-        with open(os.path.join(self.filepath, self._namelist[page]), "rb") as f:
+        with open(os.path.join(self._filepath, self._namelist[page]), "rb") as f:
             return True, f.read()

@@ -3,7 +3,7 @@
 	import FileList from '$lib/components/FileList.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
 	import { includeAllKeywords, separateFilename } from '$lib/utility';
-	import { MediaType, type MediaFile, Comic } from '$lib/model';
+	import { MediaType, type MediaFile, Comic, Category } from '$lib/model';
 	import FileContent from '$lib/components/FileContent.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { ContentSwitcher, Switch, Button } from 'carbon-components-svelte';
@@ -53,7 +53,7 @@
 	const onRefresh = () => {
 		invalidateAll();
 	};
-	let viewContentIdx: 0 | 1 | 2 | 3 = 0;
+	let viewContentIdx: Category = Category.Home;
 	$: viewContentIdx2filterfunc = {
 		// home
 		0: (f: MediaFile) => {
@@ -110,7 +110,7 @@
 		</div>
 		<Button iconDescription="refresh" icon={UpdateNow} on:click={() => onRefresh()} />
 	</container>
-		<FileList bind:files={searchFiles} bind:searchStr {onClickFile} {onRefresh} />
+		<FileList bind:files={searchFiles} bind:searchStr {onClickFile} {onRefresh} bind:category={viewContentIdx}/>
 	</div>
 
 	{#if showFileDetailModal}
@@ -128,9 +128,13 @@
 				showFileDetailModal = false;
 				showFileContent = true;
 			}}
-			onFileDeleted={() => {
-				files.indexOf(selectedFile);
-				files.splice(files.indexOf(selectedFile), 1);
+			onFileDeleted={(permenant) => {
+				if (permenant) {
+					files.indexOf(selectedFile);
+					files.splice(files.indexOf(selectedFile), 1);
+				} else {
+					selectedFile.archive = true;
+				}
 				files = files;
 			}}
 		/>

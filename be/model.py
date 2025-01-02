@@ -65,8 +65,10 @@ class ViewHistoryEntity(SQLModel, table=True):
     type: str = Field(primary_key=True)
     id: int = Field(primary_key=True)
     updateTime: datetime | None = Field(default=None)
+    position: int | None = Field(default=None)
 
 
 class ComicResponse(ComicEntity):
+    lastViewed: int
     lastViewedTime: datetime
     like: bool

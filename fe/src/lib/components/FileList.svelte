@@ -10,7 +10,7 @@
 		Button,
 		Toggle
 	} from 'carbon-components-svelte';
-	import { Comic, MediaFile, MediaType, Video } from '$lib/model';
+	import { Category, Comic, MediaFile, MediaType, Video } from '$lib/model';
 	import { Favorite, Filter, Home, RecentlyViewed, UpdateNow } from 'carbon-icons-svelte';
 	import { config } from '$lib/config';
 	import { includeAllKeywords } from '$lib/utility';
@@ -21,6 +21,7 @@
 	export let files: MediaFile[] = [];
 	export let onClickFile: (file: MediaFile) => void;
 	export let onRefresh: () => void;
+	export let category: Category = Category.Home;
 	let unreadOnly = false;
 	let page = 1;
 	let pageSize = 20;
@@ -51,6 +52,8 @@
 					return a.id - b.id;
 				case 'random':
 					return Math.random() - 0.5;
+				case 'viewdate':
+					return (a.lastViewedDate ?? 0) > (b.lastViewedDate ?? 0) ? 1 : -1;
 			}
 			return 0;
 		});
@@ -66,6 +69,22 @@
 		page = 1;
 	}
 
+	$: {
+		category;
+		switch (category) {
+			case Category.Home:
+			case Category.Favorite:
+				orderBy = 'date';
+				reverse = true;
+				break;
+			case Category.History:
+			case Category.Archive:
+				orderBy = 'viewdate';
+				reverse = true;
+				break;
+		}
+	}
+
 	const onPaginationChange = (e: CustomEvent<{ page?: number; pageSize?: number }>) => {
 		page = e.detail.page ?? page;
 		pageSize = e.detail.pageSize ?? pageSize;
@@ -75,18 +94,23 @@
 <div style="display: flex;gap:1rem; align-items:flex-end;">
 	<Search bind:value={searchStr} />
 	<Select bind:selected={orderBy} labelText="Order By">
-		<SelectItem value="name" text="Name" />
-		<SelectItem value="size" text="Size" />
-		{#if type === MediaType.Comic}
-			<SelectItem value="page" text="Page" />
+		{#if category == Category.Home || category == Category.Favorite}
+			<SelectItem value="name" text="Name" />
+			<SelectItem value="size" text="Size" />
+			{#if type === MediaType.Comic}
+				<SelectItem value="page" text="Page" />
+			{/if}
+			{#if type === MediaType.Video}
+				<SelectItem value="duration" text="Duration" />
+			{/if}
+			<SelectItem value="date" text="Date" />
+			<SelectItem value="path" text="Path" />
+			<SelectItem value="id" text="ID" />
+			<SelectItem value="random" text="Random" />
 		{/if}
-		{#if type === MediaType.Video}
-			<SelectItem value="duration" text="Duration" />
+		{#if category == Category.History || category == Category.Archive}
+			<SelectItem value="viewdate" text="ViewDate" />
 		{/if}
-		<SelectItem value="date" text="Date" />
-		<SelectItem value="path" text="Path" />
-		<SelectItem value="id" text="ID" />
-		<SelectItem value="random" text="Random" />
 	</Select>
 	<Button
 		icon={Filter}

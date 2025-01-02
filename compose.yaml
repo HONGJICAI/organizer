@@ -6,11 +6,27 @@ services:
     #   - "5000:5000"
     #   - "4998:4998"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/logs:/etc/nginx/logs
       - ./nginx/html:/etc/nginx/html
     network_mode: host
-
-
+  # fe:
+  #   image: "node"
+  #   working_dir: /home/node/app
+  #   environment:
+  #     - NODE_ENV=production
+  #   volumes:
+  #     - ./fe:/home/node/app
+  #   network_mode: host
+  #   command: "npm run dev"
+  # be:
+  #   image: "python"
+  #   volumes:
+  #     - ./be:/app/be
+  #     - ./nginx:/app/nginx
+  #   network_mode: host
+  #   command: >
+  #     bash -c "sh /app/be/.venv/Scripts/activate
+  #     && python /app/be/main.py"
 
       

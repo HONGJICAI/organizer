@@ -6,6 +6,13 @@ export enum MediaType {
 	Image = 'image'
 }
 
+export enum Category {
+	Home = 0,
+	Favorite = 1,
+	History = 2,
+	Archive = 3
+}
+
 export class MediaFile {
 	name: string;
 	path: string;
@@ -14,6 +21,7 @@ export class MediaFile {
 	id: number;
 	updateTime: string;
 	updateDate: Date;
+	lastViewed: number;
     lastViewedTime: string | null;
     lastViewedDate: Date | null;
 	like = false;
@@ -23,6 +31,12 @@ export class MediaFile {
 	}
 	get coverUrl(): string {
 		return `${config.apiServer}/${this.type}s/${this.name}`;
+	}
+	get lastViewedLabel(): string {
+		if (this.lastViewedDate) {
+			return this.lastViewed + ' at ' + this.lastViewedDate;
+		}
+		return '';
 	}
 	constructor(type: MediaType, json: any) {
 		this.type = type;
@@ -34,6 +48,7 @@ export class MediaFile {
 		this.updateTime = json.updateTime;
 		this.updateDate = new Date(json.updateTime);
         
+		this.lastViewed = json.lastViewed ?? 0;
 		this.lastViewedTime = json.lastViewedTime;
 		this.lastViewedDate = json.lastViewedTime ? new Date(json.lastViewedTime) : null;
 		this.like = json.like ?? false;

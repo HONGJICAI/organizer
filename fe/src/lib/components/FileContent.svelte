@@ -13,6 +13,7 @@
 	import { config } from '$lib/config';
 	import { Close } from 'carbon-icons-svelte';
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	export let file: MediaFile;
 	export let onClose: () => void;
 	let target: null | ReadonlyArray<null | HTMLElement>;
@@ -20,6 +21,7 @@
 	let loading = true;
 	let page = 1;
 	let objUrl = '';
+	let nextUrl = '';
 	let videoTime = 0;
 	let duration = 9999999;
 
@@ -35,6 +37,8 @@
 				// 	(_, i) => `${config.apiServer}/api/comics/${comic?.id}/${i + 1}`
 				// );
 				objUrl = `${config.apiServer}/api/comics/${comic?.id}/${page}`;
+				nextUrl =
+					page + 1 <= maxPage ? `${config.apiServer}/api/comics/${comic?.id}/${page + 1}` : '';
 				break;
 			case MediaType.Video:
 				objUrl = `${config.apiServer}/videos/${video?.id}`;
@@ -53,6 +57,15 @@
 
 	const onCloseModal = () => {
 		onClose();
+	};
+
+	const preloadImageAsync = async (url: string) => {
+		new Promise((resolve, reject) => {
+			const img = new Image();
+			img.onload = resolve;
+			img.onerror = reject;
+			img.src = url;
+		});
 	};
 
 	const handleKeydown = (event: KeyboardEvent) => {
@@ -102,10 +115,22 @@
 		if (!comic) {
 			return;
 		}
-		const rsp = await fetch(
-			`${config.apiServer}/api/comics/${comic.id}/${page}/like`,
-			{ method: 'POST' }
-		);
+		const rsp = await fetch(`${config.apiServer}/api/comics/${comic.id}/${page}/like`, {
+			method: 'POST'
+		});
+		if (rsp.ok) {
+		} else {
+			alert(rsp.status);
+		}
+	}
+
+	async function onSetCover(e: MouseEvent) {
+		if (!comic) {
+			return;
+		}
+		const rsp = await fetch(`${config.apiServer}/api/comics/${comic.id}/${page}/cover`, {
+			method: 'POST'
+		});
 		if (rsp.ok) {
 		} else {
 			alert(rsp.status);
@@ -131,6 +156,7 @@
 				alt="comic content"
 				on:load={() => {
 					loading = false;
+					preloadImageAsync(nextUrl);
 				}}
 			/>
 		</div>
@@ -164,13 +190,12 @@
 {/if}
 
 <ContextMenu {target}>
-	<ContextMenuOption indented labelText="Like page" on:click={onLikePage}/>
+	<ContextMenuOption indented labelText="Like page" on:click={onLikePage} />
+	<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
 	<ContextMenuDivider />
 	<ContextMenuOption indented labelText="Export as">
 		<ContextMenuGroup labelText="Export options">
 			<ContextMenuOption id="pdf" labelText="PDF" />
-			<ContextMenuOption id="txt" labelText="TXT" />
-			<ContextMenuOption id="mp3" labelText="MP3" />
 		</ContextMenuGroup>
 	</ContextMenuOption>
 	<ContextMenuDivider />

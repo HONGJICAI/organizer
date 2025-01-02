@@ -1,55 +1,80 @@
 <script lang="ts">
-	import { Button, CopyButton, InlineLoading, Modal, Tag, TextArea, TextInput } from 'carbon-components-svelte';
+	import {
+		Button,
+		Checkbox,
+		ComposedModal,
+		CopyButton,
+		InlineLoading,
+		Modal,
+		ModalBody,
+		ModalFooter,
+		ModalHeader,
+		Tag,
+		TextArea,
+		TextInput
+	} from 'carbon-components-svelte';
 	import { Comic, MediaType, type MediaFile, Video } from '$lib/model';
 	import { separateFilename } from '$lib/utility';
 	import { config } from '$lib/config';
-	import { ApplicationWeb, Favorite, FavoriteFilled, NewTab, TrashCan, UpdateNow } from 'carbon-icons-svelte';
+	import {
+		ApplicationWeb,
+		Favorite,
+		FavoriteFilled,
+		NewTab,
+		TrashCan,
+		UpdateNow
+	} from 'carbon-icons-svelte';
 
 	export let open = false;
 	export let onCloseModal = () => {};
 	export let file: MediaFile;
 	export let onClickTag = (tag: string) => {};
 	export let onClickPrimaryButton = () => {};
-	export let onFileDeleted = () => {};
+	export let onFileDeleted = (permenant: boolean) => {};
 	$: mediaType = file.type;
 	$: comicfile = file.type === MediaType.Comic ? (file as Comic) : null;
 	$: videofile = file.type === MediaType.Video ? (file as Video) : null;
 	$: separateToTagsFrom = file.type === MediaType.Comic ? file.name : file.path;
+	let permenant = false;
+	let openDeleteModal = false;
 	let sendingDelete = false;
+	let deleteError = '';
 	let onClickDelete = async () => {
 		if (sendingDelete) {
-			return;
-		}
-		const yes = confirm(`Are you sure to delete ${file.name}?`);
-		if (!yes) {
 			return;
 		}
 
 		let rsp: Response;
 		sendingDelete = true;
-		switch (mediaType) {
-			case MediaType.Comic:
-				rsp = await fetch(`${config.apiServer}/api/comics/${file.id}`, {
-					method: 'DELETE'
-				});
-				break;
-			case MediaType.Video:
-				rsp = await fetch(`${config.apiServer}/api/videos/${file.id}`, {
-					method: 'DELETE'
-				});
-				break;
-			default:
-				alert(`Unknown media type: ${mediaType}`);
-				throw new Error(`Unknown media type: ${mediaType}`);
-		}
-		sendingDelete = false;
-
-		if (rsp.ok) {
-			onFileDeleted();
-			onCloseModal();
-		} else {
-			console.log(rsp);
-			alert(rsp.status);
+		try {
+			switch (mediaType) {
+				case MediaType.Comic:
+					rsp = await fetch(`${config.apiServer}/api/comics/${file.id}?permenant=${permenant}`, {
+						method: 'DELETE'
+					});
+					break;
+				case MediaType.Video:
+					rsp = await fetch(`${config.apiServer}/api/videos/${file.id}?permenant=${permenant}`, {
+						method: 'DELETE'
+					});
+					break;
+				default:
+					alert(`Unknown media type: ${mediaType}`);
+					throw new Error(`Unknown media type: ${mediaType}`);
+			}
+			if (rsp.ok) {
+				onFileDeleted(permenant);
+				onCloseModal();
+			} else {
+				console.log(rsp);
+				const json = await rsp.json();
+				deleteError = `Error: ${rsp.status} ${json.error}`;
+			}
+		} catch (e) {
+			deleteError = `Error: ${e}`;
+			throw e;
+		} finally {
+			sendingDelete = false;
 		}
 	};
 	let sendingLike = false;
@@ -76,10 +101,9 @@
 			return;
 		}
 		sendingRefresh = true;
-		const rsp = await fetch(
-			`${config.apiServer}/api/comics/${file.id}/refresh`,
-			{ method: 'POST' }
-		);
+		const rsp = await fetch(`${config.apiServer}/api/comics/${file.id}/refresh`, {
+			method: 'POST'
+		});
 		sendingRefresh = false;
 		if (rsp.ok) {
 			var json = await rsp.json();
@@ -110,7 +134,7 @@
 		<TextInput labelText="Duration" value={videofile.durationInSecond} readonly inline />
 	{/if}
 	<TextInput labelText="Update Time" value={file.updateTime} readonly inline />
-	<TextInput labelText="Last Viewed" value={file.lastViewedTime} readonly inline />
+	<TextInput labelText="Last Viewed" value={file.lastViewedLabel} readonly inline />
 	<div>
 		<p>Tags:</p>
 		{#each separateFilename(separateToTagsFrom ?? '') as tag}
@@ -125,7 +149,9 @@
 		{:else}
 			<Button
 				kind="danger"
-				on:click={() => onClickDelete()}
+				on:click={() => {
+					openDeleteModal = true;
+				}}
 				icon={TrashCan}
 				iconDescription="Delete"
 			/>
@@ -139,11 +165,7 @@
 				on:click={() => onClickLike()}
 			/>
 		{/if}
-			<Button
-				icon={UpdateNow}
-				iconDescription="Refresh"
-				on:click={() => onClickRefresh()}
-			/>
+		<Button icon={UpdateNow} iconDescription="Refresh" on:click={() => onClickRefresh()} />
 		<CopyButton text={file.name} />
 		<Button
 			icon={NewTab}
@@ -160,6 +182,15 @@
 	</container>
 	<TextArea labelText="Path" value={file.path} readonly />
 </Modal>
+
+<ComposedModal bind:open={openDeleteModal} on:click:button--primary={() => onClickDelete()}>
+	<ModalHeader label="Changes" title="Confirm delete" />
+	<ModalBody hasForm>
+		<Checkbox labelText="permenant" bind:checked={permenant} />
+		{deleteError}
+	</ModalBody>
+	<ModalFooter primaryButtonText="Proceed" />
+</ComposedModal>
 
 <style>
 	container {

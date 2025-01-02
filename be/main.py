@@ -127,15 +127,20 @@ def get_comics():
         view_history_entities = session.exec(
             select(ViewHistoryEntity).where(ViewHistoryEntity.type == "comic")
         ).all()
-        view_history = {}
+        # group by id
+        id2history = {}
         for e in view_history_entities:
-            view_history[e.id] = e.updateTime
+            id2history[e.id] = e
+        none = ViewHistoryEntity()
+        none.position = 0
+        none.updateTime = None
 
         comic_entities = [
             ComicResponse(
                 **comic.dict(),
                 like=True if comic.id in like_ids else False,
-                lastViewedTime=view_history.get(comic.id, None),
+                lastViewed=id2history.get(comic.id, none).position,
+                lastViewedTime=id2history.get(comic.id, none).updateTime,
             )
             for comic in result
         ]
@@ -259,8 +264,14 @@ def delete_comic(id):
             session.add(comic)
         else:
             session.delete(comic)
-        if os.path.exists(comic.path):
-            os.remove(comic.path)
+            cover = os.path.join(global_data.Config.nginx_comic_path, f"{id}_0.jpg")
+            if os.path.exists(cover):
+                os.remove(cover)
+        try:
+            if os.path.exists(comic.path):
+                os.remove(comic.path)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
         session.commit()
 
     return Response(status=200)
@@ -307,7 +318,7 @@ def get_comicpage(id, page):
         rsp = Response(
             response=bytes,
             mimetype="image/jpeg",
-            headers={},
+            headers={"cache-control": "max-age=604800"},
         )
         return rsp
 
@@ -362,6 +373,47 @@ def like_comicpage(id, page):
     abort(404)
 
 
+@app.route("/api/comics/<int:id>/<int:page>/cover", methods=["POST"])
+def set_comicpage_cover(id, page):
+    """set comic page as cover
+    ---
+    parameters:
+      - name: id
+        type: int
+        required: true
+        default: 0
+        description: comic id
+      - name: page
+        type: int
+        in: path
+        required: true
+        default: 0
+        description: comic page
+    responses:
+      200:
+        description: if ok
+      404:
+        description: Specific comic id or comic page not exist
+    """
+
+    with Session(db.engine) as session:
+        statement = select(ComicEntity).where(ComicEntity.id == id)
+        comic = session.exec(statement).first()
+
+    if comic is None:
+        abort(404)
+    cf = global_data.comic.comic_caches.get(comic.id, None)
+    if cf is None:
+        cf = comicfile.create(comic.path)
+        cf.open()
+        global_data.comic.comic_caches[comic.id] = cf
+    if ComicLoader.gen_comic_cover(comic, cf, True, page):
+        rsp = Response(status=200)
+        return rsp
+
+    abort(500)
+
+
 @app.route("/api/images", methods=["GET"])
 def get_images():
     # get all images and updateTime then order by updateTime
@@ -393,31 +445,34 @@ def process_view_history():
             lines = f.readlines()
             if len(lines) == 0:
                 return
-            regex = r"\[(.*) \+\d+\] \"GET /api/(\w+)/(\d+)/\d+"
+            regex = r"\[(.*) \+\d+\] \"GET /api/(\w+)/(\d+)/(\d+)"
             for line in lines:
                 m = re.match(regex, line, re.I)
                 if not m:
                     continue
                 type = m.group(2)
                 id = int(m.group(3))
+                position = int(m.group(4))
                 time_str = m.group(1)
                 time = datetime.datetime.strptime(time_str, "%d/%b/%Y:%H:%M:%S")
                 if type == "comics":
-                    comic_dict[id] = time
+                    comic_dict[id] = time, position
                 elif type == "videos":
                     video_dict[id] = time
         if len(comic_dict.keys()) > 0:
             with Session(db.engine) as session:
-                for id, time in comic_dict.items():
+                for id, tuple in comic_dict.items():
+                    time, position = tuple
                     e = session.exec(
                         select(ViewHistoryEntity)
                         .where(ViewHistoryEntity.type == "comic")
                         .where(ViewHistoryEntity.id == id)
                     ).one_or_none()
                     if e is not None:
+                        e.position = position
                         e.updateTime = time
                     else:
-                        e = ViewHistoryEntity(type="comic", id=id, updateTime=time)
+                        e = ViewHistoryEntity(type="comic", id=id, updateTime=time, position=position)
                     session.add(e)
                 session.commit()
         if len(video_dict.keys()) > 0:

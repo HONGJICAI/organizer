@@ -137,22 +137,23 @@ class ComicLoader(Loader):
         return ret
 
     @staticmethod
-    def gen_comic_cover(c: ComicEntity, cf: Comicfile = None, overwrite=False):
-        thumbnain_maxsize = (300, 300)
+    def gen_comic_cover(c: ComicEntity, cf: Comicfile = None, overwrite=False, page = 0) -> bool:
+        thumbnail_maxsize = (300, 300)
         name = f"{c.id}_0.jpg"
         cover_path = os.path.join(global_data.Config.nginx_comic_path, name)
         if overwrite or not os.path.exists(cover_path):
             try:
                 if cf is None:
                     with comicfile.create(c.path) as cf:
-                        ok, buf = cf.read(0)
+                        ok, buf = cf.read(page)
                 else:
-                    ok, buf = cf.read(0)
+                    ok, buf = cf.read(page)
                 if ok:
                     img = Image.open(io.BytesIO(buf))
-                    img.thumbnail(thumbnain_maxsize)
+                    img.thumbnail(thumbnail_maxsize)
                     img = img.convert("RGB")
                     img.save(cover_path, "JPEG")
+                    return True
             except RuntimeError as ex:
                 if "password required for extraction" in str(ex):
                     print("skip due to encrypted", c.path)
@@ -160,6 +161,7 @@ class ComicLoader(Loader):
                     raise ex
             except Exception as ex:
                 print("gen cover fail:", c.path, ex)
+        return False
 
 
 class VideoLoader(Loader):
