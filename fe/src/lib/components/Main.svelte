@@ -13,9 +13,14 @@
 	import SettingsAdjust from 'carbon-icons-svelte/lib/SettingsAdjust.svelte';
 	import UserAvatarFilledAlt from 'carbon-icons-svelte/lib/UserAvatarFilledAlt.svelte';
 	import SettingsModal from './SettingsModal.svelte';
-	let openSettingsModal = false;
-	let isOpen1 = false;
-	let isOpen2 = false;
+	interface Props {
+		children?: import('svelte').Snippet;
+	}
+
+	let { children }: Props = $props();
+	let openSettingsModal = $state(false);
+	let isOpen1 = $state(false);
+	let isOpen2 = $state(false);
 
 	function onClickSettings(e: MouseEvent): void {
 		openSettingsModal = true;
@@ -23,6 +28,7 @@
 </script>
 
 <Header platformName="Organizer" href="/">
+	<!-- @migration-task: migrate this slot by hand, `skip-to-content` is an invalid identifier -->
 	<svelte:fragment slot="skip-to-content">
 		<SkipToContent />
 	</svelte:fragment>
@@ -52,7 +58,7 @@
 </Header>
 
 <Content style="padding-left:0%;padding-right:0%;padding-top:0.5rem">
-	<slot />
+	{@render children?.()}
 </Content>
 
 <SettingsModal open={openSettingsModal} onCloseModal={() => (openSettingsModal = false)} />

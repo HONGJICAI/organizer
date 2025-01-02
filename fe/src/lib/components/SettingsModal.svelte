@@ -8,8 +8,8 @@
 	} from 'carbon-components-svelte';
 	import { FitToHeight, FitToScreen, FitToWidth } from 'carbon-icons-svelte';
 
-	export let open = false;
-	export let onCloseModal = () => {};
+	/** @type {{open?: boolean, onCloseModal?: any}} */
+	let { open = $bindable(false), onCloseModal = () => {} } = $props();
 </script>
 
 <Modal
@@ -45,9 +45,3 @@
 		</ContentSwitcher>
 	</container>
 </Modal>
-
-<style>
-	.container {
-		display: flex;
-	}
-</style>

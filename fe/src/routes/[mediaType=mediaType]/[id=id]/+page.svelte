@@ -1,9 +1,13 @@
 <script lang="ts">
 	import FileContent from '$lib/components/FileContent.svelte';
-	import type { MediaFile } from '$lib/model';
+	import type { MediaFile } from '$lib/model.svelte';
 
-	export let data;
-	$: file = data.file as MediaFile;
+	interface Props {
+		data: any;
+	}
+
+	let { data }: Props = $props();
+	let file = $state(data.file as MediaFile);
 </script>
 
 <FileContent

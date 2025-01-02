@@ -9,26 +9,31 @@
 		PaginationNav,
 		ProgressBar
 	} from 'carbon-components-svelte';
-	import { Comic, MediaFile, MediaType, Video } from '$lib/model';
+	import { Comic, MediaFile, MediaType, Video } from '$lib/model.svelte';
 	import { config } from '$lib/config';
 	import { Close } from 'carbon-icons-svelte';
 	import { onMount } from 'svelte';
-	import { get } from 'svelte/store';
-	export let file: MediaFile;
-	export let onClose: () => void;
-	let target: null | ReadonlyArray<null | HTMLElement>;
-	let maxPage = 0;
-	let loading = true;
-	let page = 1;
-	let objUrl = '';
-	let nextUrl = '';
-	let videoTime = 0;
-	let duration = 9999999;
+	interface Props {
+		file: MediaFile;
+		onClose: () => void;
+	}
 
-	$: comic = file.type === MediaType.Comic ? (file as Comic) : null;
-	$: video = file.type === MediaType.Video ? (file as Video) : null;
+	let { file, onClose }: Props = $props();
+	let comicTarget: null | HTMLImageElement = $state(null);
+	let targets: ReadonlyArray<null | HTMLElement> = $derived([comicTarget]);
+	let videoTarget: null | HTMLVideoElement = $state(null);
+	let maxPage = $state(0);
+	let loading = $state(true);
+	let page = $state(1);
+	let objUrl = $state('');
+	let nextUrl = $state('');
+	let videoTime = $state(0);
+	let duration = $state(9999999);
 
-	$: {
+	let comic = $derived(file as Comic);
+	let video = $derived(file as Video);
+
+	$effect(() => {
 		switch (file.type) {
 			case MediaType.Comic:
 				maxPage = comic.page ?? 0;
@@ -44,7 +49,7 @@
 				objUrl = `${config.apiServer}/videos/${video?.id}`;
 				break;
 		}
-	}
+	});
 
 	onMount(() => {
 		//scroll to top
@@ -101,8 +106,12 @@
 	};
 
 	function onClickImage(e: MouseEvent): void {
-		const imgLeft = e.currentTarget!.getBoundingClientRect().left;
-		const imgRight = e.currentTarget!.getBoundingClientRect().right;
+		const ct = e.currentTarget as HTMLElement;
+		if (!ct) {
+			return;
+		}
+		const imgLeft = ct.getBoundingClientRect().left;
+		const imgRight = ct.getBoundingClientRect().right;
 
 		if (e.x < imgLeft + (imgRight - imgLeft) / 2) {
 			goPrevPage();
@@ -111,7 +120,7 @@
 		}
 	}
 
-	async function onLikePage(e: MouseEvent) {
+	async function onLikePage(e: CustomEvent<null>) {
 		if (!comic) {
 			return;
 		}
@@ -124,7 +133,7 @@
 		}
 	}
 
-	async function onSetCover(e: MouseEvent) {
+	async function onSetCover(e: CustomEvent<null>) {
 		if (!comic) {
 			return;
 		}
@@ -147,36 +156,40 @@
 	</div>
 </div>
 <container>
-	{#if comic}
+	{#if file.type === MediaType.Comic}
 		<ProgressBar hideLabel max={maxPage} value={page} />
-		<div on:click={onClickImage} role="button">
+		<div onclick={onClickImage} role="none">
 			<img
-				bind:this={target}
+				bind:this={comicTarget}
 				src={objUrl}
 				alt="comic content"
-				on:load={() => {
+				onload={() => {
 					loading = false;
 					preloadImageAsync(nextUrl);
 				}}
 			/>
 		</div>
 	{/if}
-	{#if video}
+	{#if file.type === MediaType.Video}
 		<ProgressBar hideLabel max={duration} value={videoTime} />
 		<video
-			bind:this={target}
+			bind:this={videoTarget}
 			src={objUrl}
 			controls
 			autoplay
 			loop
-			on:canplay={() => {
+			oncanplay={() => {
 				loading = false;
 			}}
-			on:timeupdate={(e) => {
-				videoTime = e.target.currentTime;
-				duration = e.target.duration;
+			ontimeupdate={(e) => {
+				if (videoTarget) {
+					videoTime = videoTarget.currentTime;
+					duration = videoTarget.duration;
+				}
 			}}
-		/>
+		>
+			<track kind="captions" />
+		</video>
 	{/if}
 
 	<!-- {#each allPageUrls as url}		
@@ -189,7 +202,7 @@
 	</div>
 {/if}
 
-<ContextMenu {target}>
+<ContextMenu target={targets}>
 	<ContextMenuOption indented labelText="Like page" on:click={onLikePage} />
 	<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
 	<ContextMenuDivider />

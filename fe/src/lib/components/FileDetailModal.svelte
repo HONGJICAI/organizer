@@ -13,7 +13,7 @@
 		TextArea,
 		TextInput
 	} from 'carbon-components-svelte';
-	import { Comic, MediaType, type MediaFile, Video } from '$lib/model';
+	import { Comic, MediaType, type MediaFile, Video } from '$lib/model.svelte';
 	import { separateFilename } from '$lib/utility';
 	import { config } from '$lib/config';
 	import {
@@ -25,20 +25,31 @@
 		UpdateNow
 	} from 'carbon-icons-svelte';
 
-	export let open = false;
-	export let onCloseModal = () => {};
-	export let file: MediaFile;
-	export let onClickTag = (tag: string) => {};
-	export let onClickPrimaryButton = () => {};
-	export let onFileDeleted = (permenant: boolean) => {};
-	$: mediaType = file.type;
-	$: comicfile = file.type === MediaType.Comic ? (file as Comic) : null;
-	$: videofile = file.type === MediaType.Video ? (file as Video) : null;
-	$: separateToTagsFrom = file.type === MediaType.Comic ? file.name : file.path;
-	let permenant = false;
-	let openDeleteModal = false;
-	let sendingDelete = false;
-	let deleteError = '';
+	interface Props {
+		open?: boolean;
+		onCloseModal?: any;
+		file: MediaFile;
+		onClickTag?: (tag: string) => void;
+		onClickPrimaryButton?: any;
+		onFileDeleted?: any;
+	}
+
+	let {
+		open = $bindable(false),
+		onCloseModal = () => {},
+		file = $bindable(),
+		onClickTag = (tag: string) => {},
+		onClickPrimaryButton = () => {},
+		onFileDeleted = (permenant: boolean) => {}
+	}: Props = $props();
+	let mediaType = $derived(file.type);
+	let comicfile = $derived(file.type === MediaType.Comic ? (file as Comic) : null);
+	let videofile = $derived(file.type === MediaType.Video ? (file as Video) : null);
+	let separateToTagsFrom = $derived(file.type === MediaType.Comic ? file.name : file.path);
+	let permenant = $state(false);
+	let openDeleteModal = $state(false);
+	let sendingDelete = $state(false);
+	let deleteError = $state('');
 	let onClickDelete = async () => {
 		if (sendingDelete) {
 			return;
@@ -77,7 +88,7 @@
 			sendingDelete = false;
 		}
 	};
-	let sendingLike = false;
+	let sendingLike = $state(false);
 	const onClickLike = async () => {
 		if (sendingLike) {
 			return;
@@ -95,7 +106,7 @@
 		}
 	};
 
-	let sendingRefresh = false;
+	let sendingRefresh = $state(false);
 	async function onClickRefresh(): Promise<void> {
 		if (sendingRefresh) {
 			return;
@@ -110,7 +121,9 @@
 			var f = mediaType === MediaType.Comic ? new Comic(json) : new Video(json);
 			file.like = f.like;
 			file.lastViewedTime = f.lastViewedTime;
-			file.page = f.page;
+			if (mediaType === MediaType.Comic) {
+				(file as Comic).page = (f as Comic).page;
+			}
 		} else {
 			alert(rsp.status);
 		}

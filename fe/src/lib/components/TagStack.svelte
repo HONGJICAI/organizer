@@ -2,15 +2,19 @@
 	import { Accordion, AccordionItem, Button, Tag, Truncate } from 'carbon-components-svelte';
 	import { onMount } from 'svelte';
 
-	export let tag2countMap: Map<string, number>;
-	export let onClickTag: (tag: string) => void;
-	export let title = 'Tags';
-	let open = true;
+	interface Props {
+		tag2countMap: Map<string, number>;
+		onClickTag: (tag: string) => void;
+		title: string;
+	}
+
+	let { tag2countMap, onClickTag, title = 'Tags' }: Props = $props();
+	let open = $state(true);
 	const showMoreNumber = 20;
-	let currentShowNumber = 20;
-	$: orderedTag2countMap = new Map(
+	let currentShowNumber = $state(20);
+	let orderedTag2countMap = $derived(new Map(
 		[...tag2countMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, currentShowNumber)
-	);
+	));
 
 	onMount(() => {
 		// if mobile

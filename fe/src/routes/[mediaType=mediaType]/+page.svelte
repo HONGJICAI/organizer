@@ -3,29 +3,30 @@
 	import FileList from '$lib/components/FileList.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
 	import { includeAllKeywords, separateFilename } from '$lib/utility';
-	import { MediaType, type MediaFile, Comic, Category } from '$lib/model';
+	import { MediaType, type MediaFile, Comic, Category } from '$lib/model.svelte';
 	import FileContent from '$lib/components/FileContent.svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { ContentSwitcher, Switch, Button } from 'carbon-components-svelte';
 	import { Home, Favorite, RecentlyViewed, UpdateNow, Recycle } from 'carbon-icons-svelte';
-	export let data;
-	let searchStr: string = '';
-	let showFileContent = false;
-	let showFileDetailModal = false;
-	let selectedFile: MediaFile;
-	$: files = data.files as MediaFile[];
-	$: filteredFiles = files.filter(viewContentIdx2filterfunc[viewContentIdx]);
-	$: searchFiles = filteredFiles.filter((f) =>
-				includeAllKeywords(
-					(f.type === MediaType.Comic ? f.name : f.path).toLowerCase(),
-					searchStr.trim().toLowerCase().split(' ')
-				)
-	);
-	$: mediaType = files[0]?.type;
-	$: filteredTagMap = genTagMap(filteredFiles.map((c) => (mediaType === MediaType.Comic ? c.name : c.path)));
-	$: searchedTagMap = genTagMap(
-		searchFiles.map((c) => (mediaType === MediaType.Comic ? c.name : c.path))
-	);
+	import { page } from '$app/state';
+	interface Props {
+		data: any;
+	}
+
+	let { data }: Props = $props();
+	let files = $state(data.files as MediaFile[]);
+	let searchStr: string = $state(page.url.searchParams.get('q') ?? '');
+	$effect(() => {
+		const searchParams = new URLSearchParams(page.url.searchParams);
+		const q = searchParams.get('q');
+		if (q !== searchStr) {
+			searchParams.set('q', searchStr);
+			// goto(`?${searchParams.toString()}`);
+		}
+	});
+	let showFileContent = $state(false);
+	let showFileDetailModal = $state(false);
+	let selectedFile: MediaFile | null = $state(null);
 
 	const genTagMap = (names: string[]) => {
 		let tag2count: Map<string, number> = new Map<string, number>();
@@ -53,8 +54,8 @@
 	const onRefresh = () => {
 		invalidateAll();
 	};
-	let viewContentIdx: Category = Category.Home;
-	$: viewContentIdx2filterfunc = {
+	let viewContentIdx: Category = $state(Category.Home);
+	let viewContentIdx2filterfunc = {
 		// home
 		0: (f: MediaFile) => {
 			return !f.archive;
@@ -70,50 +71,71 @@
 		// archive
 		3: (f: MediaFile) => {
 			return f.archive;
-		},
+		}
 	};
+	let filteredFiles = $derived(files.filter(viewContentIdx2filterfunc[viewContentIdx]));
+	let searchFiles = $derived.by(() =>
+		filteredFiles.filter((f) =>
+			includeAllKeywords(
+				(f.type === MediaType.Comic ? f.name : f.path).toLowerCase(),
+				searchStr.trim().toLowerCase().split(' ')
+			)
+		)
+	);
+	let mediaType = $derived(files[0]?.type);
+	let filteredTagMap = $derived(
+		genTagMap(filteredFiles.map((c) => (mediaType === MediaType.Comic ? c.name : c.path)))
+	);
+	let searchedTagMap = $derived(
+		genTagMap(searchFiles.map((c) => (mediaType === MediaType.Comic ? c.name : c.path)))
+	);
 </script>
 
 <container id={showFileContent ? 'hidelist' : null}>
 	<div id="left">
 		<TagStack tag2countMap={filteredTagMap} {onClickTag} title="All Tags" />
 		{#if searchStr}
-			<TagStack tag2countMap={searchedTagMap} {onClickTag} title="Searched Tags"/>
+			<TagStack tag2countMap={searchedTagMap} {onClickTag} title="Searched Tags" />
 		{/if}
 	</div>
 	<div id="right">
-		
-	<container style="display:flex; justify-content:space-between">
-		<div>
-			<ContentSwitcher bind:selectedIndex={viewContentIdx}>
-				<Switch>
-					<div style="display: flex; align-items: center;">
-						<Home style="margin-right: 0.5rem;" />
-					</div>
-				</Switch>
-				<Switch>
-					<div style="display: flex; align-items: center;">
-						<Favorite style="margin-right: 0.5rem;" />
-					</div>
-				</Switch>
-				<Switch>
-					<div style="display: flex; align-items: center;">
-						<RecentlyViewed style="margin-right: 0.5rem;" />
-					</div>
-				</Switch>
-				<Switch>
-					<div style="display: flex; align-items: center;">
-						<Recycle style="margin-right: 0.5rem;" />
-					</div>
-				</Switch>
-			</ContentSwitcher>
-		</div>
-		<Button iconDescription="refresh" icon={UpdateNow} on:click={() => onRefresh()} />
-	</container>
-		<FileList bind:files={searchFiles} bind:searchStr {onClickFile} {onRefresh} bind:category={viewContentIdx}/>
+		<container style="display:flex; justify-content:space-between">
+			<div>
+				<ContentSwitcher bind:selectedIndex={viewContentIdx}>
+					<Switch>
+						<div style="display: flex; align-items: center;">
+							<Home style="margin-right: 0.5rem;" />
+						</div>
+					</Switch>
+					<Switch>
+						<div style="display: flex; align-items: center;">
+							<Favorite style="margin-right: 0.5rem;" />
+						</div>
+					</Switch>
+					<Switch>
+						<div style="display: flex; align-items: center;">
+							<RecentlyViewed style="margin-right: 0.5rem;" />
+						</div>
+					</Switch>
+					<Switch>
+						<div style="display: flex; align-items: center;">
+							<Recycle style="margin-right: 0.5rem;" />
+						</div>
+					</Switch>
+				</ContentSwitcher>
+			</div>
+			<Button iconDescription="refresh" icon={UpdateNow} on:click={() => onRefresh()} />
+		</container>
+		<FileList
+			files={searchFiles}
+			bind:searchStr
+			{onClickFile}
+			{onRefresh}
+			bind:category={viewContentIdx}
+		/>
 	</div>
 
-	{#if showFileDetailModal}
+	{#if showFileDetailModal && selectedFile}
 		<FileDetailModal
 			open={showFileDetailModal}
 			onCloseModal={() => {
@@ -128,19 +150,20 @@
 				showFileDetailModal = false;
 				showFileContent = true;
 			}}
-			onFileDeleted={(permenant) => {
+			onFileDeleted={(permenant = false) => {
+				if (!selectedFile) {
+					return;
+				}
 				if (permenant) {
-					files.indexOf(selectedFile);
 					files.splice(files.indexOf(selectedFile), 1);
 				} else {
 					selectedFile.archive = true;
 				}
-				files = files;
 			}}
 		/>
 	{/if}
 </container>
-{#if showFileContent}
+{#if showFileContent && selectedFile}
 	<FileContent
 		file={selectedFile}
 		onClose={() => ((showFileContent = false), (showFileDetailModal = true))}

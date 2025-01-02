@@ -25,7 +25,7 @@ export class MediaFile {
     lastViewedTime: string | null;
     lastViewedDate: Date | null;
 	like = false;
-	archive = false;
+	archive = $state(false);
 	get viewed(): boolean {
 		return !!this.lastViewedTime;
 	}
