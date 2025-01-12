@@ -6,17 +6,6 @@ from typing import List, Dict
 from cachetools import TTLCache
 import model
 
-
-class ComicGlobalData:
-    def __init__(self) -> None:
-        self._comic_caches = TTLCache(maxsize=3, ttl=60)
-
-    @property
-    def comic_caches(self):
-        return self._comic_caches
-
-
-comic = ComicGlobalData()
 err_message = []
 
 
@@ -35,3 +24,10 @@ class Config:
     class Video:
         scan_pathes = [
         ]
+
+if not os.path.exists(Config.nginx_video_path):
+    os.makedirs(Config.nginx_video_path)
+if not os.path.exists(Config.nginx_comic_path):
+    os.makedirs(Config.nginx_comic_path)
+if not os.path.exists(Config.nginx_image_path):
+    os.makedirs(Config.nginx_image_path)

@@ -14,7 +14,7 @@ export enum Category {
 }
 
 export class MediaFile {
-	name: string;
+	name = $state('');
 	path: string;
 	size: number;
 	type: MediaType;
@@ -22,10 +22,10 @@ export class MediaFile {
 	updateTime: string;
 	updateDate: Date;
 	lastViewed: number;
-    lastViewedTime: string | null;
+    lastViewedTime = $state<string | null>(null);
     lastViewedDate: Date | null;
-	like = false;
-	archive = $state(false);
+	favorited = false;
+	archived = $state(false);
 	get viewed(): boolean {
 		return !!this.lastViewedTime;
 	}
@@ -48,11 +48,11 @@ export class MediaFile {
 		this.updateTime = json.updateTime;
 		this.updateDate = new Date(json.updateTime);
         
-		this.lastViewed = json.lastViewed ?? 0;
 		this.lastViewedTime = json.lastViewedTime;
+		this.lastViewed = json.lastViewedPosition ?? 0;
 		this.lastViewedDate = json.lastViewedTime ? new Date(json.lastViewedTime) : null;
-		this.like = json.like ?? false;
-		this.archive = json.archive ?? false;
+		this.favorited = json.favorited ?? false;
+		this.archived = json.archived ?? false;
 	}
 }
 export class Comic extends MediaFile {

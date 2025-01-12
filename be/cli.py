@@ -62,9 +62,25 @@ def override_cover():
 
 
 @click.command()
+def gen_covers():
+    with Session(engine) as session:
+        statement = select(ComicEntity).where(ComicEntity.archived == False)
+        entities = session.exec(statement).all()
+
+        with Progress() as progress:
+            task = progress.add_task("[green]Processing...", total=len(entities))
+
+            def do(p: ComicEntity):
+                progress.update(task, advance=1)
+                ComicLoader.gen_comic_cover(p)
+
+            p.map(do, [e for e in entities])
+            rich.print("Done.")
+
+@click.command()
 def remove_invalid_entities():
     with Session(engine) as session:
-        statement = select(ComicEntity)
+        statement = select(ComicEntity).where(ComicEntity.archived == False)
         entities = session.exec(statement).all()
 
         with Progress() as progress:
@@ -76,7 +92,7 @@ def remove_invalid_entities():
 
             exists = p.map(do, [e for e in entities])
             not_exist_entities = [e for e, exist in zip(entities, exists) if not exist]
-            md = "\n".join([f"*{e.id} {e.path}" for e in not_exist_entities])
+            md = "\n".join([f"{'***' if e.favorited else ''}*{e.id} {e.path}" for e in not_exist_entities])
             console.print(md)
             console.print(f"Total {len(not_exist_entities)} entities not exist.")
             confirm = click.confirm("Are you sure to remove these entities?")
@@ -108,6 +124,7 @@ def remove_invalid_covers():
 
             exists = p.map(do, [e for e in covers])
             not_exist_covers = [e for e, exist in zip(covers, exists) if not exist]
+            console.print("\n".join(not_exist_covers))
             console.print(f"Total {len(not_exist_covers)} entities not exist.")
             confirm = click.confirm("Are you sure to remove these covers?")
             if confirm:
@@ -135,8 +152,12 @@ def remove_conflict_names():
 
 
 @click.command()
-def load():
-    ComicLoader().work()
+@click.option("--path", "-p", help="Path to load.")
+def load(path: str):
+    if not path:
+        ComicLoader().work()
+    else:
+        ComicLoader().load(path)
 
 
 @click.group()
@@ -144,10 +165,10 @@ def cli():
     pass
 
 
+cli.add_command(gen_covers)
 cli.add_command(remove_invalid_entities)
 cli.add_command(remove_invalid_covers)
 cli.add_command(remove_conflict_names)
-
 cli.add_command(load)
 
 if __name__ == "__main__":

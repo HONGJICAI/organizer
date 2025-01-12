@@ -7,6 +7,7 @@ import subprocess
 from typing import List
 import threading
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 from rich.progress import track, Progress
 from PIL import Image
@@ -22,16 +23,18 @@ p = ThreadPool(8)
 
 
 class Loader:
-    _starting_id: int
-    lock = threading.Lock()
-
     def __init__(self):
-        pass
+        self._starting_id = 0
+        self.lock = threading.Lock()
 
     def _get_id(self):
         with self.lock:
             self._starting_id += 1
             return self._starting_id
+        
+    @abstractmethod
+    def load(self, path: str):
+        pass
 
     def work(self):
         old_pathes = set(self._load_old())
@@ -84,11 +87,11 @@ class Loader:
 
 def scan(exts: List[str], pathes: List[str]):
     ret = []
-    scanDir = "" in exts
+    scanDir = "" in exts # "" means scan dir
     for path in pathes:
         for root, dirs, files in os.walk(path):
             file_exts = [os.path.splitext(file)[1] for file in files]
-            # if need to scan image dir, and no sub dir
+            # dir with no sub dir
             if scanDir and len(dirs) == 0:
                 # if has image file, add dir
                 if any([ext in comicfile.allowImgs for ext in file_exts]):
@@ -106,6 +109,22 @@ class ComicLoader(Loader):
 
     def __init__(self):
         super().__init__()
+        with Session(db.engine) as session:
+            sub_query = select(func.max(ComicEntity.id)).scalar_subquery()
+            statement = select(ComicEntity).where(ComicEntity.id == sub_query)
+            entity = session.exec(statement).first()
+            self._starting_id = entity.id if entity is not None else 0
+
+    def load(self, path: str):        
+        with Session(db.engine) as session:
+            statement = select(ComicEntity).where(ComicEntity.path == path)
+            entities = session.exec(statement).all()
+            if len(entities) > 0:
+                raise Exception(f"{path} already exists in db.")
+            entity = self._to_entity(path)
+            if entity is not None:
+                session.add(entity)
+                session.commit()
 
     def _load_old(self) -> List[str]:
         with Session(db.engine) as session:
@@ -113,9 +132,6 @@ class ComicLoader(Loader):
             statement = select(ComicEntity)
             entities = session.exec(statement).all()
             print(f"read {len(entities)} entities from db.")
-            self._starting_id = (
-                max(entities, key=lambda x: x.id).id if len(entities) > 0 else 0
-            )
 
             return [e.path for e in entities]
 
@@ -137,7 +153,9 @@ class ComicLoader(Loader):
         return ret
 
     @staticmethod
-    def gen_comic_cover(c: ComicEntity, cf: Comicfile = None, overwrite=False, page = 0) -> bool:
+    def gen_comic_cover(
+        c: ComicEntity, cf: Comicfile = None, overwrite=False, page=0
+    ) -> bool:
         thumbnail_maxsize = (300, 300)
         name = f"{c.id}_0.jpg"
         cover_path = os.path.join(global_data.Config.nginx_comic_path, name)
@@ -181,14 +199,27 @@ class VideoLoader(Loader):
 
     def __init__(self):
         super().__init__()
+        with Session(db.engine) as session:
+            sub_query = select(func.max(VideoEntity.id)).scalar_subquery()
+            statement = select(VideoEntity).where(VideoEntity.id == sub_query)
+            entity = session.exec(statement).first()
+            self._starting_id = entity.id if entity is not None else 0
+
+    def load(self, path):
+        with Session(db.engine) as session:
+            statement = select(VideoEntity).where(VideoEntity.path == path)
+            entities = session.exec(statement).all()
+            if len(entities) > 0:
+                raise Exception(f"{path} already exists in db.")
+            entity = self._to_entity(path)
+            if entity is not None:
+                session.add(entity)
+                session.commit()
 
     def _load_old(self) -> List[str]:
         with Session(db.engine) as session:
             statement = select(VideoEntity)
             entities = session.exec(statement).all()
-            self._starting_id = (
-                max(entities, key=lambda x: x.id).id if len(entities) > 0 else 0
-            )
             print(f"read {len(entities)} entities from db.")
             return [e.path for e in entities]
 

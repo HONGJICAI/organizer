@@ -1,417 +1,279 @@
-from abc import abstractmethod
 import re
-import subprocess
+import shutil
 import threading
+
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Response
+from pydantic import BaseModel
 import global_data
 import datetime
 import io
 import pathlib
 import db
 from typing import List
-from flask import Flask, Response, abort, jsonify, request
 import os
-from flask_cors import CORS
 from PIL import Image
-from sqlmodel import SQLModel, Session, create_engine, select
-from flasgger import Swagger
+from sqlmodel import SQLModel, Session, or_, select
 from rich.traceback import install
 from rich.progress import track
 from loader import ComicLoader, VideoLoader
 
+from fastapi_utils.api_model import APIMessage
+from fastapi_utils.cbv import cbv
+
 import util
 from model import (
     ComicEntity,
-    ComicResponse,
     FileEntity,
-    LikeEntity,
     VideoEntity,
-    ViewHistoryEntity,
 )
 import comicfile
 
 install(show_locals=True)
 
-app = Flask(__name__)
-cors = CORS(app)
-swagger = Swagger(app)
+app = FastAPI()
+router = APIRouter()
 
-app.config["CORS_HEADERS"] = "Content-Type"
+from fastapi.middleware.cors import CORSMiddleware
+
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-@app.route("/api/similar", methods=["GET"])
-def get_similar_files():
-    path = request.args.get("path")
-    groups = find_similar_file.find_similar_files([path])
-    ret = []
-    for g in groups:
-        ret.append([f.__dict__ for f in g])
-    return ret
+def abort(code: int, message: str = None):
+    raise HTTPException(status_code=code, detail=message)
 
 
-@app.route("/api/videos", methods=["GET"])
-def get_videos():
-    with Session(db.engine) as session:
+@cbv(router)
+class VideoCBV:
+    session: Session = Depends(db.get_session)
+
+    @router.get("/api/videos")
+    def get_all(self) -> List[VideoEntity]:
         statement = select(VideoEntity)
-        video_entities = session.exec(statement).all()
+        video_entities = self.session.exec(statement).all()
 
-        return [v.dict() for v in video_entities]
+        return [v.model_dump() for v in video_entities]
 
-
-@app.route("/api/videos/<int:id>", methods=["GET"])
-def get_video(id: int):
-    with Session(db.engine) as session:
+    def __get(self, id: int) -> VideoEntity:
         statement = select(VideoEntity).where(VideoEntity.id == id)
-        video_entity = session.exec(statement).first()
+        video_entity = self.session.exec(statement).first()
         if video_entity is None:
-            abort(404)
+            abort(404, "Video not found")
+        return video_entity
 
+    @router.get("/api/videos/{id}")
+    def get(self, id: int) -> VideoEntity:
+        video_entity = self.__get(id)
         new_name = str(id)
         new_path = os.path.join(global_data.Config.nginx_video_path, new_name)
         util.create_soft_link(video_entity.path, new_path)
 
-    return video_entity.dict()
+        return video_entity.model_dump()
 
-
-@app.route("/api/videos/<int:id>", methods=["Delete"])
-def delete_video(id: int):
-    with Session(db.engine) as session:
-        statement = select(VideoEntity).where(VideoEntity.id == id)
-        video_entity = session.exec(statement).first()
-        if video_entity is None:
-            abort(404)
-
+    @router.delete("/api/videos/{id}")
+    def delete_video(self, id: int) -> APIMessage:
+        video_entity = self.__get(id)
         os.remove(video_entity.path)
+        self.session.delete(video_entity)
+        self.session.commit()
 
-        session.delete(video_entity)
-        session.commit()
-
-    return Response(status=200)
-
-
-def clean_comic_entity():
-    with Session(db.engine) as session:
-        statement = select(ComicEntity)
-        comic_entities = session.exec(statement).all()
-        entities_todelete = []
-        for c in comic_entities:
-            if not os.path.exists(c.path):
-                statement = (
-                    select(LikeEntity)
-                    .where(LikeEntity.type == "comic")
-                    .where(LikeEntity.id == c.id)
-                )
-                like = session.exec(statement).first()
-                if like is not None:
-                    print("could not delete comic if liked")
-                else:
-                    entities_todelete.append(c)
-        for c in entities_todelete:
-            session.delete(c)
+        return APIMessage(detail="Deleted")
 
 
-@app.route("/api/comics", methods=["GET"])
-def get_comics():
-    """
-    get all comics info.
-    ---
-    responses:
-      200:
-        description: all comics info
-    """
-    with Session(db.engine) as session:
-        result = session.exec(select(ComicEntity)).all()
-        like_entities = session.exec(
-            select(LikeEntity).where(LikeEntity.type == "comic")
-        ).all()
-        like_ids = set([e.id for e in like_entities])
-        view_history_entities = session.exec(
-            select(ViewHistoryEntity).where(ViewHistoryEntity.type == "comic")
-        ).all()
-        # group by id
-        id2history = {}
-        for e in view_history_entities:
-            id2history[e.id] = e
-        none = ViewHistoryEntity()
-        none.position = 0
-        none.updateTime = None
+@cbv(router)
+class ComicCBV:
+    session: Session = Depends(db.get_session)
 
-        comic_entities = [
-            ComicResponse(
-                **comic.dict(),
-                like=True if comic.id in like_ids else False,
-                lastViewed=id2history.get(comic.id, none).position,
-                lastViewedTime=id2history.get(comic.id, none).updateTime,
-            )
-            for comic in result
-        ]
+    def __del__(self):
+        self.session.close()
 
-        return [comic.dict() for comic in comic_entities]
+    @router.get("/api/comics")
+    def get_all(self, valid = True) -> List[ComicEntity]:
+        comic_entities = self.session.exec(select(ComicEntity)).all()
+        if valid:
+            return [comic.model_dump() for comic in comic_entities]
+        else:
+            invalid_comics: List[ComicEntity] = []
+            for comic in comic_entities:
+                if not os.path.exists(comic.path):
+                    invalid_comics.append(comic)
+            return [comic.model_dump() for comic in invalid_comics]
 
-
-@app.route("/api/comics/<int:id>", methods=["GET"])
-def get_comic(id):
-    """
-    get specific comic info.
-    ---
-    parameters:
-      - name: id
-        type: integer
-        in: path
-        required: true
-        description: comic id
-    responses:
-      200:
-        description: Specific comic info
-      404:
-        description: Specific comic id not exist
-    """
-    with Session(db.engine) as session:
+    def __get(self, id: int) -> ComicEntity:
         statement = select(ComicEntity).where(ComicEntity.id == id)
-        comic = session.exec(statement).first()
-        if comic is None:
-            abort(404)
+        comic_entity = self.session.exec(statement).first()
+        if comic_entity is None:
+            abort(404, "Comic not found")
+        return comic_entity
 
-        return ComicResponse(**comic.dict(), like=False, lastViewedTime=None).dict()
+    @router.get("/api/comics/{id}")
+    def get(self, id: int) -> ComicEntity:
+        comic_entity = self.__get(id)
+        return comic_entity.model_dump()
 
+    @router.post("/api/comics/{id}/favor")
+    def favor(self, id: int) -> APIMessage:
+        comic_entity = self.__get(id)
+        comic_entity.favorited = True
+        self.session.add(comic_entity)
+        self.session.commit()
+        return APIMessage(detail="Favorited")
 
-@app.route("/api/comics/<int:id>/like", methods=["POST"])
-def like_comic(id):
-    with Session(db.engine) as session:
-        statement = select(ComicEntity).where(ComicEntity.id == id)
-        comic = session.exec(statement).first()
-        if comic is None:
-            abort(404)
-        like_entity = LikeEntity(type="comic", id=id)
-        session.add(like_entity)
-        session.commit()
+    @router.delete("/api/comics/{id}/favor")
+    def unfavor(self, id: int) -> APIMessage:
+        comic_entity = self.__get(id)
+        comic_entity.favorited = False
+        self.session.add(comic_entity)
+        self.session.commit()
+        return APIMessage(detail="Unfavorited")
 
-    return Response(status=200)
-
-
-@app.route("/api/comics/<int:id>/unlike", methods=["POST"])
-def unlike_comic(id):
-    with Session(db.engine) as session:
-        statement = select(ComicEntity).where(ComicEntity.id == id)
-        comic = session.exec(statement).first()
-        if comic is None:
-            abort(404)
-        statement = (
-            select(LikeEntity)
-            .where(LikeEntity.type == "comic")
-            .where(LikeEntity.id == id)
-        )
-        like_entity = session.exec(statement).first()
-        if like_entity:
-            session.delete(like_entity)
-            session.commit()
-
-    return Response(status=200)
-
-
-@app.route("/api/comics/<int:id>/refresh", methods=["POST"])
-def refresh_comic(id):
-    with Session(db.engine) as session:
-        statement = select(ComicEntity).where(ComicEntity.id == id)
-        comic = session.exec(statement).first()
-        if comic is None:
-            abort(404)
-
+    @router.post("/api/comics/{id}/refresh")
+    def refresh_comic(self, id):
+        comic = self.__get(id)
+        comic_entity_init = ComicEntity.from_path(pathlib.Path(comic.path), comic.id)
         with comicfile.create(comic.path) as cf:
             comic.page = cf.page
+            comic.updateTime = comic_entity_init.updateTime
             ComicLoader.gen_comic_cover(comic, cf)
-            session.add(comic)
-            session.commit()
-            session.refresh(comic)
+            self.session.add(comic)
+            self.session.commit()
+            self.session.refresh(comic)
 
-            like = (
-                True
-                if session.exec(
-                    select(LikeEntity)
-                    .where(LikeEntity.type == "comic")
-                    .where(LikeEntity.id == id)
-                ).one_or_none()
-                else False
-            )
-            view_entity = session.exec(
-                select(ViewHistoryEntity)
-                .where(ViewHistoryEntity.type == "comic")
-                .where(ViewHistoryEntity.id == id)
-            ).one_or_none()
-            last_viewed_time = (
-                view_entity.updateTime if view_entity is not None else None
-            )
-            return ComicResponse(
-                **comic.dict(), like=like, lastViewedTime=last_viewed_time
-            ).dict()
+        return comic.model_dump()
 
+    class RenameRequest(BaseModel):
+        name: str
 
-@app.route("/api/comics/<int:id>", methods=["DELETE"])
-def delete_comic(id):
-    permenant = request.args.get("permenant", "false")
-    with Session(db.engine) as session:
-        statement = select(ComicEntity).where(ComicEntity.id == id)
-        comic = session.exec(statement).first()
-        if comic is None:
-            abort(404)
-
-        cf: comicfile.Comicfile = global_data.comic.comic_caches.get(id, None)
-        if cf is not None:
+    @router.post("/api/comics/{id}/rename")
+    def rename_comic(self, id: int, req: RenameRequest):
+        comic = self.__get(id)
+        if not os.path.exists(comic.path):
+            abort(404, "Comic not found in filesystem")
+        new_name = req.name
+        if new_name is None:
+            abort(400, "Name is required")
+        if new_name == comic.name:
+            abort(400, "Name is same")
+        new_path = os.path.join(os.path.dirname(comic.path), new_name)
+        if os.path.exists(new_path):
+            abort(400, "File already exists")
+        new_comic_statement = select(ComicEntity).where(
+            or_(ComicEntity.name == new_name, ComicEntity.path == new_path)
+        )
+        new_comic = self.session.exec(new_comic_statement).first()
+        if new_comic is not None:
+            abort(400, "Comic with same name/path already exists")
+        if comicfile.comic_cache.get(comic.path) is not None:
+            cf = comicfile.comic_cache[comic.path]
             cf.close()
-            del global_data.comic.comic_caches[comic.id]
+            del comicfile.comic_cache[comic.path]
+        os.rename(comic.path, new_path)
+        comic.name = new_name
+        comic.path = new_path
+        self.session.add(comic)
+        self.session.commit()
+        self.session.refresh(comic)
+        return comic.model_dump()
 
-        if permenant == "false":
-            comic.archive = True
-            session.add(comic)
+    @router.delete("/api/comics/{id}")
+    def delete_comic(self, id: int, permenant: bool = False):
+        comic = self.__get(id)
+        if comic.favorited:
+            abort(400, "Cannot delete favorited comic")
+        path = pathlib.Path(comic.path)
+        if path.exists():
+            cf = comicfile.create_open(comic.path)
+            if cf is not None:
+                cf.close()
+
+        if permenant == False:
+            comic.archived = True
+            self.session.add(comic)
         else:
-            session.delete(comic)
+            self.session.delete(comic)
             cover = os.path.join(global_data.Config.nginx_comic_path, f"{id}_0.jpg")
             if os.path.exists(cover):
                 os.remove(cover)
         try:
-            if os.path.exists(comic.path):
+            if path.is_dir() and comic.page == len(list(path.glob("*"))):
+                print("remove dir", comic.path)
+                shutil.rmtree(comic.path)
+            else:
+                print("remove file", comic.path)
                 os.remove(comic.path)
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
-        session.commit()
+            abort(500, f"Failed to delete comic file with ex: {e}")
+        self.session.commit()
 
-    return Response(status=200)
+        return APIMessage(detail="Deleted")
 
+@cbv(router)
+class ComicPageCBV:
+    session: Session = Depends(db.get_session)
 
-@app.route("/api/comics/<int:id>/<int:page>", methods=["GET"])
-def get_comicpage(id, page):
-    """returning image from zip file
-    returning mimetype is "image/jpeg"
-    ---
-    parameters:
-      - name: id
-        type: int
-        required: true
-        default: 0
-        description: comic id
-      - name: page
-        type: int
-        in: path
-        required: true
-        default: 0
-        description: comic page
-    responses:
-      200:
-        description: Specific comic image with mimetype="image/jpeg"
-      404:
-        description: Specific comic id or comic page not exist
-    """
+    def __del__(self):
+        self.session.close()
 
-    with Session(db.engine) as session:
+    def __get(self, id: int) -> ComicEntity:
         statement = select(ComicEntity).where(ComicEntity.id == id)
-        comic = session.exec(statement).first()
+        comic = self.session.exec(statement).first()
+        if comic is None:
+            abort(404, "Comic not found")
+        return comic
 
-    if comic is None:
-        abort(404)
-
-    cf = global_data.comic.comic_caches.get(comic.id, None)
-    if cf is None:
-        cf = comicfile.create(comic.path)
-        cf.open()
-        global_data.comic.comic_caches[comic.id] = cf
-    ok, bytes = cf.read(page - 1)
-    if ok:
-        rsp = Response(
-            response=bytes,
-            mimetype="image/jpeg",
-            headers={"cache-control": "max-age=604800"},
-        )
-        return rsp
-
-    abort(404)
-
-
-@app.route("/api/comics/<int:id>/<int:page>/like", methods=["POST"])
-def like_comicpage(id, page):
-    """like comic page
-    ---
-    parameters:
-      - name: id
-        type: int
-        required: true
-        default: 0
-        description: comic id
-      - name: page
-        type: int
-        in: path
-        required: true
-        default: 0
-        description: comic page
-    responses:
-      200:
-        description: if ok
-      404:
-        description: Specific comic id or comic page not exist
-    """
-
-    with Session(db.engine) as session:
-        statement = select(ComicEntity).where(ComicEntity.id == id)
-        comic = session.exec(statement).first()
-
-    if comic is None:
-        abort(404)
-    name = f"{comic.name}_{page}.jpg"
-    path = os.path.join(global_data.Config.nginx_image_path, name)
-    if not os.path.exists(path):
-        cf = global_data.comic.comic_caches.get(comic.id, None)
+    @router.get("/api/comics/{id}/{page}")
+    def get(self, id: int, page: int) -> Response:
+        comic = self.__get(id)
+        cf = comicfile.create_open(comic.path)
         if cf is None:
-            cf = comicfile.create(comic.path)
-            cf.open()
-            global_data.comic.comic_caches[comic.id] = cf
+            abort(404, "Comic file not found")
         ok, bytes = cf.read(page - 1)
         if ok:
-            img = Image.open(io.BytesIO(bytes))
-            img = img.convert("RGB")
-            img.save(path, "JPEG")
+            return Response(
+                content=bytes,
+                media_type="image/jpeg",
+                headers={"cache-control": "max-age=604800"},
+            )
+
+        abort(404, "Page not found")
+
+    @router.post("/api/comics/{id}/{page}/like")
+    def like(self, id: int, page: int):
+        comic = self.__get(id)
+        name = f"{comic.name}_{page}.jpg"
+        path = os.path.join(global_data.Config.nginx_image_path, name)
+        if not os.path.exists(path):
+            cf: comicfile.Comicfile = global_data.comic.comic_caches.get(comic.id, None)
+            cf = comicfile.create_open(comic.path)
+            if cf is None:
+                abort(404, "Comic file not found")
+            ok, bytes = cf.read(page - 1)
+            if ok:
+                img = Image.open(io.BytesIO(bytes))
+                img = img.convert("RGB")
+                img.save(path, "JPEG")
+                return APIMessage(detail="OK")
+
+        abort(404)
+
+    @router.post("/api/comics/{id}/{page}/cover")
+    def set_cover(self, id: int, page: int):
+        comic = self.__get(id)
+        cf = comicfile.create_open(comic.path)
+        if cf is None:
+            abort(404, "Comic file not found")
+        if ComicLoader.gen_comic_cover(comic, cf, True, page):
             rsp = Response(status=200)
             return rsp
 
-    abort(404)
-
-
-@app.route("/api/comics/<int:id>/<int:page>/cover", methods=["POST"])
-def set_comicpage_cover(id, page):
-    """set comic page as cover
-    ---
-    parameters:
-      - name: id
-        type: int
-        required: true
-        default: 0
-        description: comic id
-      - name: page
-        type: int
-        in: path
-        required: true
-        default: 0
-        description: comic page
-    responses:
-      200:
-        description: if ok
-      404:
-        description: Specific comic id or comic page not exist
-    """
-
-    with Session(db.engine) as session:
-        statement = select(ComicEntity).where(ComicEntity.id == id)
-        comic = session.exec(statement).first()
-
-    if comic is None:
-        abort(404)
-    cf = global_data.comic.comic_caches.get(comic.id, None)
-    if cf is None:
-        cf = comicfile.create(comic.path)
-        cf.open()
-        global_data.comic.comic_caches[comic.id] = cf
-    if ComicLoader.gen_comic_cover(comic, cf, True, page):
-        rsp = Response(status=200)
-        return rsp
-
-    abort(500)
+        abort(500)
 
 
 @app.route("/api/images", methods=["GET"])
@@ -427,16 +289,18 @@ def get_images():
         images.append((f, path, datetime.datetime.fromtimestamp(stat.st_mtime)))
     images.sort(key=lambda x: x[1], reverse=True)
     return [
-        FileEntity(id=i, name=f[0], path=f[1], size=0, updateTime=f[2]).dict()
+        FileEntity(id=i, name=f[0], path=f[1], size=0, updateTime=f[2]).model_dump()
         for i, f in enumerate(images)
     ]
+
+
+app.include_router(router)
 
 
 def process_view_history():
     t = threading.Timer(300, process_view_history)
     t.daemon = True
     t.start()
-    print("process view history...")
     if os.path.exists(global_data.Config.nginx_access_log_path):
         # log format: [02/Nov/2023:23:30:03 +0800] "GET /api/comics/358/1 HTTP/1.1"
         comic_dict = {}
@@ -460,47 +324,34 @@ def process_view_history():
                 elif type == "videos":
                     video_dict[id] = time
         if len(comic_dict.keys()) > 0:
+            print("update comic view history")
             with Session(db.engine) as session:
                 for id, tuple in comic_dict.items():
                     time, position = tuple
                     e = session.exec(
-                        select(ViewHistoryEntity)
-                        .where(ViewHistoryEntity.type == "comic")
-                        .where(ViewHistoryEntity.id == id)
+                        select(ComicEntity).where(ComicEntity.id == id)
                     ).one_or_none()
                     if e is not None:
-                        e.position = position
-                        e.updateTime = time
+                        e.lastViewedPosition = position
+                        e.lastViewedTime = time
+                        session.add(e)
+                        session.commit()
                     else:
-                        e = ViewHistoryEntity(type="comic", id=id, updateTime=time, position=position)
-                    session.add(e)
-                session.commit()
+                        print(f"comic {id} not found")
         if len(video_dict.keys()) > 0:
             with Session(db.engine) as session:
                 for id, time in video_dict.items():
                     e = session.exec(
-                        select(ViewHistoryEntity)
-                        .where(ViewHistoryEntity.type == "video")
-                        .where(ViewHistoryEntity.id == id)
+                        select(VideoEntity).where(VideoEntity.id == id)
                     ).one_or_none()
                     if e is not None:
-                        e.updateTime = time
+                        e.lastViewedPosition = time
+                        session.add(e)
+                        session.commit()
                     else:
-                        e = ViewHistoryEntity(type="video", id=id, updateTime=time)
-                    session.add(e)
-                session.commit()
+                        print(f"video {id} not found")
         with open(global_data.Config.nginx_access_log_path, "w") as f:
             pass
-
-
-@app.route("/api/status", methods=["GET"])
-def get_status():
-    ret = {
-        "cache": len(global_data.comic.comic_caches),
-        "caches": [{"id": id} for id in global_data.comic.comic_caches.keys()],
-        "err_message": global_data.err_message,
-    }
-    return ret
 
 
 if __name__ == "__main__":
@@ -517,4 +368,5 @@ if __name__ == "__main__":
     t.start()
 
     # run
-    app.run(host="0.0.0.0", debug=True, port=8001)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

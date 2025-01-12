@@ -18,9 +18,11 @@
 	import { config } from '$lib/config';
 	import {
 		ApplicationWeb,
+		Edit,
 		Favorite,
 		FavoriteFilled,
 		NewTab,
+		Save,
 		TrashCan,
 		UpdateNow
 	} from 'carbon-icons-svelte';
@@ -88,19 +90,19 @@
 			sendingDelete = false;
 		}
 	};
-	let sendingLike = $state(false);
-	const onClickLike = async () => {
-		if (sendingLike) {
+	let sendingFavorite = $state(false);
+	const onClickFavorite = async () => {
+		if (sendingFavorite) {
 			return;
 		}
-		sendingLike = true;
+		sendingFavorite = true;
 		const rsp = await fetch(
-			`${config.apiServer}/api/comics/${file.id}/${file.like ? 'unlike' : 'like'}`,
-			{ method: 'POST' }
+			`${config.apiServer}/api/comics/${file.id}/favor`,
+			{ method: file.favorited ? 'DELETE' : 'POST' }
 		);
-		sendingLike = false;
+		sendingFavorite = false;
 		if (rsp.ok) {
-			file.like = !file.like;
+			file.favorited = !file.favorited;
 		} else {
 			alert(rsp.status);
 		}
@@ -119,13 +121,33 @@
 		if (rsp.ok) {
 			var json = await rsp.json();
 			var f = mediaType === MediaType.Comic ? new Comic(json) : new Video(json);
-			file.like = f.like;
+			file.favorited = f.favorited;
 			file.lastViewedTime = f.lastViewedTime;
 			if (mediaType === MediaType.Comic) {
 				(file as Comic).page = (f as Comic).page;
 			}
 		} else {
 			alert(rsp.status);
+		}
+	}
+	let editingName = $state(false);
+	let newname = $state(file.name);
+	async function onClickSaveName() {
+		const rsp = await fetch(`${config.apiServer}/api/comics/${file.id}/rename`, {
+			method: 'POST',
+			body: JSON.stringify({ name: newname }),
+			headers: {
+				'Content-Type': 'application/json'
+			}
+		});
+		if (rsp.ok) {
+			editingName = false;
+			const json = await rsp.json();
+			const comic = new Comic(json);
+			file.name = comic.name;
+		} else {
+			alert(rsp.status);
+			throw new Error(`${rsp.status}`);
 		}
 	}
 </script>
@@ -139,6 +161,26 @@
 	on:click:button--primary={() => onClickPrimaryButton()}
 >
 	<TextInput labelText="ID" value={file.id} readonly inline />
+	<div style="display: flex; align-items: center;">
+		<TextInput labelText="Name" bind:value={newname} inline readonly={!editingName} />
+		{#if editingName}
+			<Button
+				icon={Save}
+				iconDescription="Save"
+				on:click={() => {					
+					onClickSaveName();
+				}}
+			/>
+		{:else}
+			<Button
+				icon={Edit}
+				iconDescription="Edit"
+				on:click={() => {
+					editingName = true;
+				}}
+			/>
+		{/if}
+	</div>
 	<TextInput labelText="Size" value={`${file.size}MB`} readonly inline />
 	{#if comicfile}
 		<TextInput labelText="Page" value={comicfile.page} readonly inline />
@@ -169,13 +211,13 @@
 				iconDescription="Delete"
 			/>
 		{/if}
-		{#if sendingLike}
+		{#if sendingFavorite}
 			<InlineLoading />
 		{:else}
 			<Button
-				icon={file.like ? FavoriteFilled : Favorite}
-				iconDescription="Like"
-				on:click={() => onClickLike()}
+				icon={file.favorited ? FavoriteFilled : Favorite}
+				iconDescription="Favorite"
+				on:click={() => onClickFavorite()}
 			/>
 		{/if}
 		<Button icon={UpdateNow} iconDescription="Refresh" on:click={() => onClickRefresh()} />
@@ -197,9 +239,9 @@
 </Modal>
 
 <ComposedModal bind:open={openDeleteModal} on:click:button--primary={() => onClickDelete()}>
-	<ModalHeader label="Changes" title="Confirm delete" />
+	<ModalHeader label="Changes" title="Confirm delete the comic file" />
 	<ModalBody hasForm>
-		<Checkbox labelText="permenant" bind:checked={permenant} />
+		<Checkbox labelText="permenant: including database record" bind:checked={permenant} />
 		{deleteError}
 	</ModalBody>
 	<ModalFooter primaryButtonText="Proceed" />

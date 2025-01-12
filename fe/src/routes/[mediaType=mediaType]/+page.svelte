@@ -14,6 +14,9 @@
 	}
 
 	let { data }: Props = $props();
+	$effect(() => {
+		files = data.files;
+	});
 	let files = $state(data.files as MediaFile[]);
 	let searchStr: string = $state(page.url.searchParams.get('q') ?? '');
 	$effect(() => {
@@ -58,19 +61,19 @@
 	let viewContentIdx2filterfunc = {
 		// home
 		0: (f: MediaFile) => {
-			return !f.archive;
+			return !f.archived;
 		},
 		// favorite
 		1: (f: MediaFile) => {
-			return f.like;
+			return f.favorited;
 		},
 		// recently viewed
 		2: (f: MediaFile) => {
-			return !f.archive && f.viewed;
+			return !f.archived && f.viewed;
 		},
 		// archive
 		3: (f: MediaFile) => {
-			return f.archive;
+			return f.archived;
 		}
 	};
 	let filteredFiles = $derived(files.filter(viewContentIdx2filterfunc[viewContentIdx]));
@@ -157,7 +160,7 @@
 				if (permenant) {
 					files.splice(files.indexOf(selectedFile), 1);
 				} else {
-					selectedFile.archive = true;
+					selectedFile.archived = true;
 				}
 			}}
 		/>

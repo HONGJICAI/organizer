@@ -47,6 +47,7 @@
 				break;
 			case MediaType.Video:
 				objUrl = `${config.apiServer}/videos/${video?.id}`;
+				// fetch(`${config.apiServer}/api/videos/${video?.id}`)
 				break;
 		}
 	});
