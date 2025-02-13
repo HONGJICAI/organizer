@@ -15,7 +15,7 @@
 	} from 'carbon-components-svelte';
 	import { Comic, MediaType, type MediaFile, Video } from '$lib/model.svelte';
 	import { separateFilename } from '$lib/utility';
-	import { config } from '$lib/config';
+	import { config } from '$lib/config.svelte';
 	import {
 		ApplicationWeb,
 		Edit,
@@ -96,10 +96,9 @@
 			return;
 		}
 		sendingFavorite = true;
-		const rsp = await fetch(
-			`${config.apiServer}/api/comics/${file.id}/favor`,
-			{ method: file.favorited ? 'DELETE' : 'POST' }
-		);
+		const rsp = await fetch(`${config.apiServer}/api/comics/${file.id}/favor`, {
+			method: file.favorited ? 'DELETE' : 'POST'
+		});
 		sendingFavorite = false;
 		if (rsp.ok) {
 			file.favorited = !file.favorited;
@@ -167,7 +166,7 @@
 			<Button
 				icon={Save}
 				iconDescription="Save"
-				on:click={() => {					
+				on:click={() => {
 					onClickSaveName();
 				}}
 			/>

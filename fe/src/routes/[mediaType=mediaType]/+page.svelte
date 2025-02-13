@@ -3,21 +3,20 @@
 	import FileList from '$lib/components/FileList.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
 	import { includeAllKeywords, separateFilename } from '$lib/utility';
-	import { MediaType, type MediaFile, Comic, Category } from '$lib/model.svelte';
+	import { MediaType, type MediaFile, Comic, Category, Video } from '$lib/model.svelte';
 	import FileContent from '$lib/components/FileContent.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { ContentSwitcher, Switch, Button } from 'carbon-components-svelte';
+	import { ContentSwitcher, Switch, Button, SkeletonPlaceholder } from 'carbon-components-svelte';
 	import { Home, Favorite, RecentlyViewed, UpdateNow, Recycle } from 'carbon-icons-svelte';
 	import { page } from '$app/state';
-	interface Props {
-		data: any;
-	}
 
-	let { data }: Props = $props();
+	let { data } = $props();
+	let files = $state([] as MediaFile[]);
 	$effect(() => {
-		files = data.files;
+		data.files?.then((f) => {
+			files = f;
+		});
 	});
-	let files = $state(data.files as MediaFile[]);
 	let searchStr: string = $state(page.url.searchParams.get('q') ?? '');
 	$effect(() => {
 		const searchParams = new URLSearchParams(page.url.searchParams);
@@ -96,10 +95,14 @@
 
 <container id={showFileContent ? 'hidelist' : null}>
 	<div id="left">
-		<TagStack tag2countMap={filteredTagMap} {onClickTag} title="All Tags" />
-		{#if searchStr}
-			<TagStack tag2countMap={searchedTagMap} {onClickTag} title="Searched Tags" />
-		{/if}
+		{#await data.files}
+			<TagStack skeleton={true} title="All Tags" />
+		{:then files}
+			<TagStack tag2countMap={filteredTagMap} {onClickTag} title="All Tags" />
+			{#if searchStr}
+				<TagStack tag2countMap={searchedTagMap} {onClickTag} title="Searched Tags" />
+			{/if}
+		{/await}
 	</div>
 	<div id="right">
 		<container style="display:flex; justify-content:space-between">
@@ -127,15 +130,21 @@
 					</Switch>
 				</ContentSwitcher>
 			</div>
-			<Button iconDescription="refresh" icon={UpdateNow} on:click={() => onRefresh()} />
+			{#await data.files then files}
+				<Button iconDescription="refresh" icon={UpdateNow} on:click={() => onRefresh()} />
+			{/await}
 		</container>
-		<FileList
-			files={searchFiles}
-			bind:searchStr
-			{onClickFile}
-			{onRefresh}
-			bind:category={viewContentIdx}
-		/>
+		{#await data.files}
+			<SkeletonPlaceholder style="width: 100%; height: 80vh"/>
+		{:then files}
+			<FileList
+				files={searchFiles}
+				bind:searchStr
+				{onClickFile}
+				{onRefresh}
+				bind:category={viewContentIdx}
+			/>
+		{/await}
 	</div>
 
 	{#if showFileDetailModal && selectedFile}

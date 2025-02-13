@@ -9,7 +9,7 @@ import datetime
 import io
 import pathlib
 import db
-from typing import List
+from typing import Dict, List
 import os
 from PIL import Image
 from sqlmodel import SQLModel, Session, or_, select
@@ -250,7 +250,6 @@ class ComicPageCBV:
         name = f"{comic.name}_{page}.jpg"
         path = os.path.join(global_data.Config.nginx_image_path, name)
         if not os.path.exists(path):
-            cf: comicfile.Comicfile = global_data.comic.comic_caches.get(comic.id, None)
             cf = comicfile.create_open(comic.path)
             if cf is None:
                 abort(404, "Comic file not found")
@@ -269,29 +268,34 @@ class ComicPageCBV:
         cf = comicfile.create_open(comic.path)
         if cf is None:
             abort(404, "Comic file not found")
-        if ComicLoader.gen_comic_cover(comic, cf, True, page):
-            rsp = Response(status=200)
+        if ComicLoader.gen_comic_cover(comic, cf, True, page - 1 if page > 0 else 0):
+            rsp = Response(status_code=200)
+            comic.coverPosition = page
+            self.session.add(comic)
+            self.session.commit()
             return rsp
 
         abort(500)
 
 
-@app.route("/api/images", methods=["GET"])
-def get_images():
-    # get all images and updateTime then order by updateTime
-    files = []
-    for root, dirs, files in os.walk(global_data.Config.nginx_image_path):
-        break
-    images = []
-    for f in files:
-        path = os.path.join(root, f)
-        stat = os.stat(path)
-        images.append((f, path, datetime.datetime.fromtimestamp(stat.st_mtime)))
-    images.sort(key=lambda x: x[1], reverse=True)
-    return [
-        FileEntity(id=i, name=f[0], path=f[1], size=0, updateTime=f[2]).model_dump()
-        for i, f in enumerate(images)
-    ]
+@cbv(router)
+class ImageCBV:
+    @router.get("/api/images")
+    def get_images(self):
+        # get all images and updateTime then order by updateTime
+        files = []
+        for root, dirs, files in os.walk(global_data.Config.nginx_image_path):
+            break
+        images = []
+        for f in files:
+            path = os.path.join(root, f)
+            stat = os.stat(path)
+            images.append((f, path, datetime.datetime.fromtimestamp(stat.st_mtime)))
+        images.sort(key=lambda x: x[1], reverse=True)
+        return [
+            FileEntity(id=i, name=f[0], path=f[1], size=0, updateTime=f[2]).model_dump()
+            for i, f in enumerate(images)
+        ]
 
 
 app.include_router(router)

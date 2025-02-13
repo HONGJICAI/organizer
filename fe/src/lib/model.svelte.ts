@@ -1,4 +1,4 @@
-import {config} from '$lib/config';
+import { config } from '$lib/config.svelte';
 
 export enum MediaType {
 	Comic = 'comic',
@@ -22,19 +22,22 @@ export class MediaFile {
 	updateTime: string;
 	updateDate: Date;
 	lastViewed: number;
-    lastViewedTime = $state<string | null>(null);
-    lastViewedDate: Date | null;
+	lastViewedTime = $state<string | null>(null);
+	lastViewedDate: Date | null;
 	favorited = false;
 	archived = $state(false);
 	get viewed(): boolean {
 		return !!this.lastViewedTime;
 	}
+	get coverId(): string {
+		return `cover-${this.id}`;
+	}
 	get coverUrl(): string {
-		return `${config.apiServer}/${this.type}s/${this.name}`;
+		return `${config.staticServer}/${this.type}s/${this.name}`;
 	}
 	get lastViewedLabel(): string {
-		if (this.lastViewedDate) {
-			return this.lastViewed + ' at ' + this.lastViewedDate;
+		if (this.lastViewedTime) {
+			return this.lastViewed + ' at ' + this.lastViewedTime;
 		}
 		return '';
 	}
@@ -47,7 +50,7 @@ export class MediaFile {
 		this.id = json.id;
 		this.updateTime = json.updateTime;
 		this.updateDate = new Date(json.updateTime);
-        
+
 		this.lastViewedTime = json.lastViewedTime;
 		this.lastViewed = json.lastViewedPosition ?? 0;
 		this.lastViewedDate = json.lastViewedTime ? new Date(json.lastViewedTime) : null;
@@ -58,7 +61,7 @@ export class MediaFile {
 export class Comic extends MediaFile {
 	page: number;
 	get coverUrl(): string {
-		return `${config.apiServer}/${this.type}s/${this.id}_0.jpg`;
+		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg`;
 	}
 	constructor(json: any) {
 		super(MediaType.Comic, json);
@@ -68,10 +71,38 @@ export class Comic extends MediaFile {
 export class Video extends MediaFile {
 	durationInSecond: number;
 	get coverUrl(): string {
-		return `${config.apiServer}/${this.type}s/${this.id}.jpg`;
+		return `${config.staticServer}/${this.type}s/${this.id}.jpg`;
 	}
 	constructor(json: any) {
 		super(MediaType.Video, json);
 		this.durationInSecond = json.durationInSecond;
+	}
+}
+
+type NotificationKind = 'error' | 'info' | 'info-square' | 'success' | 'warning' | 'warning-alt';
+
+export class Notification {
+	kind: NotificationKind;
+	title = '';
+	subtitle = '';
+	caption = new Date().toLocaleString();
+	timeout: number | undefined = undefined;
+	constructor(kind: NotificationKind, title: string, subtitle?: string, timeout?: number) {
+		this.kind = kind;
+		this.title = title;
+		this.subtitle = subtitle ?? '';
+		this.timeout = timeout;
+	}
+}
+
+export class SuccessNotification extends Notification {
+	constructor(subtitle?: string, timeout?: number) {
+		super('success', 'Success', subtitle, timeout);
+	}
+}
+
+export class ErrorNotification extends Notification {
+	constructor(code: number, subtitle?: string, timeout?: number) {
+		super('error', `Error ${code}`, subtitle, timeout);
 	}
 }

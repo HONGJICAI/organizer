@@ -8,11 +8,13 @@
 		HeaderPanelDivider,
 		HeaderPanelLink,
 		SkipToContent,
-		Content
+		Content,
+		ToastNotification
 	} from 'carbon-components-svelte';
 	import SettingsAdjust from 'carbon-icons-svelte/lib/SettingsAdjust.svelte';
 	import UserAvatarFilledAlt from 'carbon-icons-svelte/lib/UserAvatarFilledAlt.svelte';
 	import SettingsModal from './SettingsModal.svelte';
+	import { notifications } from '$lib/state.svelte';
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
@@ -61,7 +63,33 @@
 	{@render children?.()}
 </Content>
 
-<SettingsModal open={openSettingsModal} onCloseModal={() => (openSettingsModal = false)} />
+{#if openSettingsModal}
+	<SettingsModal open={openSettingsModal} onCloseModal={() => (openSettingsModal = false)} />
+{/if}
+
+{#if notifications.length > 0}
+	{#each notifications as notification}
+		<div class="notification">
+			<ToastNotification
+				timeout={notification.timeout}
+				kind={notification.kind}
+				title={notification.title}
+				subtitle={notification.subtitle}
+				caption={notification.caption}
+				on:close={() => {
+					const idx = notifications.indexOf(notification);
+					notifications.splice(idx, 1);
+				}}
+			/>
+		</div>
+	{/each}
+{/if}
 
 <style>
+	.notification {
+		position: fixed;
+		top: 0;
+		right: 0;
+		z-index: 9999;
+	}
 </style>

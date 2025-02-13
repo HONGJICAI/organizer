@@ -1,51 +1,90 @@
 <script lang="ts">
-	import { Tile } from 'carbon-components-svelte';
+	import { Tag, Tile } from 'carbon-components-svelte';
 	import { Comic, MediaFile, MediaType } from '$lib/model.svelte';
-    interface Props {
-        file: MediaFile;
-        light?: boolean;
-        onClickFile: (file: MediaFile) => void;
-    }
+	interface Props {
+		file: MediaFile;
+		light?: boolean;
+		onClickFile: (file: MediaFile) => void;
+	}
 
-    let { file, light = $bindable(false), onClickFile }: Props = $props();
-    let comic = $derived(file as Comic);
+	let { file, light = $bindable(false), onClickFile }: Props = $props();
+	let comic = $derived(file as Comic);
 </script>
 
 <div class="card">
 	<Tile bind:light on:click={() => onClickFile(file)}>
-		<img
-			src={file.coverUrl}
-			alt={`${file.id}`}
-			style="width:100%;height:100%;object-fit:cover;max-height:50vh;"
-		/>
-        <div class="left-top"> {file.size}MB </div>
-        {#if file.type === MediaType.Comic}
-            <div class="top-right"> {comic.page}p
-            </div>
-        {/if}
+		<div class="left-top"><Tag>{file.size}MB</Tag></div>
+		{#if file.type === MediaType.Comic}{#if !comic.viewed}
+				<div class="top-middle">
+					<Tag type="blue">NEW</Tag>
+				</div>
+			{/if}
+			<div class="top-right">
+				<Tag>{comic.page}p</Tag>
+			</div>
+		{/if}
+		<div class="imagecontainer">
+			<img src={file.coverUrl} alt={`${file.id}`} id={file.coverId} />
+		</div>
 		{file.name}
 	</Tile>
 </div>
 
 <style>
-	.card {
-		width: 300px;
-        position: relative;
+	:root {
+		--card-width: 300px;
+		--card-height: calc(var(--card-width) * 1.5);
+		--font-height: 14px;
 	}
 
-    .card:hover {
-        cursor: pointer;
-    }
+	@media (max-width: 768px) {
+		:root {
+			--card-width: 48vw;
+		}
+	}
 
-    .top-right {
-        position: absolute;
-        top: 0;
-        right: 0;
-    }
+	.card {
+		width: var(--card-width);
+		height: var(--card-height);
+		max-width: var(--card-width);
+		max-height: var(--card-height);
+		position: relative;
+		overflow: hidden;
+	}
 
-    .left-top {
-        position: absolute;
-        top: 0;
-        left: 0;
-    }
+	.card .imagecontainer {
+		display: flex;
+		padding-left: 1;
+		padding-right: 1;
+		width: 100%;
+		height: calc(var(--card-height) - 3 * var(--font-height));
+	}
+
+	.card img {
+		width: 100%;
+		object-fit: contain;
+	}
+
+	.card:hover {
+		cursor: pointer;
+	}
+
+	.top-right {
+		position: absolute;
+		top: 0;
+		right: 0;
+	}
+
+	.top-middle {
+		position: absolute;
+		top: 0;
+		left: 50%;
+		transform: translateX(-50%);
+	}
+
+	.left-top {
+		position: absolute;
+		top: 0;
+		left: 0;
+	}
 </style>

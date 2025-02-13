@@ -9,10 +9,18 @@
 		PaginationNav,
 		ProgressBar
 	} from 'carbon-components-svelte';
-	import { Comic, MediaFile, MediaType, Video } from '$lib/model.svelte';
-	import { config } from '$lib/config';
+	import {
+		Comic,
+		ErrorNotification,
+		MediaFile,
+		MediaType,
+		SuccessNotification,
+		Video
+	} from '$lib/model.svelte';
+	import { config, ViewMode } from '$lib/config.svelte';
 	import { Close } from 'carbon-icons-svelte';
 	import { onMount } from 'svelte';
+	import { notifications } from '$lib/state.svelte';
 	interface Props {
 		file: MediaFile;
 		onClose: () => void;
@@ -29,6 +37,14 @@
 	let nextUrl = $state('');
 	let videoTime = $state(0);
 	let duration = $state(9999999);
+	const comicViewMode = $derived.by(() => {
+		switch (config.viewMode) {
+			case ViewMode.Height:
+				return 'fit-to-height';
+			case ViewMode.Width:
+				return 'fit-to-width';
+		}
+	});
 
 	let comic = $derived(file as Comic);
 	let video = $derived(file as Video);
@@ -37,17 +53,12 @@
 		switch (file.type) {
 			case MediaType.Comic:
 				maxPage = comic.page ?? 0;
-				// allPageUrls = Array.from(
-				// 	{ length: maxPage },
-				// 	(_, i) => `${config.apiServer}/api/comics/${comic?.id}/${i + 1}`
-				// );
 				objUrl = `${config.apiServer}/api/comics/${comic?.id}/${page}`;
 				nextUrl =
 					page + 1 <= maxPage ? `${config.apiServer}/api/comics/${comic?.id}/${page + 1}` : '';
 				break;
 			case MediaType.Video:
 				objUrl = `${config.apiServer}/videos/${video?.id}`;
-				// fetch(`${config.apiServer}/api/videos/${video?.id}`)
 				break;
 		}
 	});
@@ -92,6 +103,8 @@
 			page = maxPage;
 			loading = false;
 		}
+		//scroll to top
+		window.scrollTo(0, 0);
 	};
 
 	const goPrevPage = () => {
@@ -104,6 +117,8 @@
 			page = 1;
 			loading = false;
 		}
+		//scroll to top
+		window.scrollTo(0, 0);
 	};
 
 	function onClickImage(e: MouseEvent): void {
@@ -142,8 +157,14 @@
 			method: 'POST'
 		});
 		if (rsp.ok) {
+			fetch(comic.coverUrl, { cache: 'reload', mode: 'no-cors' });
+			var cover = document.getElementById(comic.coverId) as HTMLImageElement;
+			if (cover) {
+				cover.src = comic.coverUrl;
+			}
+			notifications.push(new SuccessNotification('Successfully set as cover', 3000));
 		} else {
-			alert(rsp.status);
+			notifications.push(new ErrorNotification(rsp.status, 'Failed to set as cover'));
 		}
 	}
 </script>
@@ -156,7 +177,7 @@
 		{/if}
 	</div>
 </div>
-<container>
+<container class={comicViewMode}>
 	{#if file.type === MediaType.Comic}
 		<ProgressBar hideLabel max={maxPage} value={page} />
 		<div onclick={onClickImage} role="none">
@@ -224,10 +245,19 @@
 </ContextMenu>
 
 <style>
-	container {
-		max-height: 90vh;
-		max-width: 100vw;
+	.fit-to-height {
 		height: 90vh;
+	}
+	.fit-to-height img,
+	video {
+		height: 90vh;
+	}
+
+	.fit-to-width {
+		max-width: 100vw;
+	}
+	.fit-to-width img,
+	video {
 		width: 100vw;
 	}
 
@@ -236,7 +266,5 @@
 		display: block;
 		margin-left: auto;
 		margin-right: auto;
-		max-height: 90vh;
-		max-width: 100vw;
 	}
 </style>

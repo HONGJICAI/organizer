@@ -1,5 +1,12 @@
-import { redirect } from '@sveltejs/kit';
+async function sleep(ms: number) {
+	return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export async function load({ params }) {
-	redirect(304, '/comic');
+	return {
+		comics: [],
+		videos:[],
+		images: [],
+		placeholder: sleep(2000)
+	}
 }

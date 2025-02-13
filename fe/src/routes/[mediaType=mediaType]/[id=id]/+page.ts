@@ -1,7 +1,7 @@
-import { config } from '$lib/config';
+import { config } from '$lib/config.svelte';
 import { Comic, Video } from '$lib/model.svelte';
 interface Map {
-	[key: string]: (id: string) => Promise<Comic | Video> | undefined
+	[key: string]: (id: string) => Promise<Comic | Video> | undefined;
 }
 const mediaTypes: Map = {
 	comic: loadComic,

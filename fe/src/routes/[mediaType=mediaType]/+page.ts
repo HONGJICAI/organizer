@@ -1,46 +1,37 @@
-import { config } from '$lib/config';
+import { config } from '$lib/config.svelte';
 import { Comic, MediaFile, MediaType, Video } from '$lib/model.svelte';
 interface Map {
-	[key: string]: () => Promise<any> | undefined
+	[key: string]: () => Promise<Comic[] | Video[] | MediaFile[]>;
 }
 const mediaTypes: Map = {
 	comic: loadComics,
 	video: loadVideos,
-	image: loadImages,
+	image: loadImages
 };
-
-async function loadComics() {
-	try {
-		const rsp = await fetch(`${config.apiServer}/api/comics`);
-		const json = await rsp.json();
-		return json.map((e: any) => new Comic(e));
-	}
-	catch (e) {
-		console.error(e);
-		return [];
-	}
+async function loadComics(): Promise<Comic[]> {
+	const rsp = await fetch(`${config.apiServer}/api/comics`);
+	const json = await rsp.json();
+	return json.map((e: any) => new Comic(e));
 }
-async function loadVideos() {
+async function loadVideos(): Promise<Video[]> {
 	const rsp = await fetch(`${config.apiServer}/api/videos`);
 	const json = await rsp.json();
 	return json.map((e: any) => new Video(e));
 }
-async function loadImages() {
+async function loadImages(): Promise<MediaFile[]> {
 	const rsp = await fetch(`${config.apiServer}/api/images`);
 	const json = await rsp.json();
 	return json.map((e: any) => new MediaFile(MediaType.Image, e));
 }
 export async function load({ params }) {
 	const p = mediaTypes[params.mediaType];
-	console.log(params.mediaType);
 	if (!p) {
 		return {
 			status: 404
 		};
 	}
 
-	const files = await p();
 	return {
-		files: files,
+		files: p(),
 	};
 }
