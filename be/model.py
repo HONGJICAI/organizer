@@ -1,6 +1,5 @@
 from datetime import datetime
 import pathlib
-from pydantic import BaseModel
 from sqlmodel import Field, SQLModel
 
 

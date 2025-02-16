@@ -12,18 +12,17 @@ import datetime
 import io
 import pathlib
 import db
-from typing import Dict, List
+from typing import List
 import os
 from PIL import Image
 from sqlmodel import SQLModel, Session, or_, select
 from rich.traceback import install
-from rich.progress import track
-from loader import ComicLoader, VideoLoader
+from loader import ComicLoader
 
 from fastapi_utils.api_model import APIMessage
 from fastapi_utils.cbv import cbv
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-
 import util
 from model import (
     ComicEntity,
@@ -119,7 +118,6 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
@@ -335,7 +333,7 @@ class ComicCBV:
             if cf is not None:
                 cf.close()
 
-        if permenant == False:
+        if not permenant:
             comic.archived = True
             self.session.add(comic)
         else:

@@ -9,7 +9,7 @@ import threading
 
 from sqlalchemy import func
 from sqlmodel import Session, select
-from rich.progress import track, Progress
+from rich.progress import Progress
 from PIL import Image
 
 from comicfile import Comicfile

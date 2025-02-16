@@ -1,12 +1,10 @@
-import functools
 import os
-import string
 import rich
 from sqlmodel import Session, select
 from db import engine
-from loader import ComicLoader
+from loader import ComicLoader, VideoLoader
 from model import ComicEntity, VideoEntity
-from rich.progress import track, Progress
+from rich.progress import Progress
 from multiprocessing.pool import ThreadPool
 import click
 from rich.console import Console
@@ -27,7 +25,7 @@ def update_durations():
 
             def do(p: str):
                 try:
-                    ret = get_video_length(p)
+                    ret = VideoLoader.get_video_length(p)
                 except Exception as e:
                     print(e)
                     ret = 0
@@ -64,7 +62,7 @@ def override_cover():
 @click.command()
 def gen_covers():
     with Session(engine) as session:
-        statement = select(ComicEntity).where(ComicEntity.archived == False)
+        statement = select(ComicEntity).where(not ComicEntity.archived)
         entities = session.exec(statement).all()
 
         with Progress() as progress:
@@ -81,7 +79,7 @@ def gen_covers():
 @click.command()
 def remove_invalid_entities():
     with Session(engine) as session:
-        statement = select(ComicEntity).where(ComicEntity.archived == False)
+        statement = select(ComicEntity).where(not ComicEntity.archived)
         entities = session.exec(statement).all()
 
         with Progress() as progress:
@@ -125,7 +123,7 @@ def remove_invalid_covers():
                 try:
                     id = int(cover_path.split("_")[0])
                     return id in entity_ids
-                except:
+                except Exception:
                     return True
 
             exists = p.map(do, [e for e in covers])
