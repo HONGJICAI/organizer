@@ -135,7 +135,7 @@
 			{/await}
 		</container>
 		{#await data.files}
-			<SkeletonPlaceholder style="width: 100%; height: 80vh"/>
+			<SkeletonPlaceholder style="width: 100%; height: 80vh" />
 		{:then files}
 			<FileList
 				files={searchFiles}

@@ -43,12 +43,14 @@ class Comicfile:
         close comic file
         """
 
-    # @property
-    # def page(self) -> int:
-    #     """
-    #     the total page of comic file
-    #     """
-    #     return self.page
+    @property
+    def namelist(self) -> List[str]:
+        """
+        return the list of comic file
+        """
+        if not self._opened:
+            raise Exception("comic file not opened")
+        return self._namelist
 
 
 def create(filepath: str) -> Comicfile | None:

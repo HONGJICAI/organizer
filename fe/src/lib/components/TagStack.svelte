@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { Accordion, AccordionItem, Button, SkeletonPlaceholder, Tag, Truncate } from 'carbon-components-svelte';
+	import {
+		Accordion,
+		AccordionItem,
+		Button,
+		SkeletonPlaceholder,
+		Tag,
+		Truncate
+	} from 'carbon-components-svelte';
 	import { onMount } from 'svelte';
 
 	interface Props {
@@ -14,7 +21,9 @@
 	const showMoreNumber = 20;
 	let currentShowNumber = $state(20);
 	let orderedTag2countMap = $derived(
-		new Map([...tag2countMap?.entries() ?? []].sort((a, b) => b[1] - a[1]).slice(0, currentShowNumber))
+		new Map(
+			[...(tag2countMap?.entries() ?? [])].sort((a, b) => b[1] - a[1]).slice(0, currentShowNumber)
+		)
 	);
 
 	onMount(() => {

@@ -6,18 +6,18 @@
 
 <Accordion>
 	{#await data.placeholder}
-		<SkeletonPlaceholder style="width: 100%"/>
+		<SkeletonPlaceholder style="width: 100%" />
 	{:then data}
 		<AccordionItem open title="Comics">
-            <Link href="/comic">All</Link>
+			<Link href="/comic">All</Link>
 			<p>Comics</p>
 		</AccordionItem>
 		<AccordionItem open title="Videos">
-            <Link href="/video">All</Link>
+			<Link href="/video">All</Link>
 			<p>Videos</p>
 		</AccordionItem>
 		<AccordionItem open title="Images">
-            <Link href="/image">All</Link>
+			<Link href="/image">All</Link>
 			<p>Images</p>
 		</AccordionItem>
 	{/await}

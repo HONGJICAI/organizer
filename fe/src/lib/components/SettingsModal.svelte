@@ -1,4 +1,5 @@
 <script>
+	import { client } from '$lib/client/client.gen';
 	import { config } from '$lib/config.svelte';
 	import { ContentSwitcher, Modal, Switch, TextInput } from 'carbon-components-svelte';
 	import { FitToHeight, FitToScreen, FitToWidth } from 'carbon-icons-svelte';
@@ -23,12 +24,15 @@
 		config.apiServer = apiServer;
 		config.staticServer = staticServer;
 		config.viewMode = viewMode;
+		client.setConfig({
+			baseUrl: config.apiServer
+		});
 		open = false;
 	}}
 >
 	<h>Server</h>
-	<TextInput labelText="API Server" value={apiServer} />
-	<TextInput labelText="Static Server" value={staticServer} />
+	<TextInput labelText="API Server" bind:value={apiServer} />
+	<TextInput labelText="Static Server" bind:value={staticServer} />
 	<h>Read</h>
 	<container>
 		<ContentSwitcher bind:selectedIndex={viewMode}>

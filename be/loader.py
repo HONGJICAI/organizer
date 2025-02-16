@@ -31,7 +31,7 @@ class Loader:
         with self.lock:
             self._starting_id += 1
             return self._starting_id
-        
+
     @abstractmethod
     def load(self, path: str):
         pass
@@ -87,7 +87,7 @@ class Loader:
 
 def scan(exts: List[str], pathes: List[str]):
     ret = []
-    scanDir = "" in exts # "" means scan dir
+    scanDir = "" in exts  # "" means scan dir
     for path in pathes:
         for root, dirs, files in os.walk(path):
             file_exts = [os.path.splitext(file)[1] for file in files]
@@ -115,7 +115,7 @@ class ComicLoader(Loader):
             entity = session.exec(statement).first()
             self._starting_id = entity.id if entity is not None else 0
 
-    def load(self, path: str):        
+    def load(self, path: str):
         with Session(db.engine) as session:
             statement = select(ComicEntity).where(ComicEntity.path == path)
             entities = session.exec(statement).all()

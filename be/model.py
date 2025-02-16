@@ -3,6 +3,7 @@ import pathlib
 from pydantic import BaseModel
 from sqlmodel import Field, SQLModel
 
+
 def get_dir_size(path: pathlib.Path) -> int:
     size = 0
     for p in path.iterdir():
@@ -11,6 +12,7 @@ def get_dir_size(path: pathlib.Path) -> int:
         else:
             size += p.stat().st_size
     return size
+
 
 class FileEntity(SQLModel):
     id: int = Field(primary_key=True)

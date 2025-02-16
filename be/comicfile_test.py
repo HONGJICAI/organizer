@@ -13,6 +13,7 @@ def test_create():
     assert isinstance(comicfile.create("test"), comicfile.DirectoryComicfile)
     assert comicfile.create("test.jpg") is None
 
+
 def test_comicfile_zip(tmp_path: pathlib.Path):
     path = tmp_path / "test.zip"
     file = zipfile.ZipFile(path, "w")
@@ -26,6 +27,7 @@ def test_comicfile_zip(tmp_path: pathlib.Path):
         ok, buf = zf.read(0)
         assert ok
 
+
 # def test_comicfile_rar(tmp_path: pathlib.Path):
 #     path = tmp_path / "test.rar"
 #     file = rarfile.RarFile(path, "w")
@@ -38,6 +40,7 @@ def test_comicfile_zip(tmp_path: pathlib.Path):
 #         rf.open()
 #         ok, buf = rf.read(0)
 #         assert ok
+
 
 def test_comicfile_directory(tmp_path: pathlib.Path):
     path = tmp_path / "test"

@@ -2,7 +2,10 @@ import re
 import shutil
 import threading
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel
 import global_data
 import datetime
@@ -19,6 +22,7 @@ from loader import ComicLoader, VideoLoader
 
 from fastapi_utils.api_model import APIMessage
 from fastapi_utils.cbv import cbv
+from fastapi.openapi.utils import get_openapi
 
 import util
 from model import (
@@ -30,16 +34,96 @@ import comicfile
 
 install(show_locals=True)
 
-app = FastAPI()
+
+def custom_generate_unique_id(route: APIRoute) -> str:
+    return route.name.replace("CBV", "")
+
+
+class MessageResponse(BaseModel):
+    msg: str
+
+
+app = FastAPI(generate_unique_id_function=custom_generate_unique_id)
 router = APIRouter()
+
+
+@app.exception_handler(HTTPException)
+async def unicorn_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=MessageResponse(msg=exc.detail).model_dump(),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc: RequestValidationError):
+    msg = ";".join([f'{error['input']}: {error['msg']}' for error in exc.errors()])
+    return JSONResponse(
+        status_code=400,
+        content=MessageResponse(msg=msg).model_dump(),
+    )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title="My API",
+        version="1.0",
+        routes=app.routes,
+    )
+
+    for path in openapi_schema["paths"].values():
+        for method in path.values():
+            method["responses"].update(
+                {
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        },
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MessageResponse"
+                                }
+                            }
+                        },
+                    },
+                }
+            )
+
+    # schema with default value should be marked as required
+    for schema in openapi_schema["components"]["schemas"].values():
+        prop_with_default = []
+        for key, prop in schema.get("properties", {}).items():
+            if "default" in prop:
+                prop_with_default.append(key)
+        # merge required and prop_with_default
+        if len(prop_with_default) > 0:
+            schema["required"] = list(
+                set(schema.get("required", []) + prop_with_default)
+            )
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 from fastapi.middleware.cors import CORSMiddleware
 
-origins = ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,7 +138,7 @@ def abort(code: int, message: str = None):
 class VideoCBV:
     session: Session = Depends(db.get_session)
 
-    @router.get("/api/videos")
+    @router.get("/api/videos", tags=["videos"])
     def get_all(self) -> List[VideoEntity]:
         statement = select(VideoEntity)
         video_entities = self.session.exec(statement).all()
@@ -68,7 +152,7 @@ class VideoCBV:
             abort(404, "Video not found")
         return video_entity
 
-    @router.get("/api/videos/{id}")
+    @router.get("/api/videos/{id}", tags=["videos"])
     def get(self, id: int) -> VideoEntity:
         video_entity = self.__get(id)
         new_name = str(id)
@@ -77,14 +161,26 @@ class VideoCBV:
 
         return video_entity.model_dump()
 
-    @router.delete("/api/videos/{id}")
-    def delete_video(self, id: int) -> APIMessage:
+    @router.delete("/api/videos/{id}", tags=["videos"])
+    def delete(self, id: int) -> APIMessage:
         video_entity = self.__get(id)
         os.remove(video_entity.path)
         self.session.delete(video_entity)
         self.session.commit()
 
         return APIMessage(detail="Deleted")
+
+
+class FavorResponse(BaseModel):
+    favorited: bool
+
+
+class ComicPageDetailResponse(BaseModel):
+    name: str
+
+
+class ComicDetailResponse(BaseModel):
+    pageDetails: List[ComicPageDetailResponse]
 
 
 @cbv(router)
@@ -94,8 +190,8 @@ class ComicCBV:
     def __del__(self):
         self.session.close()
 
-    @router.get("/api/comics")
-    def get_all(self, valid = True) -> List[ComicEntity]:
+    @router.get("/api/comics", tags=["comics"])
+    def get_all(self, valid=True) -> List[ComicEntity]:
         comic_entities = self.session.exec(select(ComicEntity)).all()
         if valid:
             return [comic.model_dump() for comic in comic_entities]
@@ -113,29 +209,66 @@ class ComicCBV:
             abort(404, "Comic not found")
         return comic_entity
 
-    @router.get("/api/comics/{id}")
+    @router.get("/api/comics/{id}", tags=["comics"])
     def get(self, id: int) -> ComicEntity:
         comic_entity = self.__get(id)
         return comic_entity.model_dump()
 
-    @router.post("/api/comics/{id}/favor")
-    def favor(self, id: int) -> APIMessage:
+    @router.post(
+        "/api/comics/{id}/detail",
+        tags=["comics"],
+        responses={
+            200: {"model": ComicDetailResponse},
+            404: {"model": MessageResponse},
+        },
+    )
+    def detail(self, id: int):
+        comic = self.__get(id)
+        cf = comicfile.create_open(comic.path)
+        if cf is None:
+            abort(404, "Comic file not found")
+        pageDetails = [ComicPageDetailResponse(name=name) for name in cf.namelist]
+        return ComicDetailResponse(pageDetails=pageDetails)
+
+    @router.post(
+        "/api/comics/{id}/favor",
+        tags=["comics"],
+        responses={
+            200: {"model": FavorResponse},
+            404: {"model": MessageResponse},
+        },
+    )
+    def favor(self, id: int) -> FavorResponse:
         comic_entity = self.__get(id)
         comic_entity.favorited = True
         self.session.add(comic_entity)
         self.session.commit()
-        return APIMessage(detail="Favorited")
+        return FavorResponse(favorited=True)
 
-    @router.delete("/api/comics/{id}/favor")
-    def unfavor(self, id: int) -> APIMessage:
+    @router.delete(
+        "/api/comics/{id}/favor",
+        tags=["comics"],
+        responses={
+            200: {"model": FavorResponse},
+            404: {"model": MessageResponse},
+        },
+    )
+    def unfavor(self, id: int) -> FavorResponse:
         comic_entity = self.__get(id)
         comic_entity.favorited = False
         self.session.add(comic_entity)
         self.session.commit()
-        return APIMessage(detail="Unfavorited")
+        return FavorResponse(favorited=False)
 
-    @router.post("/api/comics/{id}/refresh")
-    def refresh_comic(self, id):
+    @router.post(
+        "/api/comics/{id}/refresh",
+        tags=["comics"],
+        responses={
+            200: {"model": ComicEntity},
+            404: {"model": MessageResponse},
+        },
+    )
+    def refresh(self, id) -> ComicEntity:
         comic = self.__get(id)
         comic_entity_init = ComicEntity.from_path(pathlib.Path(comic.path), comic.id)
         with comicfile.create(comic.path) as cf:
@@ -151,8 +284,18 @@ class ComicCBV:
     class RenameRequest(BaseModel):
         name: str
 
-    @router.post("/api/comics/{id}/rename")
-    def rename_comic(self, id: int, req: RenameRequest):
+    class RenameResponse(BaseModel):
+        name: str
+
+    @router.post(
+        "/api/comics/{id}/rename",
+        tags=["comics"],
+        responses={
+            200: {"model": RenameResponse},
+            404: {"model": MessageResponse},
+        },
+    )
+    def rename(self, id: int, req: RenameRequest) -> RenameResponse:
         comic = self.__get(id)
         if not os.path.exists(comic.path):
             abort(404, "Comic not found in filesystem")
@@ -179,11 +322,10 @@ class ComicCBV:
         comic.path = new_path
         self.session.add(comic)
         self.session.commit()
-        self.session.refresh(comic)
-        return comic.model_dump()
+        return ComicCBV.RenameResponse(name=new_name)
 
-    @router.delete("/api/comics/{id}")
-    def delete_comic(self, id: int, permenant: bool = False):
+    @router.delete("/api/comics/{id}", tags=["comics"])
+    def delete(self, id: int, permenant: bool = False):
         comic = self.__get(id)
         if comic.favorited:
             abort(400, "Cannot delete favorited comic")
@@ -214,6 +356,7 @@ class ComicCBV:
 
         return APIMessage(detail="Deleted")
 
+
 @cbv(router)
 class ComicPageCBV:
     session: Session = Depends(db.get_session)
@@ -228,7 +371,7 @@ class ComicPageCBV:
             abort(404, "Comic not found")
         return comic
 
-    @router.get("/api/comics/{id}/{page}")
+    @router.get("/api/comics/{id}/{page}", tags=["comicpage"])
     def get(self, id: int, page: int) -> Response:
         comic = self.__get(id)
         cf = comicfile.create_open(comic.path)
@@ -244,7 +387,7 @@ class ComicPageCBV:
 
         abort(404, "Page not found")
 
-    @router.post("/api/comics/{id}/{page}/like")
+    @router.post("/api/comics/{id}/{page}/like", tags=["comicpage"])
     def like(self, id: int, page: int):
         comic = self.__get(id)
         name = f"{comic.name}_{page}.jpg"
@@ -262,7 +405,7 @@ class ComicPageCBV:
 
         abort(404)
 
-    @router.post("/api/comics/{id}/{page}/cover")
+    @router.post("/api/comics/{id}/{page}/cover", tags=["comicpage"])
     def set_cover(self, id: int, page: int):
         comic = self.__get(id)
         cf = comicfile.create_open(comic.path)
@@ -280,8 +423,8 @@ class ComicPageCBV:
 
 @cbv(router)
 class ImageCBV:
-    @router.get("/api/images")
-    def get_images(self):
+    @router.get("/api/images", tags=["images"])
+    def get_all(self) -> List[FileEntity]:
         # get all images and updateTime then order by updateTime
         files = []
         for root, dirs, files in os.walk(global_data.Config.nginx_image_path):
@@ -373,4 +516,5 @@ if __name__ == "__main__":
 
     # run
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8001)

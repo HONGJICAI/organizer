@@ -24,7 +24,7 @@ export class MediaFile {
 	lastViewed: number;
 	lastViewedTime = $state<string | null>(null);
 	lastViewedDate: Date | null;
-	favorited = false;
+	favorited = $state(false);
 	archived = $state(false);
 	get viewed(): boolean {
 		return !!this.lastViewedTime;
@@ -95,14 +95,20 @@ export class Notification {
 	}
 }
 
+interface NotificationOptions {
+	subtitle?: string;
+	timeout?: number;
+}
+
 export class SuccessNotification extends Notification {
-	constructor(subtitle?: string, timeout?: number) {
-		super('success', 'Success', subtitle, timeout);
+	constructor(options: NotificationOptions) {
+		options = { ...{ timeout: 3000 }, ...options };
+		super('success', 'Success', options?.subtitle, options?.timeout);
 	}
 }
 
 export class ErrorNotification extends Notification {
-	constructor(code: number, subtitle?: string, timeout?: number) {
-		super('error', `Error ${code}`, subtitle, timeout);
+	constructor(options: NotificationOptions) {
+		super('error', `Error`, options?.subtitle, options?.timeout);
 	}
 }

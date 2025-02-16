@@ -20,7 +20,8 @@
 	import { config, ViewMode } from '$lib/config.svelte';
 	import { Close } from 'carbon-icons-svelte';
 	import { onMount } from 'svelte';
-	import { notifications } from '$lib/state.svelte';
+	import { addNotification } from '$lib/state.svelte';
+	import { ComicpageService } from '$lib/client';
 	interface Props {
 		file: MediaFile;
 		onClose: () => void;
@@ -140,12 +141,16 @@
 		if (!comic) {
 			return;
 		}
-		const rsp = await fetch(`${config.apiServer}/api/comics/${comic.id}/${page}/like`, {
-			method: 'POST'
+		const { data, error } = await ComicpageService.comicPageLike({
+			path: {
+				id: comic.id,
+				page: page
+			}
 		});
-		if (rsp.ok) {
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: 'Failed to like page' }));
 		} else {
-			alert(rsp.status);
+			addNotification(new SuccessNotification({ subtitle: 'Successfully liked page' }));
 		}
 	}
 
@@ -153,18 +158,21 @@
 		if (!comic) {
 			return;
 		}
-		const rsp = await fetch(`${config.apiServer}/api/comics/${comic.id}/${page}/cover`, {
-			method: 'POST'
+		const { data, error } = await ComicpageService.comicPageSetCover({
+			path: {
+				id: comic.id,
+				page: page
+			}
 		});
-		if (rsp.ok) {
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: 'Failed to set as cover' }));
+		} else {
 			fetch(comic.coverUrl, { cache: 'reload', mode: 'no-cors' });
 			var cover = document.getElementById(comic.coverId) as HTMLImageElement;
 			if (cover) {
 				cover.src = comic.coverUrl;
 			}
-			notifications.push(new SuccessNotification('Successfully set as cover', 3000));
-		} else {
-			notifications.push(new ErrorNotification(rsp.status, 'Failed to set as cover'));
+			addNotification(new SuccessNotification({ subtitle: 'Successfully set as cover' }));
 		}
 	}
 </script>
@@ -188,6 +196,10 @@
 				onload={() => {
 					loading = false;
 					preloadImageAsync(nextUrl);
+				}}
+				onerror={() => {
+					loading = false;
+					addNotification(new ErrorNotification({ subtitle: 'Failed to load comic page' }));
 				}}
 			/>
 		</div>
@@ -227,19 +239,6 @@
 <ContextMenu target={targets}>
 	<ContextMenuOption indented labelText="Like page" on:click={onLikePage} />
 	<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
-	<ContextMenuDivider />
-	<ContextMenuOption indented labelText="Export as">
-		<ContextMenuGroup labelText="Export options">
-			<ContextMenuOption id="pdf" labelText="PDF" />
-		</ContextMenuGroup>
-	</ContextMenuOption>
-	<ContextMenuDivider />
-	<ContextMenuOption selectable labelText="Remove metadata" />
-	<ContextMenuDivider />
-	<ContextMenuGroup labelText="Style options">
-		<ContextMenuOption id="0" labelText="Font smoothing" selected />
-		<ContextMenuOption id="1" labelText="Reduce noise" />
-	</ContextMenuGroup>
 	<ContextMenuDivider />
 	<ContextMenuOption indented kind="danger" labelText="Delete" />
 </ContextMenu>

@@ -4,6 +4,7 @@
 		Checkbox,
 		ComposedModal,
 		CopyButton,
+		DataTable,
 		InlineLoading,
 		Modal,
 		ModalBody,
@@ -13,7 +14,14 @@
 		TextArea,
 		TextInput
 	} from 'carbon-components-svelte';
-	import { Comic, MediaType, type MediaFile, Video } from '$lib/model.svelte';
+	import {
+		Comic,
+		MediaType,
+		type MediaFile,
+		Video,
+		SuccessNotification,
+		ErrorNotification
+	} from '$lib/model.svelte';
 	import { separateFilename } from '$lib/utility';
 	import { config } from '$lib/config.svelte';
 	import {
@@ -21,11 +29,14 @@
 		Edit,
 		Favorite,
 		FavoriteFilled,
+		Information,
 		NewTab,
 		Save,
 		TrashCan,
 		UpdateNow
 	} from 'carbon-icons-svelte';
+	import { ComicsService, VideosService, type ComicDetailResponse } from '$lib/client';
+	import { addNotification } from '$lib/state.svelte';
 
 	interface Props {
 		open?: boolean;
@@ -51,103 +62,122 @@
 	let permenant = $state(false);
 	let openDeleteModal = $state(false);
 	let sendingDelete = $state(false);
-	let deleteError = $state('');
-	let onClickDelete = async () => {
-		if (sendingDelete) {
-			return;
-		}
-
-		let rsp: Response;
+	async function onClickDelete() {
 		sendingDelete = true;
-		try {
-			switch (mediaType) {
-				case MediaType.Comic:
-					rsp = await fetch(`${config.apiServer}/api/comics/${file.id}?permenant=${permenant}`, {
-						method: 'DELETE'
-					});
-					break;
-				case MediaType.Video:
-					rsp = await fetch(`${config.apiServer}/api/videos/${file.id}?permenant=${permenant}`, {
-						method: 'DELETE'
-					});
-					break;
-				default:
-					alert(`Unknown media type: ${mediaType}`);
-					throw new Error(`Unknown media type: ${mediaType}`);
+		openDeleteModal = false;
+		const requestData = {
+			path: {
+				id: file.id
+			},
+			query: {
+				permenant
 			}
-			if (rsp.ok) {
-				onFileDeleted(permenant);
-				onCloseModal();
-			} else {
-				console.log(rsp);
-				const json = await rsp.json();
-				deleteError = `Error: ${rsp.status} ${json.error}`;
-			}
-		} catch (e) {
-			deleteError = `Error: ${e}`;
-			throw e;
-		} finally {
-			sendingDelete = false;
+		};
+		switch (mediaType) {
+			case MediaType.Comic:
+				const { data, error } = await ComicsService.comicDelete(requestData);
+				if (error) {
+					addNotification(new ErrorNotification({ subtitle: error?.msg }));
+				} else {
+					onFileDeleted(permenant);
+					onCloseModal();
+				}
+				break;
+			case MediaType.Video:
+				const result = await VideosService.videoDelete(requestData);
+				if (result.error) {
+					addNotification(new ErrorNotification({ subtitle: error?.msg }));
+				} else {
+					onFileDeleted(permenant);
+					onCloseModal();
+				}
+				break;
+			default:
+				alert(`Unknown media type: ${mediaType}`);
+				throw new Error(`Unknown media type: ${mediaType}`);
 		}
-	};
+		sendingDelete = false;
+	}
 	let sendingFavorite = $state(false);
 	const onClickFavorite = async () => {
 		if (sendingFavorite) {
 			return;
 		}
 		sendingFavorite = true;
-		const rsp = await fetch(`${config.apiServer}/api/comics/${file.id}/favor`, {
-			method: file.favorited ? 'DELETE' : 'POST'
-		});
-		sendingFavorite = false;
-		if (rsp.ok) {
-			file.favorited = !file.favorited;
+		const { data, error } = file.favorited
+			? await ComicsService.comicUnfavor({
+					path: {
+						id: file.id
+					}
+				})
+			: await ComicsService.comicFavor({
+					path: {
+						id: file.id
+					}
+				});
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		} else {
-			alert(rsp.status);
+			file.favorited = data.favorited;
 		}
+		sendingFavorite = false;
 	};
 
 	let sendingRefresh = $state(false);
-	async function onClickRefresh(): Promise<void> {
-		if (sendingRefresh) {
-			return;
-		}
+	async function onClickRefresh() {
 		sendingRefresh = true;
-		const rsp = await fetch(`${config.apiServer}/api/comics/${file.id}/refresh`, {
-			method: 'POST'
-		});
-		sendingRefresh = false;
-		if (rsp.ok) {
-			var json = await rsp.json();
-			var f = mediaType === MediaType.Comic ? new Comic(json) : new Video(json);
-			file.favorited = f.favorited;
-			file.lastViewedTime = f.lastViewedTime;
-			if (mediaType === MediaType.Comic) {
-				(file as Comic).page = (f as Comic).page;
+		const { data, error } = await ComicsService.comicRefresh({
+			path: {
+				id: file.id
 			}
-		} else {
-			alert(rsp.status);
+		});
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		}
+		if (data) {
+			file.favorited = data.favorited;
+			file.lastViewedTime = data.lastViewedTime ?? null;
+			if (mediaType === MediaType.Comic) {
+				(file as Comic).page = data.page!;
+			}
+			addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
+		}
+		sendingRefresh = false;
 	}
 	let editingName = $state(false);
 	let newname = $state(file.name);
+	let sendingRename = $state(false);
 	async function onClickSaveName() {
-		const rsp = await fetch(`${config.apiServer}/api/comics/${file.id}/rename`, {
-			method: 'POST',
-			body: JSON.stringify({ name: newname }),
-			headers: {
-				'Content-Type': 'application/json'
+		sendingRename = true;
+		const { data, error } = await ComicsService.comicRename({
+			body: { name: newname },
+			path: {
+				id: file.id
 			}
 		});
-		if (rsp.ok) {
-			editingName = false;
-			const json = await rsp.json();
-			const comic = new Comic(json);
-			file.name = comic.name;
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		} else {
-			alert(rsp.status);
-			throw new Error(`${rsp.status}`);
+			editingName = false;
+			addNotification(new SuccessNotification({ subtitle: `Renamed to ${newname}` }));
 		}
+		sendingRename = false;
+	}
+	let loadingDetail = $state(false);
+	let comicDetail = $state<ComicDetailResponse>();
+	async function onClickDetail() {
+		loadingDetail = true;
+		const { data, error } = await ComicsService.comicDetail({
+			path: {
+				id: file.id
+			}
+		});
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: error?.msg }));
+		} else {
+			comicDetail = data;
+		}
+		loadingDetail = false;
 	}
 </script>
 
@@ -169,6 +199,7 @@
 				on:click={() => {
 					onClickSaveName();
 				}}
+				disabled={sendingRename}
 			/>
 		{:else}
 			<Button
@@ -197,29 +228,40 @@
 	</div>
 
 	<p>Actions:</p>
+	{#if sendingRefresh}
+		<InlineLoading description="Refreshing..." />
+	{/if}
+	{#if sendingDelete}
+		<InlineLoading description="Deleting..." />
+	{/if}
+	{#if sendingFavorite}
+		<InlineLoading description="Favoriting..." />
+	{/if}
+	{#if sendingRename}
+		<InlineLoading description="Renaming..." />
+	{/if}
 	<container>
-		{#if sendingDelete}
-			<InlineLoading />
-		{:else}
-			<Button
-				kind="danger"
-				on:click={() => {
-					openDeleteModal = true;
-				}}
-				icon={TrashCan}
-				iconDescription="Delete"
-			/>
-		{/if}
-		{#if sendingFavorite}
-			<InlineLoading />
-		{:else}
-			<Button
-				icon={file.favorited ? FavoriteFilled : Favorite}
-				iconDescription="Favorite"
-				on:click={() => onClickFavorite()}
-			/>
-		{/if}
-		<Button icon={UpdateNow} iconDescription="Refresh" on:click={() => onClickRefresh()} />
+		<Button
+			kind="danger"
+			on:click={() => {
+				openDeleteModal = true;
+			}}
+			icon={TrashCan}
+			iconDescription="Delete"
+			disabled={sendingDelete}
+		/>
+		<Button
+			icon={file.favorited ? FavoriteFilled : Favorite}
+			iconDescription="Favorite"
+			on:click={() => onClickFavorite()}
+			disabled={sendingFavorite}
+		/>
+		<Button
+			icon={UpdateNow}
+			iconDescription="Refresh"
+			on:click={() => onClickRefresh()}
+			disabled={sendingRefresh}
+		/>
 		<CopyButton text={file.name} />
 		<Button
 			icon={NewTab}
@@ -234,14 +276,34 @@
 			href={`honeyview:${file.path}`}
 		/>
 	</container>
-	<TextArea labelText="Path" value={file.path} readonly />
+	<TextArea labelText="Path" value={file.path} readonly rows={3} />
+	<p>Details</p>
+	<DataTable
+		headers={[{ key: 'name', value: 'Name' }]}
+		rows={comicDetail?.pageDetails.map((page, idx) => ({ id: idx, name: page.name })) ?? []}
+	/>
+	{#if loadingDetail}
+		<InlineLoading description="Loading..." />
+	{/if}
+	{#if comicDetail === undefined}
+		<div class="center">
+			<Button
+				kind="secondary"
+				on:click={() => {
+					onClickDetail();
+				}}>Load</Button
+			>
+		</div>
+	{/if}
 </Modal>
 
 <ComposedModal bind:open={openDeleteModal} on:click:button--primary={() => onClickDelete()}>
 	<ModalHeader label="Changes" title="Confirm delete the comic file" />
 	<ModalBody hasForm>
 		<Checkbox labelText="permenant: including database record" bind:checked={permenant} />
-		{deleteError}
+		{#if sendingDelete}
+			<InlineLoading description="Deleting..." />
+		{/if}
 	</ModalBody>
 	<ModalFooter primaryButtonText="Proceed" />
 </ComposedModal>
@@ -252,5 +314,11 @@
 		justify-content: flex-start;
 		align-items: center;
 		gap: 0.5rem;
+	}
+
+	.center {
+		display: flex;
+		justify-content: center;
+		align-items: center;
 	}
 </style>

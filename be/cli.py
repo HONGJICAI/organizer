@@ -77,6 +77,7 @@ def gen_covers():
             p.map(do, [e for e in entities])
             rich.print("Done.")
 
+
 @click.command()
 def remove_invalid_entities():
     with Session(engine) as session:
@@ -92,7 +93,12 @@ def remove_invalid_entities():
 
             exists = p.map(do, [e for e in entities])
             not_exist_entities = [e for e, exist in zip(entities, exists) if not exist]
-            md = "\n".join([f"{'***' if e.favorited else ''}*{e.id} {e.path}" for e in not_exist_entities])
+            md = "\n".join(
+                [
+                    f"{'***' if e.favorited else ''}*{e.id} {e.path}"
+                    for e in not_exist_entities
+                ]
+            )
             console.print(md)
             console.print(f"Total {len(not_exist_entities)} entities not exist.")
             confirm = click.confirm("Are you sure to remove these entities?")
