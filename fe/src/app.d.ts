@@ -6,6 +6,10 @@ declare global {
 		// interface Locals {}
 		// interface PageData {}
 		// interface Platform {}
+		interface PageState {
+			showFileDetailModal?: boolean;
+			showFileContent?: boolean;
+		}
 	}
 }
 

@@ -5,7 +5,7 @@
 	import { includeAllKeywords, separateFilename } from '$lib/utility';
 	import { MediaType, type MediaFile, Comic, Category, Video } from '$lib/model.svelte';
 	import FileContent from '$lib/components/FileContent.svelte';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll, pushState } from '$app/navigation';
 	import { ContentSwitcher, Switch, Button, SkeletonPlaceholder } from 'carbon-components-svelte';
 	import { Home, Favorite, RecentlyViewed, UpdateNow, Recycle } from 'carbon-icons-svelte';
 	import { page } from '$app/state';
@@ -17,18 +17,16 @@
 			files = f;
 		});
 	});
-	let searchStr: string = $state(page.url.searchParams.get('q') ?? '');
+	let searchStr: string = $state('');
 	$effect(() => {
-		const searchParams = new URLSearchParams(page.url.searchParams);
-		const q = searchParams.get('q');
-		if (q !== searchStr) {
-			searchParams.set('q', searchStr);
-			// goto(`?${searchParams.toString()}`);
+		const q = page.url.searchParams.get('q');
+		if (q) {
+			searchStr = q;
+		} else {
+			searchStr = '';
 		}
 	});
-	let showFileContent = $state(false);
-	let showFileDetailModal = $state(false);
-	let selectedFile: MediaFile | null = $state(null);
+	let selectedFile: MediaFile | undefined = $state();
 
 	const genTagMap = (names: string[]) => {
 		let tag2count: Map<string, number> = new Map<string, number>();
@@ -46,12 +44,14 @@
 	};
 
 	async function onClickTag(tag: string) {
-		searchStr = tag;
+		goto(`?q=${tag}`);
 	}
 
 	const onClickFile = (file: MediaFile) => {
 		selectedFile = file;
-		showFileDetailModal = true;
+		pushState('', {
+			showFileDetailModal: true
+		});
 	};
 	const onRefresh = () => {
 		invalidateAll();
@@ -93,7 +93,7 @@
 	);
 </script>
 
-<container id={showFileContent ? 'hidelist' : null}>
+<container id={page.state.showFileContent ? 'hidelist' : null}>
 	<div id="left">
 		{#await data.files}
 			<TagStack skeleton={true} title="All Tags" />
@@ -147,20 +147,19 @@
 		{/await}
 	</div>
 
-	{#if showFileDetailModal && selectedFile}
+	{#if page.state.showFileDetailModal && selectedFile}
 		<FileDetailModal
-			open={showFileDetailModal}
+			open={true}
 			onCloseModal={() => {
-				showFileDetailModal = false;
+				history.back();
 			}}
 			bind:file={selectedFile}
-			onClickTag={(tag) => {
-				searchStr = tag;
-				showFileDetailModal = false;
-			}}
+			onClickTag={onClickTag}
 			onClickPrimaryButton={() => {
-				showFileDetailModal = false;
-				showFileContent = true;
+				pushState('', {
+					showFileDetailModal: false,
+					showFileContent: true
+				});
 			}}
 			onFileDeleted={(permenant = false) => {
 				if (!selectedFile) {
@@ -175,11 +174,8 @@
 		/>
 	{/if}
 </container>
-{#if showFileContent && selectedFile}
-	<FileContent
-		file={selectedFile}
-		onClose={() => ((showFileContent = false), (showFileDetailModal = true))}
-	/>
+{#if page.state.showFileContent && selectedFile}
+	<FileContent file={selectedFile} onClose={() => history.back()} />
 {/if}
 
 <style>

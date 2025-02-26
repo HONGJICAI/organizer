@@ -14,15 +14,15 @@
 <div class="card">
 	<Tile bind:light on:click={() => onClickFile(file)}>
 		<div class="left-top"><Tag>{file.size}MB</Tag></div>
-		{#if file.type === MediaType.Comic}{#if !comic.viewed}
-				<div class="top-middle">
-					<Tag type="blue">NEW</Tag>
-				</div>
-			{/if}
-			<div class="top-right">
+		<div class="top-right">
+			{#if comic.viewed && comic.lastViewed === comic.page}
+				<Tag type="green">{comic.page}p</Tag>
+			{:else if comic.viewed}
+				<Tag type="blue">{comic.lastViewed}/{comic.page}</Tag>
+			{:else}
 				<Tag>{comic.page}p</Tag>
-			</div>
-		{/if}
+			{/if}
+		</div>
 		<div class="imagecontainer">
 			<img src={file.coverUrl} alt={`${file.id}`} id={file.coverId} />
 		</div>
