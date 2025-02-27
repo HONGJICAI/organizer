@@ -26,7 +26,9 @@
 		<div class="imagecontainer">
 			<img src={file.coverUrl} alt={`${file.id}`} id={file.coverId} />
 		</div>
-		{file.name}
+		<div class="title">
+			{file.name}
+		</div>
 	</Tile>
 </div>
 
@@ -54,10 +56,8 @@
 
 	.card .imagecontainer {
 		display: flex;
-		padding-left: 1;
-		padding-right: 1;
 		width: 100%;
-		height: calc(var(--card-height) - 3 * var(--font-height));
+		height: calc(var(--card-height) - 4 * var(--font-height));
 	}
 
 	.card img {

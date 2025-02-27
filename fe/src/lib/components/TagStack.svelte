@@ -4,8 +4,7 @@
 		AccordionItem,
 		Button,
 		SkeletonPlaceholder,
-		Tag,
-		Truncate
+		Tag
 	} from 'carbon-components-svelte';
 	import { onMount } from 'svelte';
 
@@ -41,7 +40,10 @@
 		{/if}
 		{#each orderedTag2countMap as [tag, count], i}
 			<Tag on:click={() => onClickTag?.(tag)} interactive={true}>
-				<Truncate>{tag}:{count}</Truncate>
+				<div class="tag">
+					<span class="truncated" title={tag}>{tag}</span>
+					<span class="fixed">:{count}</span>
+				</div>
 			</Tag>
 		{/each}
 
@@ -52,3 +54,21 @@
 		{/if}
 	</AccordionItem>
 </Accordion>
+
+<style>
+	.tag {
+		display: flex;
+	}
+
+	.truncated {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.fixed {
+		flex-shrink: 0;
+	}
+</style>

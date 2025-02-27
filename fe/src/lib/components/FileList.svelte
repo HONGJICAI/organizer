@@ -94,7 +94,7 @@
 	};
 </script>
 
-<div style="display: flex;gap:1rem; align-items:flex-end;">
+<div style="display: flex;gap:1rem; align-items:flex-end; overflow: hidden;">
 	<Search bind:value={searchStr} />
 	{#if config.OrderByPosition === 'NextToSearchBar'}
 		<Select bind:selected={orderBy} labelText="Order By">

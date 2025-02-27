@@ -223,7 +223,7 @@
 	<div>
 		<p>Tags:</p>
 		{#each separateFilename(separateToTagsFrom ?? '') as tag}
-			<Tag type="teal" title={tag} on:click={() => onClickTag(tag)}>{tag}</Tag>
+			<Tag type="teal" title={tag} on:click={() => onClickTag(tag)} interactive={true}>{tag}</Tag>
 		{/each}
 	</div>
 

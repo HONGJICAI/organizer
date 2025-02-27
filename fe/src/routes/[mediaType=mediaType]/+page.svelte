@@ -105,27 +105,27 @@
 		{/await}
 	</div>
 	<div id="right">
-		<container style="display:flex; justify-content:space-between">
+		<container style="display:flex; justify-content:space-between; overflow: hidden;">
 			<div>
 				<ContentSwitcher bind:selectedIndex={viewContentIdx}>
 					<Switch>
 						<div style="display: flex; align-items: center;">
-							<Home style="margin-right: 0.5rem;" />
+							<Home />
 						</div>
 					</Switch>
 					<Switch>
 						<div style="display: flex; align-items: center;">
-							<Favorite style="margin-right: 0.5rem;" />
+							<Favorite />
 						</div>
 					</Switch>
 					<Switch>
 						<div style="display: flex; align-items: center;">
-							<RecentlyViewed style="margin-right: 0.5rem;" />
+							<RecentlyViewed />
 						</div>
 					</Switch>
 					<Switch>
 						<div style="display: flex; align-items: center;">
-							<Recycle style="margin-right: 0.5rem;" />
+							<Recycle />
 						</div>
 					</Switch>
 				</ContentSwitcher>
@@ -154,7 +154,7 @@
 				history.back();
 			}}
 			bind:file={selectedFile}
-			onClickTag={onClickTag}
+			{onClickTag}
 			onClickPrimaryButton={() => {
 				pushState('', {
 					showFileDetailModal: false,
@@ -195,7 +195,6 @@
 	}
 	#right {
 		width: 80%;
-		gap: 1rem;
 	}
 
 	@media screen and (max-width: 800px) {
