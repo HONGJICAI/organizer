@@ -137,8 +137,10 @@ class VideoCBV:
     session: Session = Depends(db.get_session)
 
     @router.get("/api/videos", tags=["videos"])
-    def get_all(self) -> List[VideoEntity]:
-        statement = select(VideoEntity)
+    def get_all(self, top:int=None) -> List[VideoEntity]:
+        statement = select(VideoEntity).order_by(VideoEntity.updateTime.desc())
+        if top is not None:
+            statement = statement.limit(top)
         video_entities = self.session.exec(statement).all()
 
         return [v.model_dump() for v in video_entities]
@@ -160,10 +162,14 @@ class VideoCBV:
         return video_entity.model_dump()
 
     @router.delete("/api/videos/{id}", tags=["videos"])
-    def delete(self, id: int) -> APIMessage:
+    def delete(self, id: int, permanent:bool=False) -> APIMessage:
         video_entity = self.__get(id)
         os.remove(video_entity.path)
-        self.session.delete(video_entity)
+        if permanent:
+            video_entity.archived = True
+            self.session.add(video_entity)
+        else:
+            self.session.delete(video_entity)
         self.session.commit()
 
         return APIMessage(detail="Deleted")
@@ -188,17 +194,22 @@ class ComicCBV:
     def __del__(self):
         self.session.close()
 
-    @router.get("/api/comics", tags=["comics"])
-    def get_all(self, valid=True) -> List[ComicEntity]:
-        comic_entities = self.session.exec(select(ComicEntity)).all()
-        if valid:
-            return [comic.model_dump() for comic in comic_entities]
-        else:
+    @router.get("/api/comics", tags=["comics"], response_model_exclude_none=True)
+    def get_all(self, fileMiss=False, top:int=None) -> List[ComicEntity]:
+        statement = select(ComicEntity).order_by(
+            ComicEntity.updateTime.desc()
+        )
+        if top is not None:
+            statement = statement.limit(top)
+        comic_entities = self.session.exec(statement).all()
+        if fileMiss:
             invalid_comics: List[ComicEntity] = []
             for comic in comic_entities:
                 if not os.path.exists(comic.path):
                     invalid_comics.append(comic)
             return [comic.model_dump() for comic in invalid_comics]
+        else:
+            return [comic.model_dump() for comic in comic_entities]
 
     def __get(self, id: int) -> ComicEntity:
         statement = select(ComicEntity).where(ComicEntity.id == id)
@@ -323,7 +334,7 @@ class ComicCBV:
         return ComicCBV.RenameResponse(name=new_name)
 
     @router.delete("/api/comics/{id}", tags=["comics"])
-    def delete(self, id: int, permenant: bool = False):
+    def delete(self, id: int, permanent: bool = False):
         comic = self.__get(id)
         if comic.favorited:
             abort(400, "Cannot delete favorited comic")
@@ -333,7 +344,7 @@ class ComicCBV:
             if cf is not None:
                 cf.close()
 
-        if not permenant:
+        if not permanent:
             comic.archived = True
             self.session.add(comic)
         else:
@@ -348,6 +359,8 @@ class ComicCBV:
             else:
                 print("remove file", comic.path)
                 os.remove(comic.path)
+        except FileNotFoundError:
+            pass
         except Exception as e:
             abort(500, f"Failed to delete comic file with ex: {e}")
         self.session.commit()
@@ -422,7 +435,7 @@ class ComicPageCBV:
 @cbv(router)
 class ImageCBV:
     @router.get("/api/images", tags=["images"])
-    def get_all(self) -> List[FileEntity]:
+    def get_all(self, top:int=None) -> List[FileEntity]:
         # get all images and updateTime then order by updateTime
         files = []
         for root, dirs, files in os.walk(global_data.Config.nginx_image_path):
@@ -435,7 +448,7 @@ class ImageCBV:
         images.sort(key=lambda x: x[1], reverse=True)
         return [
             FileEntity(id=i, name=f[0], path=f[1], size=0, updateTime=f[2]).model_dump()
-            for i, f in enumerate(images)
+            for i, f in enumerate(images) if top is None or i < int(top)
         ]
 
 

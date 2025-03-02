@@ -158,10 +158,13 @@ class DirectoryComicfile(Comicfile):
         if self._opened:
             return
         self._opened = True
-        self._namelist = self._valid_entries = list(
-            filter(
+        self._valid_entries = filter(
                 lambda x: x.is_file() and os.path.splitext(x.name)[-1] in allowImgs,
                 list(os.scandir(self._filepath)),
+            )
+        self._namelist = list(
+            sorted(
+                map(lambda x: x.name, self._valid_entries),
             )
         )
         self._page = len(self._namelist)

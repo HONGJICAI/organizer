@@ -137,7 +137,7 @@
 		}
 	}
 
-	async function onLikePage(e: CustomEvent<null>) {
+	async function onLikePage() {
 		if (!comic) {
 			return;
 		}
@@ -154,7 +154,7 @@
 		}
 	}
 
-	async function onSetCover(e: CustomEvent<null>) {
+	async function onSetCover() {
 		if (!comic) {
 			return;
 		}
@@ -215,7 +215,7 @@
 			oncanplay={() => {
 				loading = false;
 			}}
-			ontimeupdate={(e) => {
+			ontimeupdate={() => {
 				if (videoTarget) {
 					videoTime = videoTarget.currentTime;
 					duration = videoTarget.duration;

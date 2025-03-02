@@ -1,11 +1,14 @@
-<script>
+<script lang="ts">
 	import { client } from '$lib/client/client.gen';
 	import { config } from '$lib/config.svelte';
 	import { ContentSwitcher, Modal, Switch, TextInput } from 'carbon-components-svelte';
 	import { FitToHeight, FitToScreen, FitToWidth } from 'carbon-icons-svelte';
 
-	/** @type {{open?: boolean, onCloseModal?: any}} */
-	let { open = $bindable(false), onCloseModal = () => {} } = $props();
+	interface Props {
+		open?: boolean;
+		onCloseModal?: () => void;
+	}
+	let { open = $bindable(false), onCloseModal = () => undefined }: Props = $props();
 	let apiServer = $state(config.apiServer),
 		staticServer = $state(config.staticServer),
 		viewMode = $state(config.viewMode);

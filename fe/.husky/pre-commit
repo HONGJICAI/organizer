@@ -1,7 +1,6 @@
 cd be
 ruff check
-ruff format
 cd ..
 
 cd fe
-npm run format
+npm run lint

@@ -2,8 +2,8 @@
 	import TagStack from '$lib/components/TagStack.svelte';
 	import FileList from '$lib/components/FileList.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
-	import { includeAllKeywords, separateFilename } from '$lib/utility';
-	import { MediaType, type MediaFile, Comic, Category, Video } from '$lib/model.svelte';
+	import { genTagMap, includeAllKeywords } from '$lib/utility';
+	import { MediaType, type MediaFile, Category } from '$lib/model.svelte';
 	import FileContent from '$lib/components/FileContent.svelte';
 	import { goto, invalidateAll, pushState } from '$app/navigation';
 	import { ContentSwitcher, Switch, Button, SkeletonPlaceholder } from 'carbon-components-svelte';
@@ -28,21 +28,6 @@
 	});
 	let selectedFile: MediaFile | undefined = $state();
 
-	const genTagMap = (names: string[]) => {
-		let tag2count: Map<string, number> = new Map<string, number>();
-		names.forEach((n) => {
-			const tags = separateFilename(n);
-			for (const tag of tags) {
-				if (tag2count.has(tag)) {
-					tag2count.set(tag, tag2count.get(tag)! + 1);
-				} else {
-					tag2count.set(tag, 1);
-				}
-			}
-		});
-		return tag2count;
-	};
-
 	async function onClickTag(tag: string) {
 		goto(`?q=${tag}`);
 	}
@@ -52,6 +37,9 @@
 		pushState('', {
 			showFileDetailModal: true
 		});
+	};
+	const onSearchBlur = (search: string) => {
+		goto(`?q=${search}`);
 	};
 	const onRefresh = () => {
 		invalidateAll();
@@ -142,6 +130,7 @@
 				bind:searchStr
 				{onClickFile}
 				{onRefresh}
+				{onSearchBlur}
 				bind:category={viewContentIdx}
 			/>
 		{/await}

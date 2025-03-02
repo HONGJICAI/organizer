@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Tag, Tile } from 'carbon-components-svelte';
-	import { Comic, MediaFile, MediaType } from '$lib/model.svelte';
+	import { Comic, MediaFile } from '$lib/model.svelte';
 	interface Props {
 		file: MediaFile;
 		light?: boolean;
@@ -73,13 +73,6 @@
 		position: absolute;
 		top: 0;
 		right: 0;
-	}
-
-	.top-middle {
-		position: absolute;
-		top: 0;
-		left: 50%;
-		transform: translateX(-50%);
 	}
 
 	.left-top {

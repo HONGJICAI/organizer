@@ -88,7 +88,9 @@ export type VideoEntity = {
 export type VideoGetAllData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        top?: number;
+    };
     url: '/api/videos';
 };
 
@@ -119,7 +121,9 @@ export type VideoDeleteData = {
     path: {
         id: number;
     };
-    query?: never;
+    query?: {
+        permanent?: boolean;
+    };
     url: '/api/videos/{id}';
 };
 
@@ -180,7 +184,8 @@ export type ComicGetAllData = {
     body?: never;
     path?: never;
     query?: {
-        valid?: unknown;
+        fileMiss?: unknown;
+        top?: number;
     };
     url: '/api/comics';
 };
@@ -213,7 +218,7 @@ export type ComicDeleteData = {
         id: number;
     };
     query?: {
-        permenant?: boolean;
+        permanent?: boolean;
     };
     url: '/api/comics/{id}';
 };
@@ -537,7 +542,9 @@ export type ComicPageSetCoverResponses = {
 export type ImageGetAllData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        top?: number;
+    };
     url: '/api/images';
 };
 

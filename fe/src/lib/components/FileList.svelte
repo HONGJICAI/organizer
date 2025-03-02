@@ -11,6 +11,7 @@
 		searchStr?: string;
 		files?: MediaFile[];
 		onClickFile: (file: MediaFile) => void;
+		onSearchBlur: (search: string) => void;
 		onRefresh: () => void;
 		category?: Category;
 	}
@@ -19,6 +20,7 @@
 		searchStr = $bindable(''),
 		files = [],
 		onClickFile,
+		onSearchBlur,
 		category = $bindable(Category.Home)
 	}: Props = $props();
 	let unreadOnly = $state(false);
@@ -95,7 +97,7 @@
 </script>
 
 <div style="display: flex;gap:1rem; align-items:flex-end; overflow: hidden;">
-	<Search bind:value={searchStr} />
+	<Search bind:value={searchStr} on:blur={() => onSearchBlur?.(searchStr)} />
 	{#if config.OrderByPosition === 'NextToSearchBar'}
 		<Select bind:selected={orderBy} labelText="Order By">
 			{#if category == Category.Home || category == Category.Favorite}

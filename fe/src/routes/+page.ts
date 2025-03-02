@@ -1,12 +1,27 @@
-async function sleep(ms: number) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { client } from '$lib/client/client.gen';
+import { ComicsService, ImagesService, VideosService } from '$lib/client/sdk.gen.js';
+import { config } from '$lib/config.svelte';
 
-export async function load({ params }) {
+client.setConfig({
+	baseUrl: config.apiServer
+});
+
+export async function load() {
 	return {
-		comics: [],
-		videos: [],
-		images: [],
-		placeholder: sleep(2000)
+		comics: ComicsService.comicGetAll({
+			query: {
+				top: 8
+			}
+		}),
+		videos: VideosService.videoGetAll({
+			query: {
+				top: 8
+			}
+		}),
+		images: ImagesService.imageGetAll({
+			query: {
+				top: 8
+			}
+		})
 	};
 }

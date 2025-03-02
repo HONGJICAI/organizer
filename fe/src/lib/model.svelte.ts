@@ -1,4 +1,5 @@
 import { config } from '$lib/config.svelte';
+import { separateFilename } from './utility';
 
 export enum MediaType {
 	Comic = 'comic',
@@ -40,6 +41,9 @@ export class MediaFile {
 			return this.lastViewed + ' at ' + this.lastViewedTime;
 		}
 		return '';
+	}
+	get tags(): string[] {
+		return separateFilename(this.name);
 	}
 	constructor(type: MediaType, json: any) {
 		this.type = type;

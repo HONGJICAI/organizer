@@ -38,3 +38,13 @@ function separateFilenameImpl(filename: string): string[] {
 export function includeAllKeywords(source: string, keywords: string[]): boolean {
 	return keywords.every((keyword) => source.includes(keyword));
 }
+
+export const genTagMap = (names: string[]) => {
+	const tag2count: Map<string, number> = new Map<string, number>();
+	names.forEach((n) => {
+		separateFilename(n).forEach((tag) => {
+			tag2count.set(tag, (tag2count.get(tag) ?? 0) + 1);
+		});
+	});
+	return tag2count;
+};

@@ -23,13 +23,11 @@
 		ErrorNotification
 	} from '$lib/model.svelte';
 	import { separateFilename } from '$lib/utility';
-	import { config } from '$lib/config.svelte';
 	import {
 		ApplicationWeb,
 		Edit,
 		Favorite,
 		FavoriteFilled,
-		Information,
 		NewTab,
 		Save,
 		TrashCan,
@@ -43,23 +41,23 @@
 		onCloseModal?: any;
 		file: MediaFile;
 		onClickTag?: (tag: string) => void;
-		onClickPrimaryButton?: any;
-		onFileDeleted?: any;
+		onClickPrimaryButton?: () => void;
+		onFileDeleted?: (permenant: boolean) => void;
 	}
 
 	let {
 		open = $bindable(false),
-		onCloseModal = () => {},
+		onCloseModal = () => undefined,
 		file = $bindable(),
-		onClickTag = (tag: string) => {},
-		onClickPrimaryButton = () => {},
-		onFileDeleted = (permenant: boolean) => {}
+		onClickTag = () => undefined,
+		onClickPrimaryButton = () => undefined,
+		onFileDeleted = () => undefined
 	}: Props = $props();
 	let mediaType = $derived(file.type);
 	let comicfile = $derived(file.type === MediaType.Comic ? (file as Comic) : null);
 	let videofile = $derived(file.type === MediaType.Video ? (file as Video) : null);
 	let separateToTagsFrom = $derived(file.type === MediaType.Comic ? file.name : file.path);
-	let permenant = $state(false);
+	let permanent = $state(false);
 	let openDeleteModal = $state(false);
 	let sendingDelete = $state(false);
 	async function onClickDelete() {
@@ -70,28 +68,30 @@
 				id: file.id
 			},
 			query: {
-				permenant
+				permanent
 			}
 		};
 		switch (mediaType) {
-			case MediaType.Comic:
-				const { data, error } = await ComicsService.comicDelete(requestData);
+			case MediaType.Comic: {
+				const { error } = await ComicsService.comicDelete(requestData);
 				if (error) {
 					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				} else {
-					onFileDeleted(permenant);
+					onFileDeleted(permanent);
 					onCloseModal();
 				}
 				break;
-			case MediaType.Video:
-				const result = await VideosService.videoDelete(requestData);
-				if (result.error) {
+			}
+			case MediaType.Video: {
+				const { error } = await VideosService.videoDelete(requestData);
+				if (error) {
 					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				} else {
-					onFileDeleted(permenant);
+					onFileDeleted(permanent);
 					onCloseModal();
 				}
 				break;
+			}
 			default:
 				alert(`Unknown media type: ${mediaType}`);
 				throw new Error(`Unknown media type: ${mediaType}`);
@@ -183,13 +183,13 @@
 
 <Modal
 	bind:open
-	modalHeading={file.name}
+	modalLabel={`ID: ${file.id}`}
+	modalHeading={`${file.name}`}
 	size="sm"
 	on:close={() => onCloseModal()}
 	primaryButtonText="Go!"
 	on:click:button--primary={() => onClickPrimaryButton()}
 >
-	<TextInput labelText="ID" value={file.id} readonly inline />
 	<div style="display: flex; align-items: center;">
 		<TextInput labelText="Name" bind:value={newname} inline readonly={!editingName} />
 		{#if editingName}
@@ -211,17 +211,21 @@
 			/>
 		{/if}
 	</div>
-	<TextInput labelText="Size" value={`${file.size}MB`} readonly inline />
-	{#if comicfile}
-		<TextInput labelText="Page" value={comicfile.page} readonly inline />
-	{/if}
-	{#if videofile}
-		<TextInput labelText="Duration" value={videofile.durationInSecond} readonly inline />
-	{/if}
-	<TextInput labelText="Update Time" value={file.updateTime} readonly inline />
-	<TextInput labelText="Last Viewed" value={file.lastViewedLabel} readonly inline />
+	<div class="horizontal">
+		<TextInput labelText="Size" value={`${file.size}MB`} readonly />
+		{#if comicfile}
+			<TextInput labelText="Page" value={comicfile.page} readonly />
+		{/if}
+		{#if videofile}
+			<TextInput labelText="Duration" value={videofile.durationInSecond} readonly />
+		{/if}
+	</div>
+	<div class="horizontal">
+		<TextInput labelText="Update Time" value={file.updateTime} readonly />
+		<TextInput labelText="Last Viewed" value={file.lastViewedLabel} readonly />
+	</div>
 	<div>
-		<p>Tags:</p>
+		<p>Tags</p>
 		{#each separateFilename(separateToTagsFrom ?? '') as tag}
 			<Tag type="teal" title={tag} on:click={() => onClickTag(tag)} interactive={true}>{tag}</Tag>
 		{/each}
@@ -240,7 +244,7 @@
 	{#if sendingRename}
 		<InlineLoading description="Renaming..." />
 	{/if}
-	<container>
+	<container class="actions">
 		<Button
 			kind="danger"
 			on:click={() => {
@@ -285,7 +289,7 @@
 	{#if loadingDetail}
 		<InlineLoading description="Loading..." />
 	{/if}
-	{#if comicDetail === undefined}
+	{#if comicDetail === undefined && !loadingDetail}
 		<div class="center">
 			<Button
 				kind="secondary"
@@ -300,7 +304,7 @@
 <ComposedModal bind:open={openDeleteModal} on:click:button--primary={() => onClickDelete()}>
 	<ModalHeader label="Changes" title="Confirm delete the comic file" />
 	<ModalBody hasForm>
-		<Checkbox labelText="permenant: including database record" bind:checked={permenant} />
+		<Checkbox labelText="permenant: including database record" bind:checked={permanent} />
 		{#if sendingDelete}
 			<InlineLoading description="Deleting..." />
 		{/if}
@@ -309,16 +313,32 @@
 </ComposedModal>
 
 <style>
-	container {
+	.actions {
 		display: flex;
 		justify-content: flex-start;
 		align-items: center;
 		gap: 0.5rem;
+		overflow-x: visible;
+		overflow-y: hidden;
 	}
 
 	.center {
 		display: flex;
 		justify-content: center;
 		align-items: center;
+	}
+
+	.horizontal {
+		display: flex;
+		flex-direction: row;
+	}
+
+	p {
+		color: '#C6C6C6';
+		font-size: 0.75rem;
+		font-weight: 400;
+		letter-spacing: 0.32px;
+		line-height: 1rem;
+		margin-bottom: 0.5rem;
 	}
 </style>

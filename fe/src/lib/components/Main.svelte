@@ -48,8 +48,11 @@
 		</HeaderAction>
 		<HeaderAction bind:isOpen={isOpen2}>
 			<HeaderPanelLinks>
+				<HeaderPanelLink href="/">Home</HeaderPanelLink>
 				<HeaderPanelDivider>Comics</HeaderPanelDivider>
 				<HeaderPanelLink href="/comic">Home</HeaderPanelLink>
+				<HeaderPanelLink href="/comic/tag">Tag</HeaderPanelLink>
+				<HeaderPanelLink href="/comic/organize">Organize</HeaderPanelLink>
 				<HeaderPanelDivider>Videos</HeaderPanelDivider>
 				<HeaderPanelLink href="/video">Home</HeaderPanelLink>
 				<HeaderPanelDivider>Images</HeaderPanelDivider>
