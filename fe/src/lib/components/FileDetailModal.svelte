@@ -159,6 +159,7 @@
 			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		} else {
 			editingName = false;
+			file.name = newname;
 			addNotification(new SuccessNotification({ subtitle: `Renamed to ${newname}` }));
 		}
 		sendingRename = false;
@@ -188,6 +189,11 @@
 	size="sm"
 	on:close={() => onCloseModal()}
 	primaryButtonText="Go!"
+	primaryButtonDisabled={sendingDelete ||
+		sendingRefresh ||
+		sendingFavorite ||
+		sendingRename ||
+		file.archived}
 	on:click:button--primary={() => onClickPrimaryButton()}
 >
 	<div style="display: flex; align-items: center;">
@@ -258,13 +264,13 @@
 			icon={file.favorited ? FavoriteFilled : Favorite}
 			iconDescription="Favorite"
 			on:click={() => onClickFavorite()}
-			disabled={sendingFavorite}
+			disabled={sendingFavorite || file.archived}
 		/>
 		<Button
 			icon={UpdateNow}
 			iconDescription="Refresh"
 			on:click={() => onClickRefresh()}
-			disabled={sendingRefresh}
+			disabled={sendingRefresh || file.archived}
 		/>
 		<CopyButton text={file.name} />
 		<Button
@@ -273,31 +279,35 @@
 			on:click={() => {
 				window.open(`/${mediaType}/${file.id}`);
 			}}
+			disabled={file.archived}
 		/>
 		<Button
 			icon={ApplicationWeb}
 			iconDescription="External Application"
 			href={`honeyview:${file.path}`}
+			disabled={file.archived}
 		/>
 	</container>
 	<TextArea labelText="Path" value={file.path} readonly rows={3} />
-	<p>Details</p>
-	<DataTable
-		headers={[{ key: 'name', value: 'Name' }]}
-		rows={comicDetail?.pageDetails.map((page, idx) => ({ id: idx, name: page.name })) ?? []}
-	/>
-	{#if loadingDetail}
-		<InlineLoading description="Loading..." />
-	{/if}
-	{#if comicDetail === undefined && !loadingDetail}
-		<div class="center">
-			<Button
-				kind="secondary"
-				on:click={() => {
-					onClickDetail();
-				}}>Load</Button
-			>
-		</div>
+	{#if !file.archived}
+		<p>Details</p>
+		<DataTable
+			headers={[{ key: 'name', value: 'Name' }]}
+			rows={comicDetail?.pageDetails.map((page, idx) => ({ id: idx, name: page.name })) ?? []}
+		/>
+		{#if loadingDetail}
+			<InlineLoading description="Loading..." />
+		{/if}
+		{#if comicDetail === undefined && !loadingDetail}
+			<div class="center">
+				<Button
+					kind="secondary"
+					on:click={() => {
+						onClickDetail();
+					}}>Load</Button
+				>
+			</div>
+		{/if}
 	{/if}
 </Modal>
 

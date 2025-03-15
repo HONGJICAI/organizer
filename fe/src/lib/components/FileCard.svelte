@@ -4,10 +4,10 @@
 	interface Props {
 		file: MediaFile;
 		light?: boolean;
-		onClickFile: (file: MediaFile) => void;
+		onClickFile?: (file: MediaFile) => void;
 	}
 
-	let { file, light = $bindable(false), onClickFile }: Props = $props();
+	let { file, light = $bindable(false), onClickFile = () => undefined }: Props = $props();
 	let comic = $derived(file as Comic);
 </script>
 

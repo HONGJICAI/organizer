@@ -1,4 +1,5 @@
 import { config } from '$lib/config.svelte';
+import type { ComicEntity } from './client';
 import { separateFilename } from './utility';
 
 export enum MediaType {
@@ -14,6 +15,28 @@ export enum Category {
 	Archive = 3
 }
 
+export enum MediaFileComparison {
+	None = -1,
+	Size = 0,
+	Name = 1,
+	UpdatedDate = 2,
+	ViewedDate = 3,
+	Path = 4,
+	Random = 5,
+	Id = 6
+}
+export enum ComicComparison {
+	Page = 100,
+	SizePerPage = 101
+}
+
+export enum VideoComparison {
+	Duration = 200,
+	SizePerSecond = 201
+}
+
+export type MediaFileComparisonType = MediaFileComparison | ComicComparison | VideoComparison;
+
 export class MediaFile {
 	name = $state('');
 	path: string;
@@ -27,6 +50,7 @@ export class MediaFile {
 	lastViewedDate: Date | null;
 	favorited = $state(false);
 	archived = $state(false);
+	entityUpdateTime: string;
 	get viewed(): boolean {
 		return !!this.lastViewedTime;
 	}
@@ -60,6 +84,25 @@ export class MediaFile {
 		this.lastViewedDate = json.lastViewedTime ? new Date(json.lastViewedTime) : null;
 		this.favorited = json.favorited ?? false;
 		this.archived = json.archived ?? false;
+		this.entityUpdateTime = json.entityUpdateTime;
+	}
+	compareTo(other: MediaFile, comparison: MediaFileComparisonType): number {
+		switch (comparison) {
+			case MediaFileComparison.Size:
+				return this.size - other.size;
+			case MediaFileComparison.Name:
+				return this.name.localeCompare(other.name);
+			case MediaFileComparison.UpdatedDate:
+				return this.updateDate.getTime() - other.updateDate.getTime();
+			case MediaFileComparison.ViewedDate:
+				return (this.lastViewedDate?.getTime() ?? 0) - (other.lastViewedDate?.getTime() ?? 0);
+			case MediaFileComparison.Path:
+				return this.path.localeCompare(other.path);
+			case MediaFileComparison.Random:
+				return Math.random() > 0.5 ? 1 : -1;
+			default:
+				return 0;
+		}
 	}
 }
 export class Comic extends MediaFile {
@@ -67,9 +110,19 @@ export class Comic extends MediaFile {
 	get coverUrl(): string {
 		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg`;
 	}
-	constructor(json: any) {
+	constructor(json: ComicEntity) {
 		super(MediaType.Comic, json);
 		this.page = json.page;
+	}
+	compareTo(other: Comic, comparison: MediaFileComparisonType): number {
+		switch (comparison) {
+			case ComicComparison.Page:
+				return this.page - other.page;
+			case ComicComparison.SizePerPage:
+				return this.size / this.page - other.size / other.page;
+			default:
+				return super.compareTo(other, comparison);
+		}
 	}
 }
 export class Video extends MediaFile {
@@ -80,6 +133,16 @@ export class Video extends MediaFile {
 	constructor(json: any) {
 		super(MediaType.Video, json);
 		this.durationInSecond = json.durationInSecond;
+	}
+	compareTo(other: Video, comparison: MediaFileComparisonType): number {
+		switch (comparison) {
+			case VideoComparison.Duration:
+				return this.durationInSecond - other.durationInSecond;
+			case VideoComparison.SizePerSecond:
+				return this.size / this.durationInSecond - other.size / other.durationInSecond;
+			default:
+				return super.compareTo(other, comparison);
+		}
 	}
 }
 

@@ -240,7 +240,7 @@
 	<ContextMenuOption indented labelText="Like page" on:click={onLikePage} />
 	<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
 	<ContextMenuDivider />
-	<ContextMenuOption indented kind="danger" labelText="Delete" />
+	<ContextMenuOption indented kind="danger" labelText="Delete" disabled />
 </ContextMenu>
 
 <style>

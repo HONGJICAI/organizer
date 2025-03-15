@@ -13,21 +13,21 @@ async function loadComics(): Promise<Comic[]> {
 	if (error) {
 		throw error;
 	}
-	return data.map((e: any) => new Comic(e));
+	return data.map((e) => new Comic(e));
 }
 async function loadVideos(): Promise<Video[]> {
 	const { data, error } = await VideosService.videoGetAll();
 	if (error) {
 		throw error;
 	}
-	return data.map((e: any) => new Video(e));
+	return data.map((e) => new Video(e));
 }
 async function loadImages(): Promise<MediaFile[]> {
 	const { data, error } = await ImagesService.imageGetAll();
 	if (error) {
 		throw error;
 	}
-	return data.map((e: any) => new MediaFile(MediaType.Image, e));
+	return data.map((e) => new MediaFile(MediaType.Image, e));
 }
 export async function load({ params }) {
 	const p = mediaTypes[params.mediaType];
