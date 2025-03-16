@@ -17,13 +17,13 @@ export type ComicEntity = {
     name: string;
     path: string;
     updateTime: string;
-    archived: boolean;
-    favorited: boolean;
-    lastViewedTime?: string | null;
-    lastViewedPosition: number;
-    coverPosition: number;
-    entityUpdateTime: string;
-    page: number;
+    archived?: boolean;
+    favorited?: boolean;
+    lastViewedTime?: string;
+    lastViewedPosition?: number;
+    coverPosition?: number;
+    entityUpdateTime?: string;
+    page?: number;
 };
 
 export type ComicPageDetailResponse = {
@@ -34,22 +34,22 @@ export type FavorResponse = {
     favorited: boolean;
 };
 
-export type FileEntity = {
+export type HttpValidationError = {
+    detail?: Array<ValidationError>;
+};
+
+export type ImageEntity = {
     id: number;
     size: number;
     name: string;
     path: string;
     updateTime: string;
-    archived: boolean;
-    favorited: boolean;
-    lastViewedTime?: string | null;
-    lastViewedPosition: number;
-    coverPosition: number;
-    entityUpdateTime: string;
-};
-
-export type HttpValidationError = {
-    detail?: Array<ValidationError>;
+    archived?: boolean;
+    favorited?: boolean;
+    lastViewedTime?: string;
+    lastViewedPosition?: number;
+    coverPosition?: number;
+    entityUpdateTime?: string;
 };
 
 export type MessageResponse = {
@@ -76,13 +76,13 @@ export type VideoEntity = {
     name: string;
     path: string;
     updateTime: string;
-    archived: boolean;
-    favorited: boolean;
-    lastViewedTime?: string | null;
-    lastViewedPosition: number;
-    coverPosition: number;
-    entityUpdateTime: string;
-    durationInSecond: number;
+    archived?: boolean;
+    favorited?: boolean;
+    lastViewedTime?: string;
+    lastViewedPosition?: number;
+    coverPosition?: number;
+    entityUpdateTime?: string;
+    durationInSecond?: number;
 };
 
 export type VideoGetAllData = {
@@ -565,7 +565,7 @@ export type ImageGetAllResponses = {
     /**
      * Successful Response
      */
-    200: Array<FileEntity>;
+    200: Array<ImageEntity>;
 };
 
 export type ImageGetAllResponse = ImageGetAllResponses[keyof ImageGetAllResponses];

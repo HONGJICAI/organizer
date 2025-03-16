@@ -26,7 +26,7 @@ from fastapi.openapi.utils import get_openapi
 import util
 from model import (
     ComicEntity,
-    FileEntity,
+    ImageEntity,
     VideoEntity,
 )
 import comicfile
@@ -98,18 +98,6 @@ def custom_openapi():
                         },
                     },
                 }
-            )
-
-    # schema with default value should be marked as required
-    for schema in openapi_schema["components"]["schemas"].values():
-        prop_with_default = []
-        for key, prop in schema.get("properties", {}).items():
-            if "default" in prop:
-                prop_with_default.append(key)
-        # merge required and prop_with_default
-        if len(prop_with_default) > 0:
-            schema["required"] = list(
-                set(schema.get("required", []) + prop_with_default)
             )
 
     app.openapi_schema = openapi_schema
@@ -194,7 +182,7 @@ class ComicCBV:
     def __del__(self):
         self.session.close()
 
-    @router.get("/api/comics", tags=["comics"], response_model_exclude_none=True)
+    @router.get("/api/comics", tags=["comics"], response_model_exclude_none=True, response_model_exclude_defaults=True)
     def get_all(self, fileMiss=False, top:int=None) -> List[ComicEntity]:
         statement = select(ComicEntity).order_by(
             ComicEntity.updateTime.desc()
@@ -435,7 +423,7 @@ class ComicPageCBV:
 @cbv(router)
 class ImageCBV:
     @router.get("/api/images", tags=["images"])
-    def get_all(self, top:int=None) -> List[FileEntity]:
+    def get_all(self, top:int=None) -> List[ImageEntity]:
         # get all images and updateTime then order by updateTime
         files = []
         for root, dirs, files in os.walk(global_data.Config.nginx_image_path):
@@ -447,7 +435,7 @@ class ImageCBV:
             images.append((f, path, datetime.datetime.fromtimestamp(stat.st_mtime)))
         images.sort(key=lambda x: x[1], reverse=True)
         return [
-            FileEntity(id=i, name=f[0], path=f[1], size=0, updateTime=f[2]).model_dump()
+            ImageEntity(id=i, name=f[0], path=f[1], size=0, updateTime=f[2]).model_dump()
             for i, f in enumerate(images) if top is None or i < int(top)
         ]
 

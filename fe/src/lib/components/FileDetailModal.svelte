@@ -135,10 +135,8 @@
 			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		}
 		if (data) {
-			file.favorited = data.favorited;
-			file.lastViewedTime = data.lastViewedTime ?? null;
 			if (mediaType === MediaType.Comic) {
-				(file as Comic).page = data.page;
+				file = new Comic(data);
 			}
 			addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
 		}

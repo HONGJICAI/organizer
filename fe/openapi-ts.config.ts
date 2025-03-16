@@ -9,6 +9,10 @@ export default {
 		{
 			asClass: true,
 			name: '@hey-api/sdk'
+		},
+		{
+			name: '@hey-api/schemas',
+			type: 'json'
 		}
 	]
 };

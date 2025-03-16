@@ -21,7 +21,7 @@ class FileEntity(SQLModel):
     updateTime: datetime
     archived: bool = Field(default=False)
     favorited: bool = Field(default=False)
-    lastViewedTime: datetime | None = Field(default=None)
+    lastViewedTime: datetime = Field(default=None)
     lastViewedPosition: int = Field(default=0)
     coverPosition: int = Field(default=0)
     entityUpdateTime: datetime = Field(default=datetime.now())
@@ -61,6 +61,6 @@ class VideoEntity(FileEntity, table=True):
 class ImageEntity(FileEntity):
     @staticmethod
     def from_path(path: pathlib.Path, id: int):
-        ret = VideoEntity(**FileEntity.from_path(path).model_dump())
+        ret = ImageEntity(**FileEntity.from_path(path).model_dump())
         ret.id = id
         return ret

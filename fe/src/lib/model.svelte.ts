@@ -1,5 +1,6 @@
 import { config } from '$lib/config.svelte';
-import type { ComicEntity } from './client';
+import type { ComicEntity, ImageEntity, VideoEntity } from './client';
+import { ComicEntitySchema, VideoEntitySchema } from './client/schemas.gen';
 import { separateFilename } from './utility';
 
 export enum MediaType {
@@ -50,7 +51,7 @@ export class MediaFile {
 	lastViewedDate: Date | null;
 	favorited = $state(false);
 	archived = $state(false);
-	entityUpdateTime: string;
+	entityUpdateTime: string | null;
 	get viewed(): boolean {
 		return !!this.lastViewedTime;
 	}
@@ -69,9 +70,9 @@ export class MediaFile {
 	get tags(): string[] {
 		return separateFilename(this.name);
 	}
-	constructor(type: MediaType, json: any) {
+	constructor(type: MediaType, json: ComicEntity | VideoEntity | ImageEntity) {
 		this.type = type;
-		this.name = json.name ?? '';
+		this.name = json.name;
 		this.path = json.path;
 		// size is in bytes, convert to MB with 2 decimal places
 		this.size = Math.round((json.size / 1024 / 1024) * 100) / 100;
@@ -79,12 +80,12 @@ export class MediaFile {
 		this.updateTime = json.updateTime;
 		this.updateDate = new Date(json.updateTime);
 
-		this.lastViewedTime = json.lastViewedTime;
+		this.lastViewedTime = json.lastViewedTime ?? null;
 		this.lastViewed = json.lastViewedPosition ?? 0;
 		this.lastViewedDate = json.lastViewedTime ? new Date(json.lastViewedTime) : null;
 		this.favorited = json.favorited ?? false;
 		this.archived = json.archived ?? false;
-		this.entityUpdateTime = json.entityUpdateTime;
+		this.entityUpdateTime = json.entityUpdateTime ?? null;
 	}
 	compareTo(other: MediaFile, comparison: MediaFileComparisonType): number {
 		switch (comparison) {
@@ -112,7 +113,7 @@ export class Comic extends MediaFile {
 	}
 	constructor(json: ComicEntity) {
 		super(MediaType.Comic, json);
-		this.page = json.page;
+		this.page = json.page ?? ComicEntitySchema.properties.page.default;
 	}
 	compareTo(other: Comic, comparison: MediaFileComparisonType): number {
 		switch (comparison) {
@@ -130,9 +131,10 @@ export class Video extends MediaFile {
 	get coverUrl(): string {
 		return `${config.staticServer}/${this.type}s/${this.id}.jpg`;
 	}
-	constructor(json: any) {
+	constructor(json: VideoEntity) {
 		super(MediaType.Video, json);
-		this.durationInSecond = json.durationInSecond;
+		this.durationInSecond =
+			json.durationInSecond ?? VideoEntitySchema.properties.durationInSecond.default;
 	}
 	compareTo(other: Video, comparison: MediaFileComparisonType): number {
 		switch (comparison) {
