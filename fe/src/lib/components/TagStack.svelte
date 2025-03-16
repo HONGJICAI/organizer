@@ -38,7 +38,7 @@
 		{#if skeleton}
 			<SkeletonPlaceholder style="width: 100%; height: 80vh" />
 		{/if}
-		{#each orderedTag2countMap as [tag, count], i}
+		{#each orderedTag2countMap as [tag, count]}
 			<Tag on:click={() => onClickTag?.(tag)} interactive={true}>
 				<div class="tag">
 					<span class="truncated" title={tag}>{tag}</span>

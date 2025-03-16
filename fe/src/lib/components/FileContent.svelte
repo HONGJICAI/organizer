@@ -3,7 +3,6 @@
 		Button,
 		ContextMenu,
 		ContextMenuDivider,
-		ContextMenuGroup,
 		ContextMenuOption,
 		InlineLoading,
 		PaginationNav,
@@ -141,7 +140,7 @@
 		if (!comic) {
 			return;
 		}
-		const { data, error } = await ComicpageService.comicPageLike({
+		const { error } = await ComicpageService.comicPageLike({
 			path: {
 				id: comic.id,
 				page: page
@@ -158,7 +157,7 @@
 		if (!comic) {
 			return;
 		}
-		const { data, error } = await ComicpageService.comicPageSetCover({
+		const { error } = await ComicpageService.comicPageSetCover({
 			path: {
 				id: comic.id,
 				page: page

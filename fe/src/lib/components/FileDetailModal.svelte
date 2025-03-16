@@ -38,7 +38,7 @@
 
 	interface Props {
 		open?: boolean;
-		onCloseModal?: any;
+		onCloseModal?: () => void;
 		file: MediaFile;
 		onClickTag?: (tag: string) => void;
 		onClickPrimaryButton?: () => void;
@@ -138,7 +138,7 @@
 			file.favorited = data.favorited;
 			file.lastViewedTime = data.lastViewedTime ?? null;
 			if (mediaType === MediaType.Comic) {
-				(file as Comic).page = data.page!;
+				(file as Comic).page = data.page;
 			}
 			addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
 		}
@@ -149,7 +149,7 @@
 	let sendingRename = $state(false);
 	async function onClickSaveName() {
 		sendingRename = true;
-		const { data, error } = await ComicsService.comicRename({
+		const { error } = await ComicsService.comicRename({
 			body: { name: newname },
 			path: {
 				id: file.id

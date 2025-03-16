@@ -24,7 +24,7 @@
 	let isOpen1 = $state(false);
 	let isOpen2 = $state(false);
 
-	function onClickSettings(e: MouseEvent): void {
+	function onClickSettings(): void {
 		openSettingsModal = true;
 	}
 </script>

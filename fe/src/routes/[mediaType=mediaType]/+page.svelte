@@ -66,6 +66,7 @@
 
 	async function onClickTag(tag: string) {
 		searchStr = tag;
+		curPage = 1;
 		syncStateToUrl();
 	}
 
@@ -77,6 +78,7 @@
 	};
 	const onSearchBlur = (search: string) => {
 		searchStr = search;
+		curPage = 1;
 		syncStateToUrl();
 	};
 	const onPageChange = (page: number) => {

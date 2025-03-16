@@ -1,18 +1,13 @@
 <script lang="ts">
 	import FileContent from '$lib/components/FileContent.svelte';
-	import type { MediaFile } from '$lib/model.svelte';
-
-	interface Props {
-		data: any;
-	}
-
-	let { data }: Props = $props();
-	let file = $state(data.file as MediaFile);
+	let { data } = $props();
 </script>
 
-<FileContent
-	{file}
-	onClose={() => {
-		window.close();
-	}}
-/>
+{#if data.file}
+	<FileContent
+		file={data.file}
+		onClose={() => {
+			window.close();
+		}}
+	/>
+{/if}

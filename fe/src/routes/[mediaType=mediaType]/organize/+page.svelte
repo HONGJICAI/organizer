@@ -42,7 +42,7 @@
 		const ids = selectedRowIds ?? [];
 		if (ids.length > 0) {
 			for (const id of ids) {
-				const { data, error } = await ComicsService.comicDelete({
+				const { error } = await ComicsService.comicDelete({
 					path: {
 						id: id
 					},
