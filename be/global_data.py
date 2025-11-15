@@ -5,7 +5,7 @@ err_message = []
 
 
 class Config:
-    nginx_path = os.path.join(__file__, "..", "..", "nginx")
+    nginx_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "nginx"))
     nginx_access_log_path = os.path.join(nginx_path, "logs", "file.access.log")
     nginx_html_path = os.path.join(nginx_path, "html")
     nginx_video_path = os.path.join(nginx_html_path, "videos")

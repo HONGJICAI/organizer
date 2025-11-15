@@ -1,0 +1,18 @@
+FROM ghcr.io/astral-sh/uv:python3.13-alpine
+
+# Set the working directory
+WORKDIR /app/be
+
+# Copy only the pyproject.toml first (for better layer caching)
+COPY pyproject.toml .
+
+# Install dependencies and create data directory
+RUN apk add gcc python3-dev musl-dev linux-headers && \
+    uv pip install --system -r pyproject.toml && \
+    mkdir -p /data
+
+# Expose the port Uvicorn will run on
+EXPOSE 8000
+
+# Command to run the application with hot reload enabled
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

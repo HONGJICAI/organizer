@@ -1,6 +1,7 @@
+import asyncio
+from contextlib import asynccontextmanager
 import re
 import shutil
-import threading
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -33,16 +34,47 @@ import comicfile
 
 install(show_locals=True)
 
+# Cache for comic page access records: {comic_id: (timestamp, page)}
+comic_access_cache = {}
+
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     return route.name.replace("CBV", "")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("app init...")
+    # Run startup tasks
+    await cleanup_missing_comics()
+    
+    # Start background tasks
+    task1 = asyncio.create_task(process_comic_access_cache_loop())
+    task2 = asyncio.create_task(backup_database_loop())
+    # task3 = asyncio.create_task(process_view_history_loop())
+    yield
+    print("app shutdown...")
+    # Cancel tasks on shutdown
+    task1.cancel()
+    task2.cancel()
+    # task3.cancel()
+    try:
+        await task1
+    except asyncio.CancelledError:
+        pass
+    try:
+        await task2
+    except asyncio.CancelledError:
+        pass
+    # try:
+    #     await task3
+    # except asyncio.CancelledError:
+    #     pass
 
 class MessageResponse(BaseModel):
     msg: str
 
 
-app = FastAPI(generate_unique_id_function=custom_generate_unique_id)
+app = FastAPI(generate_unique_id_function=custom_generate_unique_id, docs_url="/api/docs", openapi_url="/api/openapi.json",lifespan=lifespan)
 router = APIRouter()
 
 
@@ -378,6 +410,9 @@ class ComicPageCBV:
             abort(404, "Comic file not found")
         ok, bytes = cf.read(page - 1)
         if ok:
+            # Record access in cache (dict assignment is atomic)
+            comic_access_cache[id] = (datetime.datetime.now(), page)
+            
             return Response(
                 content=bytes,
                 media_type="image/jpeg",
@@ -443,10 +478,72 @@ class ImageCBV:
 app.include_router(router)
 
 
-def process_view_history():
-    t = threading.Timer(300, process_view_history)
-    t.daemon = True
-    t.start()
+async def cleanup_missing_comics():
+    """Startup task to check and remove comics with missing files"""
+    print("Checking for missing comic files...")
+    with Session(db.engine) as session:
+        # Only check non-archived comics
+        comics = session.exec(select(ComicEntity).where(not ComicEntity.archived)).all()
+        removed_count = 0
+        
+        for comic in comics:
+            if not os.path.exists(comic.path):
+                print(f"Removing missing comic: {comic.id} - {comic.name} ({comic.path})")
+                session.delete(comic)
+                removed_count += 1
+        
+        if removed_count > 0:
+            session.commit()
+            print(f"Removed {removed_count} missing comic(s)")
+        else:
+            print("All comics have valid file paths")
+
+
+async def process_comic_access_cache_loop():
+    """Background task to process cached comic page access records"""
+    while True:
+        await asyncio.sleep(60)  # Run every 60 seconds
+        await process_comic_access_cache()
+
+
+async def process_comic_access_cache():
+    """Process cached comic page access records and write to database"""
+    global comic_access_cache
+    
+    # Swap cache with a new empty dict (atomic operation)
+    cache_to_process = comic_access_cache
+    comic_access_cache = {}
+    
+    if len(cache_to_process) == 0:
+        return
+    
+    # Process cached records
+    print(f"Processing {len(cache_to_process)} comic access records")
+    with Session(db.engine) as session:
+        for comic_id, (access_time, page) in cache_to_process.items():
+            comic = session.exec(
+                select(ComicEntity).where(ComicEntity.id == comic_id)
+            ).one_or_none()
+            
+            if comic is not None:
+                comic.lastViewedTime = access_time
+                comic.lastViewedPosition = page
+                session.add(comic)
+            else:
+                print(f"Comic {comic_id} not found")
+        
+        session.commit()
+    print("Comic access cache processed successfully")
+
+
+async def process_view_history_loop():
+    """Background task to process view history from nginx logs"""
+    while True:
+        await asyncio.sleep(300)  # Run every 5 minutes
+        await process_view_history()
+
+
+async def process_view_history():
     if os.path.exists(global_data.Config.nginx_access_log_path):
         # log format: [02/Nov/2023:23:30:03 +0800] "GET /api/comics/358/1 HTTP/1.1"
         comic_dict = {}
@@ -500,6 +597,45 @@ def process_view_history():
             pass
 
 
+async def backup_database_loop():
+    """Background task to backup database every 24 hours"""
+    while True:
+        await asyncio.sleep(86400)  # Run every 24 hours (86400 seconds)
+        await backup_database()
+
+
+async def backup_database():
+    """Backup the database to dbbackup folder"""
+    try:
+        db_path = "prod.sqlite"
+        if not os.path.exists(db_path):
+            print(f"Database file {db_path} not found")
+            return
+        
+        # Create backup directory if it doesn't exist
+        backup_dir = "dbbackup"
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        # Generate backup filename with timestamp
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(backup_dir, f"prod_{timestamp}.sqlite")
+        
+        # Copy database file
+        shutil.copy2(db_path, backup_path)
+        print(f"Database backed up successfully to {backup_path}")
+        
+        # Keep only the last 7 backups to save space
+        backup_files = sorted([f for f in os.listdir(backup_dir) if f.startswith("prod_") and f.endswith(".sqlite")])
+        if len(backup_files) > 7:
+            for old_backup in backup_files[:-7]:
+                old_backup_path = os.path.join(backup_dir, old_backup)
+                os.remove(old_backup_path)
+                print(f"Removed old backup: {old_backup}")
+                
+    except Exception as e:
+        print(f"Failed to backup database: {e}")
+
+
 if __name__ == "__main__":
     # setup db
     SQLModel.metadata.create_all(db.engine)
@@ -507,13 +643,6 @@ if __name__ == "__main__":
     # load new comic and video
     # ComicLoader().work()
     # VideoLoader().work()
-
-    # setup timer
-    t = threading.Timer(1, process_view_history)
-    t.daemon = True
-    t.start()
-
-    # run
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8001)

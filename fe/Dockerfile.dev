@@ -1,0 +1,17 @@
+# Development stage
+FROM node:24-alpine
+
+# Set working directory
+WORKDIR /app/fe
+
+# Copy only package files (for dependencies)
+COPY package*.json ./
+
+# Install dependencies
+RUN npm i @rollup/rollup-linux-x64-musl --save-dev && npm ci
+
+# Expose port for dev server
+EXPOSE 8002
+
+# Start dev server
+CMD ["npm", "run", "dev"]
