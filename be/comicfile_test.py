@@ -1,8 +1,5 @@
 import pathlib
-import pytest
 import zipfile
-
-import rarfile
 
 import comicfile
 
