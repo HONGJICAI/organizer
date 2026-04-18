@@ -48,12 +48,15 @@ class VideoCBV:
     @router.delete("/api/videos/{id}", tags=["videos"])
     def delete(self, id: int, permanent: bool = False) -> APIMessage:
         video_entity = self.__get(id)
-        os.remove(video_entity.path)
-        if permanent:
+        if not permanent:
             video_entity.archived = True
             self.session.add(video_entity)
         else:
             self.session.delete(video_entity)
+        try:
+            os.remove(video_entity.path)
+        except FileNotFoundError:
+            pass
         self.session.commit()
 
         return APIMessage(detail="Deleted")

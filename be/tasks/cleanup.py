@@ -10,7 +10,7 @@ async def cleanup_missing_comics():
     print("Checking for missing comic files...")
     with Session(db.engine) as session:
         # Only check non-archived comics
-        comics = session.exec(select(ComicEntity).where(not ComicEntity.archived)).all()
+        comics = session.exec(select(ComicEntity).where(ComicEntity.archived == False)).all()  # noqa: E712
         removed_count = 0
         
         for comic in comics:

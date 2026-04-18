@@ -16,13 +16,13 @@ router = APIRouter()
 class ImageCBV:
     @router.get("/api/images", tags=["images"])
     def get_all(self, top: int = None) -> List[ImageEntity]:
-        # get all images and updateTime then order by updateTime
-        files = []
-        for root, dirs, files in os.walk(global_data.Config.nginx_image_path):
-            break
+        image_dir = global_data.Config.nginx_image_path
+        if not os.path.isdir(image_dir):
+            return []
+        filenames = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
         images = []
-        for f in files:
-            path = os.path.join(root, f)
+        for f in filenames:
+            path = os.path.join(image_dir, f)
             stat = os.stat(path)
             images.append((f, path, datetime.datetime.fromtimestamp(stat.st_mtime)))
         images.sort(key=lambda x: x[1], reverse=True)

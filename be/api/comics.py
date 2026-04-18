@@ -30,9 +30,6 @@ router = APIRouter()
 class ComicCBV:
     session: Session = Depends(db.get_session)
 
-    def __del__(self):
-        self.session.close()
-
     @router.get("/api/comics", tags=["comics"], response_model_exclude_none=True, response_model_exclude_defaults=True)
     def get_all(self, fileMiss=False, top: int = None) -> List[ComicEntity]:
         statement = select(ComicEntity).order_by(
@@ -155,10 +152,11 @@ class ComicCBV:
         new_comic = self.session.exec(new_comic_statement).first()
         if new_comic is not None:
             abort(400, "Comic with same name/path already exists")
-        if comicfile.comic_cache.get(comic.path) is not None:
-            cf = comicfile.comic_cache[comic.path]
-            cf.close()
-            del comicfile.comic_cache[comic.path]
+        from cachetools.keys import hashkey
+        cache_key = hashkey(comic.path)
+        if cache_key in comicfile.comic_cache:
+            comicfile.comic_cache[cache_key].close()
+            del comicfile.comic_cache[cache_key]
         os.rename(comic.path, new_path)
         comic.name = new_name
         comic.path = new_path
