@@ -1,5 +1,6 @@
 from datetime import datetime
 import pathlib
+from typing import Optional
 from sqlmodel import Field, SQLModel
 
 
@@ -21,10 +22,10 @@ class FileEntity(SQLModel):
     updateTime: datetime
     archived: bool = Field(default=False)
     favorited: bool = Field(default=False)
-    lastViewedTime: datetime = Field(default=None)
+    lastViewedTime: Optional[datetime] = Field(default=None)
     lastViewedPosition: int = Field(default=0)
     coverPosition: int = Field(default=0)
-    entityUpdateTime: datetime = Field(default=datetime.now())
+    entityUpdateTime: datetime = Field(default_factory=datetime.now)
 
     @staticmethod
     def from_path(path: pathlib.Path):

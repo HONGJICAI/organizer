@@ -1,0 +1,35 @@
+name: BE CI
+
+on:
+  push:
+    paths:
+      - "be/**"
+      - ".github/workflows/be-ci.yml"
+  pull_request:
+    paths:
+      - "be/**"
+      - ".github/workflows/be-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: be
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "be/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check
+
+      - name: Test with coverage
+        run: uv run pytest --cov=. --cov-report=term-missing --cov-fail-under=90

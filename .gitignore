@@ -2,3 +2,4 @@ nginx/html/
 nginx/logs/
 *.sqlite
 .env
+.coverage

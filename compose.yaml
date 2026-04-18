@@ -27,10 +27,9 @@ services:
     volumes:
       - ./be:/app/be
       - ./nginx:/app/nginx
-      # Comic scan paths
-      - ${COMIC_PATH}:/data/p
-      # Video scan paths
-      - ${VIDEO_PATH}:/data/v
+      - ${COMIC_PATH}:/data/comics
+      - ${VIDEO_PATH}:/data/videos
+      - ${IMAGE_PATH:-/tmp/images}:/data/images
     # network_mode: host
     expose:
       - 8001

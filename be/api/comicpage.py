@@ -24,9 +24,6 @@ router = APIRouter()
 class ComicPageCBV:
     session: Session = Depends(db.get_session)
 
-    def __del__(self):
-        self.session.close()
-
     def __get(self, id: int) -> ComicEntity:
         statement = select(ComicEntity).where(ComicEntity.id == id)
         comic = self.session.exec(statement).first()
@@ -58,18 +55,18 @@ class ComicPageCBV:
         comic = self.__get(id)
         name = f"{comic.name}_{page}.jpg"
         path = os.path.join(global_data.Config.nginx_image_path, name)
-        if not os.path.exists(path):
-            cf = comicfile.create_open(comic.path)
-            if cf is None:
-                abort(404, "Comic file not found")
-            ok, bytes = cf.read(page - 1)
-            if ok:
-                img = Image.open(io.BytesIO(bytes))
-                img = img.convert("RGB")
-                img.save(path, "JPEG")
-                return APIMessage(detail="OK")
-
-        abort(404)
+        if os.path.exists(path):
+            return APIMessage(detail="OK")
+        cf = comicfile.create_open(comic.path)
+        if cf is None:
+            abort(404, "Comic file not found")
+        ok, buf = cf.read(page - 1)
+        if not ok:
+            abort(404, "Page not found")
+        img = Image.open(io.BytesIO(buf))
+        img = img.convert("RGB")
+        img.save(path, "JPEG")
+        return APIMessage(detail="OK")
 
     @router.post("/api/comics/{id}/{page}/cover", tags=["comicpage"])
     def set_cover(self, id: int, page: int):

@@ -13,12 +13,10 @@ class Config:
     nginx_image_path = os.path.join(nginx_html_path, "images")
 
     class Comic:
-        scan_pathes = [
-        ]
+        scan_pathes = [os.environ.get("COMIC_SCAN_PATH", "/data/comics")]
 
     class Video:
-        scan_pathes = [
-        ]
+        scan_pathes = [os.environ.get("VIDEO_SCAN_PATH", "/data/videos")]
 
 if not os.path.exists(Config.nginx_video_path):
     os.makedirs(Config.nginx_video_path)

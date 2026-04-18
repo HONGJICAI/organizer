@@ -1,5 +1,6 @@
 """Application lifespan management"""
 import asyncio
+import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
@@ -17,6 +18,11 @@ async def lifespan(app: FastAPI):
     
     # Run startup tasks
     await cleanup_missing_comics()
+
+    # Kick off a one-shot background scan for new media files
+    from api.system import _run_scan
+    threading.Thread(target=_run_scan, args=("all",), daemon=True).start()
+    print("Background scan started", flush=True)
     
     # Start background tasks and store them in app state
     tasks = []
