@@ -1,0 +1,41 @@
+{
+    "name": "organizer",
+    "image": "mcr.microsoft.com/devcontainers/python:1-3.13-bookworm",
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "24"
+        },
+        "ghcr.io/devcontainers-extra/features/uv:1": {}
+    },
+    "postCreateCommand": "npm install -g @anthropic-ai/claude-code && (cd be && uv sync) && (cd fe && npm ci)",
+    "forwardPorts": [8001, 8002, 80],
+    "remoteUser": "vscode",
+    "mounts": [
+        "source=organizer-claude-home,target=/home/vscode/.claude,type=volume"
+    ],
+    "postStartCommand": "sudo chown -R vscode:vscode /home/vscode/.claude",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "svelte.svelte-vscode",
+                "charliermarsh.ruff",
+                "ms-python.python",
+                "esbenp.prettier-vscode",
+                "dbaeumer.vscode-eslint",
+                "anthropic.claude-code"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "${containerWorkspaceFolder}/be/.venv/bin/python",
+                "[python]": {
+                    "editor.defaultFormatter": "charliermarsh.ruff"
+                },
+                "[svelte]": {
+                    "editor.defaultFormatter": "svelte.svelte-vscode"
+                },
+                "[typescript]": {
+                    "editor.defaultFormatter": "esbenp.prettier-vscode"
+                }
+            }
+        }
+    }
+}

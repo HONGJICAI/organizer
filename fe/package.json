@@ -27,6 +27,7 @@
 		"eslint-config-prettier": "^8.5.0",
 		"eslint-plugin-svelte": "^2.45.1",
 		"husky": "^9.1.7",
+		"lint-staged": "^16.4.0",
 		"prettier": "^3.1.0",
 		"prettier-plugin-svelte": "^3.2.6",
 		"svelte": "^5.1.5",
@@ -49,5 +50,9 @@
 		"workerDirectory": [
 			"static"
 		]
+	},
+	"lint-staged": {
+		"*.{js,ts,svelte,css,json}": "prettier --plugin-search-dir . --write",
+		"*.{js,ts,svelte}": "eslint --fix"
 	}
 }

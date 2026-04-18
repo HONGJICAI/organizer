@@ -3,4 +3,4 @@ ruff check
 cd ..
 
 cd fe
-npm run lint
+npx lint-staged
