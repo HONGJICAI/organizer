@@ -1,17 +1,17 @@
-<container>
+<div class="scroller">
 	<slot></slot>
-</container>
+</div>
 
 <style>
-	container {
+	.scroller {
 		display: flex;
 		justify-content: flex-start;
 		align-items: center;
-		/* can scroll to right inside this */
-		overflow-x: visible;
+		overflow-x: auto;
 		overflow-y: hidden;
-		/* beauty scroll bar */
 		scrollbar-width: thin;
-		scrollbar-color: #888 #f1f1f1;
+		scrollbar-color: #555 #2a2a2a;
+		padding-bottom: 0.5rem;
+		gap: 0.5rem;
 	}
 </style>

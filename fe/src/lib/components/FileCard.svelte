@@ -24,7 +24,16 @@
 			{/if}
 		</div>
 		<div class="imagecontainer">
-			<img src={file.coverUrl} alt={`${file.id}`} id={file.coverId} />
+			<img
+				src={file.coverUrl}
+				alt={`${file.id}`}
+				id={file.coverId}
+				onerror={(e) => {
+					const t = e.currentTarget as HTMLImageElement;
+					t.style.display = 'none';
+					t.parentElement?.classList.add('no-cover');
+				}}
+			/>
 		</div>
 		<div class="title">
 			{file.name}
@@ -52,32 +61,70 @@
 		max-height: var(--card-height);
 		position: relative;
 		overflow: hidden;
+		transition:
+			transform 0.15s ease,
+			box-shadow 0.15s ease;
 	}
 
 	.card .imagecontainer {
 		display: flex;
 		width: 100%;
-		height: calc(var(--card-height) - 4 * var(--font-height));
+		height: calc(var(--card-height) - 3.5rem);
+	}
+
+	:global(.card .bx--tile) {
+		padding: 0;
+		height: 100%;
+	}
+
+	.title {
+		padding: 0.5rem 0.5rem 0.25rem;
+		font-size: 0.75rem;
+		line-height: 1.25;
+		overflow: hidden;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		color: var(--cds-text-01, #f4f4f4);
 	}
 
 	.card img {
 		width: 100%;
-		object-fit: contain;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	:global(.imagecontainer.no-cover) {
+		background: var(--cds-ui-03, #393939);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	:global(.imagecontainer.no-cover::after) {
+		content: '?';
+		font-size: 3rem;
+		color: var(--cds-text-03, #6f6f6f);
 	}
 
 	.card:hover {
 		cursor: pointer;
+		transform: translateY(-2px);
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 	}
 
 	.top-right {
 		position: absolute;
 		top: 0;
 		right: 0;
+		z-index: 1;
 	}
 
 	.left-top {
 		position: absolute;
 		top: 0;
 		left: 0;
+		z-index: 1;
 	}
 </style>

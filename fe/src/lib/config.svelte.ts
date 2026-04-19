@@ -1,7 +1,8 @@
 export enum ViewMode {
 	Width = 0,
-	Height = 1
-	// Screen = 2,
+	Height = 1,
+	Contain = 2,
+	Scroll = 3
 }
 
 interface Config {
@@ -15,7 +16,7 @@ interface Config {
 const DefaultConfig: Config = {
 	apiServer: '',
 	staticServer: '',
-	viewMode: ViewMode.Height,
+	viewMode: ViewMode.Contain,
 	OrderByPosition: 'NextToSearchBar',
 	DeviceType: 'Desktop'
 };

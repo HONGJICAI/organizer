@@ -236,19 +236,7 @@
 	</div>
 
 	<p>Actions:</p>
-	{#if sendingRefresh}
-		<InlineLoading description="Refreshing..." />
-	{/if}
-	{#if sendingDelete}
-		<InlineLoading description="Deleting..." />
-	{/if}
-	{#if sendingFavorite}
-		<InlineLoading description="Favoriting..." />
-	{/if}
-	{#if sendingRename}
-		<InlineLoading description="Renaming..." />
-	{/if}
-	<container class="actions">
+	<div class="actions">
 		<Button
 			kind="danger"
 			on:click={() => {
@@ -258,12 +246,14 @@
 			iconDescription="Delete"
 			disabled={sendingDelete}
 		/>
-		<Button
-			icon={file.favorited ? FavoriteFilled : Favorite}
-			iconDescription="Favorite"
-			on:click={() => onClickFavorite()}
-			disabled={sendingFavorite || file.archived}
-		/>
+		<span class="fav-wrap" class:favorited={file.favorited}>
+			<Button
+				icon={file.favorited ? FavoriteFilled : Favorite}
+				iconDescription="Favorite"
+				on:click={() => onClickFavorite()}
+				disabled={sendingFavorite || file.archived}
+			/>
+		</span>
 		<Button
 			icon={UpdateNow}
 			iconDescription="Refresh"
@@ -285,7 +275,10 @@
 			href={`honeyview:${file.path}`}
 			disabled={file.archived}
 		/>
-	</container>
+		{#if sendingRefresh || sendingDelete || sendingFavorite || sendingRename}
+			<InlineLoading />
+		{/if}
+	</div>
 	<TextArea labelText="Path" value={file.path} readonly rows={3} />
 	{#if !file.archived}
 		<p>Details</p>
@@ -323,11 +316,34 @@
 <style>
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: flex-start;
 		align-items: center;
 		gap: 0.5rem;
-		overflow-x: visible;
-		overflow-y: hidden;
+	}
+
+	.fav-wrap :global(svg) {
+		transition: transform 0.15s ease;
+	}
+
+	.fav-wrap.favorited :global(svg) {
+		color: #da1e28;
+		animation: fav-pop 0.3s ease;
+	}
+
+	@keyframes fav-pop {
+		0% {
+			transform: scale(1);
+		}
+		40% {
+			transform: scale(1.45);
+		}
+		70% {
+			transform: scale(0.85);
+		}
+		100% {
+			transform: scale(1);
+		}
 	}
 
 	.center {
@@ -339,10 +355,11 @@
 	.horizontal {
 		display: flex;
 		flex-direction: row;
+		gap: 0.5rem;
 	}
 
 	p {
-		color: '#C6C6C6';
+		color: #c6c6c6;
 		font-size: 0.75rem;
 		font-weight: 400;
 		letter-spacing: 0.32px;

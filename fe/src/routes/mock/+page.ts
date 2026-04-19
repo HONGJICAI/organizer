@@ -22,6 +22,7 @@ const genMockComics = (number: number) =>
 			page: page
 		};
 	});
+
 async function generateImageArrayBuffer(width: number, height: number): Promise<ArrayBuffer> {
 	const canvas = document.createElement('canvas');
 	canvas.width = width;
@@ -32,11 +33,9 @@ async function generateImageArrayBuffer(width: number, height: number): Promise<
 		throw new Error('Failed to get canvas context');
 	}
 
-	// white background
 	ctx.fillStyle = '#ffffff';
 	ctx.fillRect(0, 0, width, height);
 
-	// black text
 	ctx.fillStyle = '#000000';
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
@@ -55,9 +54,15 @@ async function generateImageArrayBuffer(width: number, height: number): Promise<
 		}, 'image/png');
 	});
 }
+
 async function msw() {
 	const comics = genMockComics(100);
+
+	const findComic = (id: string | readonly string[] | undefined) =>
+		id !== undefined ? comics.find((c) => c.id === Number(id)) : undefined;
+
 	const handlers = [
+		// --- Comics list ---
 		http.get('/api/comics', async ({ request }) => {
 			await delay(1000);
 			const url = new URL(request.url);
@@ -67,22 +72,110 @@ async function msw() {
 			}
 			return HttpResponse.json(comics);
 		}),
+
+		// --- Single comic ---
+		http.get('/api/comics/:id', async ({ params }) => {
+			await delay(300);
+			const comic = findComic(params.id);
+			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			return HttpResponse.json(comic);
+		}),
+
+		// --- Delete comic ---
 		http.delete('/api/comics/:id', async ({ request, params }) => {
-			await delay(1000);
+			await delay(500);
 			const url = new URL(request.url);
 			const permanent = url.searchParams.get('permanent');
 			const id = Number(params.id);
-			const index = comics.findIndex((comic) => comic.id === id);
-			if (index === -1) {
-				return HttpResponse.json({ error: 'Comic not found' }, { status: 404 });
-			}
+			const index = comics.findIndex((c) => c.id === id);
+			if (index === -1) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
 			if (permanent === 'true') {
 				comics.splice(index, 1);
 			} else {
 				comics[index].archived = true;
 			}
-			return HttpResponse.json({ message: 'Comic deleted' });
+			return HttpResponse.json({ msg: 'Deleted' });
 		}),
+
+		// --- Favor ---
+		http.post('/api/comics/:id/favor', async ({ params }) => {
+			await delay(300);
+			const comic = findComic(params.id);
+			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			comic.favorited = true;
+			return HttpResponse.json({ favorited: true });
+		}),
+
+		// --- Unfavor ---
+		http.delete('/api/comics/:id/favor', async ({ params }) => {
+			await delay(300);
+			const comic = findComic(params.id);
+			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			comic.favorited = false;
+			return HttpResponse.json({ favorited: false });
+		}),
+
+		// --- Refresh ---
+		http.post('/api/comics/:id/refresh', async ({ params }) => {
+			await delay(800);
+			const comic = findComic(params.id);
+			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			comic.entityUpdateTime = new Date().toISOString();
+			return HttpResponse.json(comic);
+		}),
+
+		// --- Rename ---
+		http.post('/api/comics/:id/rename', async ({ params, request }) => {
+			await delay(400);
+			const comic = findComic(params.id);
+			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			const body = (await request.json()) as { name: string };
+			comic.name = body.name;
+			return HttpResponse.json({ name: body.name });
+		}),
+
+		// --- Detail (page list) ---
+		http.post('/api/comics/:id/detail', async ({ params }) => {
+			await delay(600);
+			const comic = findComic(params.id);
+			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			const pageDetails = Array.from({ length: comic.page }, (_, i) => ({
+				name: `page_${String(i + 1).padStart(3, '0')}.jpg`
+			}));
+			return HttpResponse.json({ pageDetails });
+		}),
+
+		// --- Like page ---
+		http.post('/api/comics/:id/:page/like', async () => {
+			await delay(200);
+			return HttpResponse.json({ msg: 'Liked' });
+		}),
+
+		// --- Set cover ---
+		http.post('/api/comics/:id/:page/cover', async ({ params }) => {
+			await delay(200);
+			const comic = findComic(params.id);
+			if (comic) comic.coverPosition = Number(params.page);
+			return HttpResponse.json({ msg: 'Cover set' });
+		}),
+
+		// --- Comic page image ---
+		http.get('/api/comics/:id/:page', async () => {
+			const width = faker.number.int({ min: 100, max: 1000 });
+			const height = faker.number.int({ min: 100, max: 1000 });
+			const arrayBuf = await generateImageArrayBuffer(width, height);
+			return HttpResponse.arrayBuffer(arrayBuf);
+		}),
+
+		// --- Cover images ---
+		http.get('/comics/*', async () => {
+			const width = faker.number.int({ min: 100, max: 1000 });
+			const height = faker.number.int({ min: 100, max: 1000 });
+			const arrayBuf = await generateImageArrayBuffer(width, height);
+			return HttpResponse.arrayBuffer(arrayBuf);
+		}),
+
+		// --- Videos / Images (not implemented) ---
 		http.get('/api/videos', async () => {
 			await delay(1000);
 			return HttpResponse.text('Error: Not Implemented', { status: 501 });
@@ -90,18 +183,6 @@ async function msw() {
 		http.get('/api/images', async () => {
 			await delay(1000);
 			return HttpResponse.text('Error: Not Implemented', { status: 501 });
-		}),
-		http.get('/comics/*', async () => {
-			const width = faker.number.int({ min: 100, max: 1000 });
-			const height = faker.number.int({ min: 100, max: 1000 });
-			const arrayBuf = await generateImageArrayBuffer(width, height);
-			return HttpResponse.arrayBuffer(arrayBuf);
-		}),
-		http.get('/api/comics/*/*', async () => {
-			const width = faker.number.int({ min: 100, max: 1000 });
-			const height = faker.number.int({ min: 100, max: 1000 });
-			const arrayBuf = await generateImageArrayBuffer(width, height);
-			return HttpResponse.arrayBuffer(arrayBuf);
 		})
 	];
 

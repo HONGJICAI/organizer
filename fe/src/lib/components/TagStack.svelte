@@ -48,7 +48,7 @@
 		{/each}
 
 		{#if currentShowNumber < (tag2countMap?.size ?? 0)}
-			<Button size="small" on:click={() => (currentShowNumber += showMoreNumber)}
+			<Button kind="ghost" size="small" on:click={() => (currentShowNumber += showMoreNumber)}
 				>Show more...</Button
 			>
 		{/if}

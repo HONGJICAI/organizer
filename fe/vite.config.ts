@@ -8,5 +8,10 @@ export default defineConfig({
 	},
 	resolve: {
 		conditions: ['browser']
+	},
+	server: {
+		hmr: {
+			clientPort: 8002
+		}
 	}
 });

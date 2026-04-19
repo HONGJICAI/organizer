@@ -12,16 +12,17 @@
 		ToastNotification
 	} from 'carbon-components-svelte';
 	import SettingsAdjust from 'carbon-icons-svelte/lib/SettingsAdjust.svelte';
-	import UserAvatarFilledAlt from 'carbon-icons-svelte/lib/UserAvatarFilledAlt.svelte';
+	import Menu from 'carbon-icons-svelte/lib/Menu.svelte';
+	import Close from 'carbon-icons-svelte/lib/Close.svelte';
 	import SettingsModal from './SettingsModal.svelte';
 	import { notifications } from '$lib/state.svelte';
+	import { viewerState } from '$lib/viewerState.svelte';
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
 
 	let { children }: Props = $props();
 	let openSettingsModal = $state(false);
-	let isOpen1 = $state(false);
 	let isOpen2 = $state(false);
 
 	function onClickSettings(): void {
@@ -34,35 +35,39 @@
 	<svelte:fragment slot="skip-to-content">
 		<SkipToContent />
 	</svelte:fragment>
+
+	{#if viewerState.active}
+		<div class="viewer-center">
+			<span class="viewer-title">{viewerState.title}</span>
+			{#if viewerState.maxPage > 0}
+				<span class="viewer-page">{viewerState.page} / {viewerState.maxPage}</span>
+			{/if}
+		</div>
+	{/if}
+
 	<HeaderUtilities>
 		<HeaderGlobalAction aria-label="Settings" icon={SettingsAdjust} on:click={onClickSettings} />
-		<HeaderAction bind:isOpen={isOpen1} icon={UserAvatarFilledAlt} closeIcon={UserAvatarFilledAlt}>
-			<HeaderPanelLinks>
-				<HeaderPanelDivider>Switcher subject 1</HeaderPanelDivider>
-				<HeaderPanelLink>Switcher item 1</HeaderPanelLink>
-				<HeaderPanelDivider>Switcher subject 2</HeaderPanelDivider>
-				<HeaderPanelLink>Switcher item 1</HeaderPanelLink>
-				<HeaderPanelDivider>Switcher subject 3</HeaderPanelDivider>
-				<HeaderPanelLink>Switcher item 1</HeaderPanelLink>
-			</HeaderPanelLinks>
-		</HeaderAction>
-		<HeaderAction bind:isOpen={isOpen2}>
-			<HeaderPanelLinks>
-				<HeaderPanelLink href="/">Home</HeaderPanelLink>
-				<HeaderPanelDivider>Comics</HeaderPanelDivider>
-				<HeaderPanelLink href="/comic">Home</HeaderPanelLink>
-				<HeaderPanelLink href="/comic/tag">Tag</HeaderPanelLink>
-				<HeaderPanelLink href="/comic/organize">Organize</HeaderPanelLink>
-				<HeaderPanelDivider>Videos</HeaderPanelDivider>
-				<HeaderPanelLink href="/video">Home</HeaderPanelLink>
-				<HeaderPanelDivider>Images</HeaderPanelDivider>
-				<HeaderPanelLink href="/image">Home</HeaderPanelLink>
-			</HeaderPanelLinks>
-		</HeaderAction>
+		{#if viewerState.active}
+			<HeaderGlobalAction aria-label="Close" icon={Close} on:click={() => viewerState.onClose()} />
+		{:else}
+			<HeaderAction bind:isOpen={isOpen2} icon={Menu} closeIcon={Menu}>
+				<HeaderPanelLinks>
+					<HeaderPanelLink href="/">Home</HeaderPanelLink>
+					<HeaderPanelDivider>Comics</HeaderPanelDivider>
+					<HeaderPanelLink href="/comic">Home</HeaderPanelLink>
+					<HeaderPanelLink href="/comic/tag">Tag</HeaderPanelLink>
+					<HeaderPanelLink href="/comic/organize">Organize</HeaderPanelLink>
+					<HeaderPanelDivider>Videos</HeaderPanelDivider>
+					<HeaderPanelLink href="/video">Home</HeaderPanelLink>
+					<HeaderPanelDivider>Images</HeaderPanelDivider>
+					<HeaderPanelLink href="/image">Home</HeaderPanelLink>
+				</HeaderPanelLinks>
+			</HeaderAction>
+		{/if}
 	</HeaderUtilities>
 </Header>
 
-<Content style="padding-left:0%;padding-right:0%;padding-top:0.5rem">
+<Content style="padding-left:0;padding-right:0;padding-top:0">
 	{@render children?.()}
 </Content>
 
@@ -71,8 +76,8 @@
 {/if}
 
 {#if notifications.length > 0}
-	{#each notifications as notification}
-		<div class="notification">
+	<div class="notification-stack">
+		{#each notifications as notification}
 			<ToastNotification
 				timeout={notification.timeout}
 				kind={notification.kind}
@@ -84,15 +89,47 @@
 					notifications.splice(idx, 1);
 				}}
 			/>
-		</div>
-	{/each}
+		{/each}
+	</div>
 {/if}
 
 <style>
-	.notification {
+	.viewer-center {
+		position: absolute;
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		max-width: calc(100vw - 8rem);
+		pointer-events: none;
+	}
+
+	.viewer-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 0.875rem;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+
+	.viewer-page {
+		flex-shrink: 0;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums;
+		color: var(--cds-text-01, #f4f4f4);
+		background: var(--cds-ui-04, #8d8d8d);
+		padding: 0.125rem 0.5rem;
+		border-radius: 1rem;
+	}
+
+	.notification-stack {
 		position: fixed;
-		top: 0;
+		top: 3rem;
 		right: 0;
 		z-index: 9999;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
 	}
 </style>

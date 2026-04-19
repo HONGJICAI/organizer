@@ -25,7 +25,8 @@
 	import { page } from '$app/state';
 	import { config } from '$lib/config.svelte.js';
 	import PaginationContainer from '$lib/components/PaginationContainer.svelte';
-	import { slide } from 'svelte/transition';
+	import { slide, scale } from 'svelte/transition';
+	import { flip } from 'svelte/animate';
 	import FileCard from '$lib/components/FileCard.svelte';
 	import { getOrderByOptions } from './orderByOptions.js';
 
@@ -152,7 +153,7 @@
 	);
 </script>
 
-<container id={page.state.showFileContent ? 'hidelist' : null}>
+<div class="layout" id={page.state.showFileContent ? 'hidelist' : null}>
 	<div id="left">
 		{#if !dataLoaded}
 			<TagStack skeleton title="All Tags" />
@@ -164,38 +165,28 @@
 		{/if}
 	</div>
 	<div id="right">
-		<container style="display:flex; justify-content:space-between; overflow: hidden;">
-			<div>
-				<ContentSwitcher selectedIndex={category} on:change={onCategoryChange}>
-					<Switch>
-						<div style="display: flex; align-items: center;">
-							<Home />
-						</div>
-					</Switch>
-					<Switch>
-						<div style="display: flex; align-items: center;">
-							<Favorite />
-						</div>
-					</Switch>
-					<Switch>
-						<div style="display: flex; align-items: center;">
-							<RecentlyViewed />
-						</div>
-					</Switch>
-					<Switch>
-						<div style="display: flex; align-items: center;">
-							<Recycle />
-						</div>
-					</Switch>
-				</ContentSwitcher>
-			</div>
+		<div class="top-bar">
+			<ContentSwitcher selectedIndex={category} on:change={onCategoryChange}>
+				<Switch>
+					<div class="switch-label"><Home size={16} /><span>Home</span></div>
+				</Switch>
+				<Switch>
+					<div class="switch-label"><Favorite size={16} /><span>Favorites</span></div>
+				</Switch>
+				<Switch>
+					<div class="switch-label"><RecentlyViewed size={16} /><span>Recent</span></div>
+				</Switch>
+				<Switch>
+					<div class="switch-label"><Recycle size={16} /><span>Archive</span></div>
+				</Switch>
+			</ContentSwitcher>
 			<Button
 				iconDescription="refresh"
 				icon={UpdateNow}
 				on:click={onRefresh}
 				disabled={!dataLoaded}
 			/>
-		</container>
+		</div>
 		<div class="search-bar">
 			<Search bind:value={searchStr} on:blur={() => onSearchBlur(searchStr)} />
 			{#if config.OrderByPosition === 'NextToSearchBar' && orderByOptions}
@@ -238,17 +229,27 @@
 						<Toggle labelText="Reverse Order" bind:toggled={reverse} />
 					</div>
 				{/if}
-				<container class="card-flexbox">
+				<div class="card-flexbox">
 					{#if searchFilesInCurrentPage.length === 0}
-						<div style="width: 100%; text-align: center; font-size: 1.5rem; color: var(--text-01);">
-							No Files Found
+						<div class="empty-state">
+							<p>No files found</p>
+							{#if searchStr}
+								<p class="empty-hint">Try a different search term or clear the filter.</p>
+							{/if}
 						</div>
 					{:else}
-						{#each searchFilesInCurrentPage as file, idx}
-							<FileCard {file} light={idx % 2 === 0} onClickFile={() => onClickFile(file)} />
+						{#each searchFilesInCurrentPage as file, idx (file.id)}
+							<div
+								class="card-anim"
+								animate:flip={{ duration: 250 }}
+								in:scale={{ duration: 200, start: 0.9 }}
+								out:scale={{ duration: 150, start: 0.85 }}
+							>
+								<FileCard {file} light={idx % 2 === 0} onClickFile={() => onClickFile(file)} />
+							</div>
 						{/each}
 					{/if}
-				</container>
+				</div>
 			</PaginationContainer>
 		{/if}
 	</div>
@@ -279,17 +280,18 @@
 			}}
 		/>
 	{/if}
-</container>
+</div>
 {#if page.state.showFileContent && selectedFile}
 	<FileContent file={selectedFile} onClose={() => history.back()} />
 {/if}
 
 <style>
-	container {
+	.layout {
 		display: flex;
 		justify-content: space-between;
 		flex-wrap: wrap;
 		align-items: flex-start;
+		gap: 0.5rem;
 	}
 
 	#hidelist {
@@ -297,20 +299,51 @@
 	}
 
 	#left {
-		width: 20%;
+		min-width: 200px;
+		max-width: 260px;
+		flex-shrink: 0;
 	}
 	#right {
-		width: 80%;
+		flex: 1;
+		min-width: 0;
 	}
 
 	@media screen and (max-width: 800px) {
 		#left {
 			width: 100%;
+			min-width: 0;
+			max-width: 100%;
 		}
 		#right {
 			width: 100%;
 		}
+		.top-bar {
+			flex-wrap: wrap;
+			gap: 0.5rem;
+		}
+		.switch-label span {
+			display: none;
+		}
+		.search-bar {
+			gap: 0.5rem;
+		}
 	}
+
+	.top-bar {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		overflow: hidden;
+		margin-bottom: 0.25rem;
+	}
+
+	.switch-label {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 0.8125rem;
+	}
+
 	.search-bar {
 		display: flex;
 		gap: 1rem;
@@ -321,7 +354,31 @@
 	.card-flexbox {
 		display: flex;
 		flex-wrap: wrap;
-		justify-content: center;
-		align-items: center;
+		justify-content: flex-start;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.5rem 0;
+	}
+
+	.card-anim {
+		width: var(--card-width);
+	}
+
+	.empty-state {
+		width: 100%;
+		padding: 3rem 1rem;
+		text-align: center;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+
+	.empty-state p {
+		font-size: 1.125rem;
+		margin: 0;
+	}
+
+	.empty-hint {
+		font-size: 0.875rem !important;
+		margin-top: 0.5rem !important;
+		color: var(--cds-text-03, #8d8d8d) !important;
 	}
 </style>
