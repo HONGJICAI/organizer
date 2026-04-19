@@ -90,7 +90,7 @@ class TestBackupDatabase:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "prod.sqlite").write_bytes(b"db content")
         asyncio.run(backup_database())
-        backups = list((tmp_path / "dbbackup").glob("prod_*.sqlite"))
+        backups = list((tmp_path / "backups").glob("prod_*.sqlite"))
         assert len(backups) == 1
 
     def test_skips_when_unchanged(self, tmp_path, monkeypatch):
@@ -100,7 +100,7 @@ class TestBackupDatabase:
         asyncio.run(backup_database())
         asyncio.run(backup_database())
         # shutil.copy2 preserves mtime, so second run should be skipped
-        backups = list((tmp_path / "dbbackup").glob("prod_*.sqlite"))
+        backups = list((tmp_path / "backups").glob("prod_*.sqlite"))
         assert len(backups) == 1
 
     def test_prunes_old_backups(self, tmp_path, monkeypatch):
@@ -108,7 +108,7 @@ class TestBackupDatabase:
         import time
         from tasks.backup import backup_database
         monkeypatch.chdir(tmp_path)
-        backup_dir = tmp_path / "dbbackup"
+        backup_dir = tmp_path / "backups"
         backup_dir.mkdir()
         old_mtime = time.time() - 3600
         for i in range(8):
@@ -125,7 +125,7 @@ class TestBackupDatabase:
         import time
         from tasks.backup import backup_database
         monkeypatch.chdir(tmp_path)
-        backup_dir = tmp_path / "dbbackup"
+        backup_dir = tmp_path / "backups"
         backup_dir.mkdir()
         old_mtime = time.time() - 3600
         for i in range(10):

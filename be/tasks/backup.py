@@ -4,8 +4,10 @@ import datetime
 import os
 import shutil
 
-_db_path = os.environ.get("DB_PATH", "prod.sqlite")
-_backup_dir = os.path.join(os.path.dirname(os.path.abspath(_db_path)), "backups")
+def _get_paths() -> tuple[str, str]:
+    db_path = os.environ.get("DB_PATH", "prod.sqlite")
+    backup_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
+    return db_path, backup_dir
 
 
 async def backup_database_loop():
@@ -28,23 +30,26 @@ async def backup_database_loop():
 async def backup_database():
     """Backup the database to the backups subfolder only if it has been modified"""
     try:
-        if not os.path.exists(_db_path):
-            print(f"[Task] Database file {_db_path} not found", flush=True)
+        db_path, backup_dir = _get_paths()
+
+        if not os.path.exists(db_path):
+            print(f"[Task] Database file {db_path} not found", flush=True)
             return
 
-        db_mtime = os.path.getmtime(_db_path)
+        db_mtime = os.path.getmtime(db_path)
         db_modified_time = datetime.datetime.fromtimestamp(db_mtime)
 
-        os.makedirs(_backup_dir, exist_ok=True)
+        os.makedirs(backup_dir, exist_ok=True)
 
-        db_stem = os.path.splitext(os.path.basename(_db_path))[0]
+        db_stem = os.path.splitext(os.path.basename(db_path))[0]
+        backup_ext = os.path.splitext(db_path)[1] or ".db"
         backup_files = sorted([
-            f for f in os.listdir(_backup_dir)
-            if f.startswith(f"{db_stem}_") and f.endswith(".db")
+            f for f in os.listdir(backup_dir)
+            if f.startswith(f"{db_stem}_") and f.endswith(backup_ext)
         ])
 
         if backup_files:
-            latest_path = os.path.join(_backup_dir, backup_files[-1])
+            latest_path = os.path.join(backup_dir, backup_files[-1])
             if abs(db_mtime - os.path.getmtime(latest_path)) < 1:
                 print(
                     f"[Task] Backup skipped — no changes "
@@ -54,17 +59,17 @@ async def backup_database():
                 return
 
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = os.path.join(_backup_dir, f"{db_stem}_{timestamp}.db")
-        shutil.copy2(_db_path, backup_path)
+        backup_path = os.path.join(backup_dir, f"{db_stem}_{timestamp}{backup_ext}")
+        shutil.copy2(db_path, backup_path)
         print(f"[Task] Backed up to {backup_path}", flush=True)
 
         # Keep last 7 backups
         backup_files = sorted([
-            f for f in os.listdir(_backup_dir)
-            if f.startswith(f"{db_stem}_") and f.endswith(".db")
+            f for f in os.listdir(backup_dir)
+            if f.startswith(f"{db_stem}_") and f.endswith(backup_ext)
         ])
         for old in backup_files[:-7]:
-            os.remove(os.path.join(_backup_dir, old))
+            os.remove(os.path.join(backup_dir, old))
             print(f"[Task] Removed old backup: {old}", flush=True)
 
     except Exception as e:
