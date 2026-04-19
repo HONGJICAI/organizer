@@ -1,0 +1,11 @@
+fe/node_modules
+fe/.svelte-kit
+fe/build
+be/__pycache__
+be/.pytest_cache
+be/.venv
+be/tests
+be/*.sqlite
+**/*.pyc
+.git
+.devcontainer

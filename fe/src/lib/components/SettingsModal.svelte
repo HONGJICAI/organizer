@@ -2,7 +2,7 @@
 	import { client } from '$lib/client/client.gen';
 	import { config } from '$lib/config.svelte';
 	import { ContentSwitcher, Modal, Switch, TextInput } from 'carbon-components-svelte';
-	import { FitToHeight, FitToScreen, FitToWidth } from 'carbon-icons-svelte';
+	import { FitToHeight, FitToScreen, FitToWidth, ArrowsVertical } from 'carbon-icons-svelte';
 
 	interface Props {
 		open?: boolean;
@@ -37,23 +37,29 @@
 	<TextInput labelText="API Server" bind:value={apiServer} />
 	<TextInput labelText="Static Server" bind:value={staticServer} />
 	<h>Read</h>
-	<container>
+	<div>
 		<ContentSwitcher bind:selectedIndex={viewMode}>
 			<Switch>
-				<div style="display: flex; align-items: center;">
-					<FitToWidth style="margin-right: 0.5rem;" />
-				</div>
+				<div class="switch-label"><FitToWidth /><span>Width</span></div>
 			</Switch>
 			<Switch>
-				<div style="display: flex; align-items: center;">
-					<FitToHeight style="margin-right: 0.5rem;" />
-				</div>
+				<div class="switch-label"><FitToHeight /><span>Height</span></div>
 			</Switch>
-			<Switch disabled>
-				<div style="display: flex; align-items: center;">
-					<FitToScreen style="margin-right: 0.5rem;" />
-				</div>
+			<Switch>
+				<div class="switch-label"><FitToScreen /><span>Contain</span></div>
+			</Switch>
+			<Switch>
+				<div class="switch-label"><ArrowsVertical /><span>Scroll</span></div>
 			</Switch>
 		</ContentSwitcher>
-	</container>
+	</div>
 </Modal>
+
+<style>
+	.switch-label {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 0.8125rem;
+	}
+</style>

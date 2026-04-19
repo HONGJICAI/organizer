@@ -1,0 +1,17 @@
+{
+  "name": "Organizer",
+  "short_name": "Organizer",
+  "description": "Personal manga/video/image organizer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#161616",
+  "theme_color": "#161616",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

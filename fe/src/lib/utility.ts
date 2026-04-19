@@ -19,8 +19,8 @@ function separateFilenameImpl(filename: string): string[] {
 				ret.push(buffer.trim());
 				buffer = '';
 			}
-			const pair = pairsSeparator.get(filename[i]);
-			const j = filename.indexOf(pair!, i);
+			const pair = pairsSeparator.get(filename[i]) ?? '';
+			const j = filename.indexOf(pair, i);
 			if (j < 0) {
 				return [];
 			}
