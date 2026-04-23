@@ -18,9 +18,22 @@ class Config:
     class Video:
         scan_pathes = [os.environ.get("VIDEO_SCAN_PATH", "/data/videos")]
 
+    class Image:
+        scan_pathes = [os.environ.get("IMAGE_SCAN_PATH", "/data/images")]
+        liked_path = os.path.join(scan_pathes[0], "liked")
+
 if not os.path.exists(Config.nginx_video_path):
     os.makedirs(Config.nginx_video_path)
 if not os.path.exists(Config.nginx_comic_path):
     os.makedirs(Config.nginx_comic_path)
 if not os.path.exists(Config.nginx_image_path):
     os.makedirs(Config.nginx_image_path)
+
+# Ensure liked folder exists and is symlinked into nginx at startup
+try:
+    os.makedirs(Config.Image.liked_path, exist_ok=True)
+    _liked_link = os.path.join(Config.nginx_image_path, "liked")
+    if not os.path.exists(_liked_link):
+        os.symlink(Config.Image.liked_path, _liked_link)
+except OSError:
+    pass

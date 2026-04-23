@@ -5,10 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
 import db
-from api import comics, comicpage, videos, images, system
+from api import auth, comics, comicpage, videos, images, system
+from core.auth import require_auth
 from core.lifespan import lifespan
 from core.exceptions import http_exception_handler, validation_exception_handler
 from core.openapi import custom_generate_unique_id, custom_openapi_schema
+from fastapi import Depends
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -35,11 +37,13 @@ app.add_middleware(
 )
 
 # Register API routers
-app.include_router(comics.router)
-app.include_router(comicpage.router)
-app.include_router(videos.router)
-app.include_router(images.router)
-app.include_router(system.router)
+_protected = [Depends(require_auth)]
+app.include_router(auth.router)
+app.include_router(comics.router, dependencies=_protected)
+app.include_router(comicpage.router, dependencies=_protected)
+app.include_router(videos.router, dependencies=_protected)
+app.include_router(images.router, dependencies=_protected)
+app.include_router(system.router, dependencies=_protected)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,8 @@
 	import SettingsModal from './SettingsModal.svelte';
 	import { notifications } from '$lib/state.svelte';
 	import { viewerState } from '$lib/viewerState.svelte';
+	import { authState } from '$lib/auth.svelte';
+	import Logout from 'carbon-icons-svelte/lib/Logout.svelte';
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
@@ -47,6 +49,13 @@
 
 	<HeaderUtilities>
 		<HeaderGlobalAction aria-label="Settings" icon={SettingsAdjust} on:click={onClickSettings} />
+		{#if authState.required}
+			<HeaderGlobalAction
+				aria-label="Logout"
+				icon={Logout}
+				on:click={() => authState.clearToken()}
+			/>
+		{/if}
 		{#if viewerState.active}
 			<HeaderGlobalAction aria-label="Close" icon={Close} on:click={() => viewerState.onClose()} />
 		{:else}

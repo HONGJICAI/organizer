@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+import global_data
 from conftest import MockComicfile, insert_comic, make_jpeg_bytes
 from loader import ComicLoader
 from tasks.cache import comic_access_cache
@@ -74,20 +75,23 @@ class TestLike:
             r = client.post("/api/comics/1/99/like")
         assert r.status_code == 404
 
-    def test_creates_image_file(self, client, session, tmp_path):
+    def test_creates_image_file(self, client, session, tmp_path, monkeypatch):
+        liked_dir = tmp_path / "liked"
+        monkeypatch.setattr(global_data.Config.Image, "liked_path", str(liked_dir))
         insert_comic(session, 1, name="hero.zip", page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
             r = client.post("/api/comics/1/2/like")
         assert r.status_code == 200
         assert r.json()["detail"] == "OK"
-        saved = tmp_path / "images" / "hero.zip_2.jpg"
-        assert saved.exists()
+        assert (liked_dir / "hero.zip_2.jpg").exists()
 
-    def test_already_liked_returns_ok(self, client, session, tmp_path):
+    def test_already_liked_returns_ok(self, client, session, tmp_path, monkeypatch):
+        liked_dir = tmp_path / "liked"
+        liked_dir.mkdir()
+        monkeypatch.setattr(global_data.Config.Image, "liked_path", str(liked_dir))
         insert_comic(session, 1, name="hero.zip", page=3)
-        # Pre-create the liked image so it already exists
-        existing = tmp_path / "images" / "hero.zip_1.jpg"
+        existing = liked_dir / "hero.zip_1.jpg"
         existing.write_bytes(make_jpeg_bytes())
         r = client.post("/api/comics/1/1/like")
         assert r.status_code == 200

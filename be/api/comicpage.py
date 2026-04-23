@@ -54,7 +54,7 @@ class ComicPageCBV:
     def like(self, id: int, page: int):
         comic = self.__get(id)
         name = f"{comic.name}_{page}.jpg"
-        path = os.path.join(global_data.Config.nginx_image_path, name)
+        path = os.path.join(global_data.Config.Image.liked_path, name)
         if os.path.exists(path):
             return APIMessage(detail="OK")
         cf = comicfile.create_open(comic.path)
@@ -63,6 +63,7 @@ class ComicPageCBV:
         ok, buf = cf.read(page - 1)
         if not ok:
             abort(404, "Page not found")
+        os.makedirs(global_data.Config.Image.liked_path, exist_ok=True)
         img = Image.open(io.BytesIO(buf))
         img = img.convert("RGB")
         img.save(path, "JPEG")
