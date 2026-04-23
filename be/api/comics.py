@@ -59,7 +59,7 @@ class ComicCBV:
         comic_entity = self.__get(id)
         return comic_entity.model_dump()
 
-    @router.post(
+    @router.get(
         "/api/comics/{id}/detail",
         tags=["comics"],
         responses={

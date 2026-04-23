@@ -7,6 +7,13 @@ export type ApiMessage = {
     detail: string;
 };
 
+export type AuthStatusResponse = {
+    required: boolean;
+};
+
+/**
+ * Response for comic details
+ */
 export type ComicDetailResponse = {
     pageDetails: Array<ComicPageDetailResponse>;
 };
@@ -19,23 +26,53 @@ export type ComicEntity = {
     updateTime: string;
     archived?: boolean;
     favorited?: boolean;
-    lastViewedTime?: string;
+    lastViewedTime?: string | null;
     lastViewedPosition?: number;
     coverPosition?: number;
     entityUpdateTime?: string;
     page?: number;
 };
 
+/**
+ * Response for comic page details
+ */
 export type ComicPageDetailResponse = {
     name: string;
 };
 
+/**
+ * Request to rename a comic
+ */
+export type ComicRenameRequest = {
+    name: string;
+};
+
+/**
+ * Response for comic rename operation
+ */
+export type ComicRenameResponse = {
+    name: string;
+};
+
+/**
+ * Response for favor/unfavor operations
+ */
 export type FavorResponse = {
     favorited: boolean;
 };
 
 export type HttpValidationError = {
     detail?: Array<ValidationError>;
+};
+
+export type HealthResponse = {
+    status: string;
+    cache_size: number;
+    message: string;
+};
+
+export type ImageDetailResponse = {
+    pageDetails: Array<ImagePageDetailResponse>;
 };
 
 export type ImageEntity = {
@@ -46,28 +83,53 @@ export type ImageEntity = {
     updateTime: string;
     archived?: boolean;
     favorited?: boolean;
-    lastViewedTime?: string;
+    lastViewedTime?: string | null;
     lastViewedPosition?: number;
     coverPosition?: number;
     entityUpdateTime?: string;
+    page?: number;
 };
 
-export type MessageResponse = {
-    msg: string;
-};
-
-export type RenameRequest = {
+export type ImagePageDetailResponse = {
     name: string;
 };
 
-export type RenameResponse = {
+export type ImageRenameRequest = {
     name: string;
+};
+
+export type ImageRenameResponse = {
+    name: string;
+};
+
+export type LoginRequest = {
+    password: string;
+};
+
+export type LoginResponse = {
+    token: string;
+};
+
+export type ScanResponse = {
+    status: string;
+    message: string;
+};
+
+export type ScanStatusResponse = {
+    running: boolean;
+    last_result?: {
+        [key: string]: unknown;
+    } | null;
 };
 
 export type ValidationError = {
     loc: Array<string | number>;
     msg: string;
     type: string;
+    input?: unknown;
+    ctx?: {
+        [key: string]: unknown;
+    };
 };
 
 export type VideoEntity = {
@@ -78,107 +140,98 @@ export type VideoEntity = {
     updateTime: string;
     archived?: boolean;
     favorited?: boolean;
-    lastViewedTime?: string;
+    lastViewedTime?: string | null;
     lastViewedPosition?: number;
     coverPosition?: number;
     entityUpdateTime?: string;
     durationInSecond?: number;
 };
 
-export type VideoGetAllData = {
+export type MessageResponse = {
+    msg: string;
+};
+
+export type StatusData = {
     body?: never;
     path?: never;
-    query?: {
-        top?: number;
-    };
-    url: '/api/videos';
-};
-
-export type VideoGetAllErrors = {
-    /**
-     * Bad Request
-     */
-    400: MessageResponse;
-    /**
-     * Validation Error
-     */
-    422: MessageResponse;
-};
-
-export type VideoGetAllError = VideoGetAllErrors[keyof VideoGetAllErrors];
-
-export type VideoGetAllResponses = {
-    /**
-     * Successful Response
-     */
-    200: Array<VideoEntity>;
-};
-
-export type VideoGetAllResponse = VideoGetAllResponses[keyof VideoGetAllResponses];
-
-export type VideoDeleteData = {
-    body?: never;
-    path: {
-        id: number;
-    };
-    query?: {
-        permanent?: boolean;
-    };
-    url: '/api/videos/{id}';
-};
-
-export type VideoDeleteErrors = {
-    /**
-     * Bad Request
-     */
-    400: MessageResponse;
-    /**
-     * Validation Error
-     */
-    422: MessageResponse;
-};
-
-export type VideoDeleteError = VideoDeleteErrors[keyof VideoDeleteErrors];
-
-export type VideoDeleteResponses = {
-    /**
-     * Successful Response
-     */
-    200: ApiMessage;
-};
-
-export type VideoDeleteResponse = VideoDeleteResponses[keyof VideoDeleteResponses];
-
-export type VideoGetData = {
-    body?: never;
-    path: {
-        id: number;
-    };
     query?: never;
-    url: '/api/videos/{id}';
+    url: '/api/auth/status';
 };
 
-export type VideoGetErrors = {
+export type StatusErrors = {
     /**
      * Bad Request
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
-export type VideoGetError = VideoGetErrors[keyof VideoGetErrors];
+export type StatusError = StatusErrors[keyof StatusErrors];
 
-export type VideoGetResponses = {
+export type StatusResponses = {
     /**
      * Successful Response
      */
-    200: VideoEntity;
+    200: AuthStatusResponse;
 };
 
-export type VideoGetResponse = VideoGetResponses[keyof VideoGetResponses];
+export type StatusResponse = StatusResponses[keyof StatusResponses];
+
+export type LoginData = {
+    body: LoginRequest;
+    path?: never;
+    query?: never;
+    url: '/api/auth/login';
+};
+
+export type LoginErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type LoginError = LoginErrors[keyof LoginErrors];
+
+export type LoginResponses = {
+    /**
+     * Successful Response
+     */
+    200: LoginResponse;
+};
+
+export type LoginResponse2 = LoginResponses[keyof LoginResponses];
 
 export type ComicGetAllData = {
     body?: never;
@@ -196,9 +249,21 @@ export type ComicGetAllErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicGetAllError = ComicGetAllErrors[keyof ComicGetAllErrors];
@@ -229,9 +294,21 @@ export type ComicDeleteErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicDeleteError = ComicDeleteErrors[keyof ComicDeleteErrors];
@@ -258,9 +335,21 @@ export type ComicGetErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicGetError = ComicGetErrors[keyof ComicGetErrors];
@@ -289,6 +378,10 @@ export type ComicDetailErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
      * Not Found
      */
     404: MessageResponse;
@@ -296,6 +389,10 @@ export type ComicDetailErrors = {
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicDetailError = ComicDetailErrors[keyof ComicDetailErrors];
@@ -324,6 +421,10 @@ export type ComicUnfavorErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
      * Not Found
      */
     404: MessageResponse;
@@ -331,6 +432,10 @@ export type ComicUnfavorErrors = {
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicUnfavorError = ComicUnfavorErrors[keyof ComicUnfavorErrors];
@@ -359,6 +464,10 @@ export type ComicFavorErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
      * Not Found
      */
     404: MessageResponse;
@@ -366,6 +475,10 @@ export type ComicFavorErrors = {
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicFavorError = ComicFavorErrors[keyof ComicFavorErrors];
@@ -394,6 +507,10 @@ export type ComicRefreshErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
      * Not Found
      */
     404: MessageResponse;
@@ -401,6 +518,10 @@ export type ComicRefreshErrors = {
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicRefreshError = ComicRefreshErrors[keyof ComicRefreshErrors];
@@ -415,7 +536,7 @@ export type ComicRefreshResponses = {
 export type ComicRefreshResponse = ComicRefreshResponses[keyof ComicRefreshResponses];
 
 export type ComicRenameData = {
-    body: RenameRequest;
+    body: ComicRenameRequest;
     path: {
         id: number;
     };
@@ -429,6 +550,10 @@ export type ComicRenameErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
      * Not Found
      */
     404: MessageResponse;
@@ -436,6 +561,10 @@ export type ComicRenameErrors = {
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicRenameError = ComicRenameErrors[keyof ComicRenameErrors];
@@ -444,10 +573,10 @@ export type ComicRenameResponses = {
     /**
      * Successful Response
      */
-    200: RenameResponse;
+    200: ComicRenameResponse;
 };
 
-export type ComicRenameResponse = ComicRenameResponses[keyof ComicRenameResponses];
+export type ComicRenameResponse2 = ComicRenameResponses[keyof ComicRenameResponses];
 
 export type ComicPageGetData = {
     body?: never;
@@ -455,7 +584,9 @@ export type ComicPageGetData = {
         id: number;
         page: number;
     };
-    query?: never;
+    query?: {
+        token?: string | null;
+    };
     url: '/api/comics/{id}/{page}';
 };
 
@@ -465,9 +596,21 @@ export type ComicPageGetErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicPageGetError = ComicPageGetErrors[keyof ComicPageGetErrors];
@@ -495,9 +638,21 @@ export type ComicPageLikeErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicPageLikeError = ComicPageLikeErrors[keyof ComicPageLikeErrors];
@@ -525,9 +680,21 @@ export type ComicPageSetCoverErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ComicPageSetCoverError = ComicPageSetCoverErrors[keyof ComicPageSetCoverErrors];
@@ -538,6 +705,137 @@ export type ComicPageSetCoverResponses = {
      */
     200: unknown;
 };
+
+export type VideoGetAllData = {
+    body?: never;
+    path?: never;
+    query?: {
+        top?: number;
+    };
+    url: '/api/videos';
+};
+
+export type VideoGetAllErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type VideoGetAllError = VideoGetAllErrors[keyof VideoGetAllErrors];
+
+export type VideoGetAllResponses = {
+    /**
+     * Successful Response
+     */
+    200: Array<VideoEntity>;
+};
+
+export type VideoGetAllResponse = VideoGetAllResponses[keyof VideoGetAllResponses];
+
+export type VideoDeleteData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: {
+        permanent?: boolean;
+    };
+    url: '/api/videos/{id}';
+};
+
+export type VideoDeleteErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type VideoDeleteError = VideoDeleteErrors[keyof VideoDeleteErrors];
+
+export type VideoDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiMessage;
+};
+
+export type VideoDeleteResponse = VideoDeleteResponses[keyof VideoDeleteResponses];
+
+export type VideoGetData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/videos/{id}';
+};
+
+export type VideoGetErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type VideoGetError = VideoGetErrors[keyof VideoGetErrors];
+
+export type VideoGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: VideoEntity;
+};
+
+export type VideoGetResponse = VideoGetResponses[keyof VideoGetResponses];
 
 export type ImageGetAllData = {
     body?: never;
@@ -554,9 +852,21 @@ export type ImageGetAllErrors = {
      */
     400: MessageResponse;
     /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
      * Validation Error
      */
     422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
 };
 
 export type ImageGetAllError = ImageGetAllErrors[keyof ImageGetAllErrors];
@@ -569,6 +879,561 @@ export type ImageGetAllResponses = {
 };
 
 export type ImageGetAllResponse = ImageGetAllResponses[keyof ImageGetAllResponses];
+
+export type ImageDeleteData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}';
+};
+
+export type ImageDeleteErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageDeleteError = ImageDeleteErrors[keyof ImageDeleteErrors];
+
+export type ImageDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiMessage;
+};
+
+export type ImageDeleteResponse = ImageDeleteResponses[keyof ImageDeleteResponses];
+
+export type ImageGetData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}';
+};
+
+export type ImageGetErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageGetError = ImageGetErrors[keyof ImageGetErrors];
+
+export type ImageGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageEntity;
+};
+
+export type ImageGetResponse = ImageGetResponses[keyof ImageGetResponses];
+
+export type ImageDetailData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/detail';
+};
+
+export type ImageDetailErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageDetailError = ImageDetailErrors[keyof ImageDetailErrors];
+
+export type ImageDetailResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageDetailResponse;
+};
+
+export type ImageDetailResponse2 = ImageDetailResponses[keyof ImageDetailResponses];
+
+export type ImageGetPageData = {
+    body?: never;
+    path: {
+        id: number;
+        page: number;
+    };
+    query?: {
+        token?: string | null;
+    };
+    url: '/api/images/{id}/{page}';
+};
+
+export type ImageGetPageErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageGetPageError = ImageGetPageErrors[keyof ImageGetPageErrors];
+
+export type ImageGetPageResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ImageUnfavorData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/favor';
+};
+
+export type ImageUnfavorErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageUnfavorError = ImageUnfavorErrors[keyof ImageUnfavorErrors];
+
+export type ImageUnfavorResponses = {
+    /**
+     * Successful Response
+     */
+    200: FavorResponse;
+};
+
+export type ImageUnfavorResponse = ImageUnfavorResponses[keyof ImageUnfavorResponses];
+
+export type ImageFavorData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/favor';
+};
+
+export type ImageFavorErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageFavorError = ImageFavorErrors[keyof ImageFavorErrors];
+
+export type ImageFavorResponses = {
+    /**
+     * Successful Response
+     */
+    200: FavorResponse;
+};
+
+export type ImageFavorResponse = ImageFavorResponses[keyof ImageFavorResponses];
+
+export type ImageRefreshData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/refresh';
+};
+
+export type ImageRefreshErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageRefreshError = ImageRefreshErrors[keyof ImageRefreshErrors];
+
+export type ImageRefreshResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageEntity;
+};
+
+export type ImageRefreshResponse = ImageRefreshResponses[keyof ImageRefreshResponses];
+
+export type ImageRenameData = {
+    body: ImageRenameRequest;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/rename';
+};
+
+export type ImageRenameErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageRenameError = ImageRenameErrors[keyof ImageRenameErrors];
+
+export type ImageRenameResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageRenameResponse;
+};
+
+export type ImageRenameResponse2 = ImageRenameResponses[keyof ImageRenameResponses];
+
+export type ImageSetCoverData = {
+    body?: never;
+    path: {
+        id: number;
+        page: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/{page}/cover';
+};
+
+export type ImageSetCoverErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageSetCoverError = ImageSetCoverErrors[keyof ImageSetCoverErrors];
+
+export type ImageSetCoverResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type HealthCheckData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/health';
+};
+
+export type HealthCheckErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type HealthCheckError = HealthCheckErrors[keyof HealthCheckErrors];
+
+export type HealthCheckResponses = {
+    /**
+     * Successful Response
+     */
+    200: HealthResponse;
+};
+
+export type HealthCheckResponse = HealthCheckResponses[keyof HealthCheckResponses];
+
+export type ScanStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/scan';
+};
+
+export type ScanStatusErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ScanStatusError = ScanStatusErrors[keyof ScanStatusErrors];
+
+export type ScanStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScanStatusResponse;
+};
+
+export type ScanStatusResponse2 = ScanStatusResponses[keyof ScanStatusResponses];
+
+export type TriggerScanData = {
+    body?: never;
+    path?: never;
+    query?: {
+        media_type?: 'comics' | 'videos' | 'images' | 'all';
+    };
+    url: '/api/system/scan';
+};
+
+export type TriggerScanErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type TriggerScanError = TriggerScanErrors[keyof TriggerScanErrors];
+
+export type TriggerScanResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScanResponse;
+};
+
+export type TriggerScanResponse = TriggerScanResponses[keyof TriggerScanResponses];
+
+export type TriggerBackupData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/debug/backup-now';
+};
+
+export type TriggerBackupErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type TriggerBackupError = TriggerBackupErrors[keyof TriggerBackupErrors];
+
+export type TriggerBackupResponses = {
+    /**
+     * Successful Response
+     */
+    200: {
+        [key: string]: string;
+    };
+};
+
+export type TriggerBackupResponse = TriggerBackupResponses[keyof TriggerBackupResponses];
 
 export type ClientOptions = {
     baseUrl: 'http://127.0.0.1:8001' | (string & {});

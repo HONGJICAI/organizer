@@ -19,30 +19,31 @@ def custom_openapi_schema(app: FastAPI):
         routes=app.routes,
     )
 
+    openapi_schema.setdefault("components", {}).setdefault("schemas", {})["MessageResponse"] = {
+        "type": "object",
+        "properties": {"msg": {"type": "string", "title": "Msg"}},
+        "required": ["msg"],
+        "title": "MessageResponse",
+    }
+
+    _msg_ref = {"$ref": "#/components/schemas/MessageResponse"}
+    _error_codes = {
+        "400": "Bad Request",
+        "401": "Unauthorized",
+        "404": "Not Found",
+        "422": "Validation Error",
+        "500": "Internal Server Error",
+    }
+
     for path in openapi_schema["paths"].values():
         for method in path.values():
             method["responses"].update(
                 {
-                    "400": {
-                        "description": "Bad Request",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/MessageResponse"
-                                }
-                            }
-                        },
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/MessageResponse"
-                                }
-                            }
-                        },
-                    },
+                    code: {
+                        "description": desc,
+                        "content": {"application/json": {"schema": _msg_ref}},
+                    }
+                    for code, desc in _error_codes.items()
                 }
             )
 

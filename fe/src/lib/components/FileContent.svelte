@@ -11,6 +11,7 @@
 	import {
 		Comic,
 		ErrorNotification,
+		Image,
 		MediaFile,
 		MediaType,
 		SuccessNotification,
@@ -21,6 +22,7 @@
 	import { addNotification } from '$lib/state.svelte';
 	import { viewerState } from '$lib/viewerState.svelte';
 	import { ComicpageService } from '$lib/client';
+	import { authState } from '$lib/auth.svelte';
 
 	interface Props {
 		file: MediaFile;
@@ -69,16 +71,31 @@
 	});
 
 	let comic = $derived(file as Comic);
+	let image = $derived(file as Image);
 	let video = $derived(file as Video);
+
+	function pageApiUrl(mediaType: MediaType, id: number, pageNum: number): string {
+		const base =
+			mediaType === MediaType.Image
+				? `${config.apiServer}/api/images/${id}/${pageNum}`
+				: `${config.apiServer}/api/comics/${id}/${pageNum}`;
+		return authState.token ? `${base}?token=${authState.token}` : base;
+	}
 
 	$effect(() => {
 		switch (file.type) {
 			case MediaType.Comic:
 				maxPage = comic.page ?? 0;
 				if (comicViewMode !== 'fit-to-scroll') {
-					objUrl = `${config.apiServer}/api/comics/${comic?.id}/${page}`;
-					nextUrl =
-						page + 1 <= maxPage ? `${config.apiServer}/api/comics/${comic?.id}/${page + 1}` : '';
+					objUrl = pageApiUrl(MediaType.Comic, comic.id, page);
+					nextUrl = page + 1 <= maxPage ? pageApiUrl(MediaType.Comic, comic.id, page + 1) : '';
+				}
+				break;
+			case MediaType.Image:
+				maxPage = image.page ?? 0;
+				if (comicViewMode !== 'fit-to-scroll') {
+					objUrl = pageApiUrl(MediaType.Image, image.id, page);
+					nextUrl = page + 1 <= maxPage ? pageApiUrl(MediaType.Image, image.id, page + 1) : '';
 				}
 				break;
 			case MediaType.Video:
@@ -89,7 +106,11 @@
 
 	// Reset scroll state when entering scroll mode
 	$effect(() => {
-		if (comicViewMode === 'fit-to-scroll' && maxPage > 0) {
+		if (
+			comicViewMode === 'fit-to-scroll' &&
+			maxPage > 0 &&
+			(file.type === MediaType.Comic || file.type === MediaType.Image)
+		) {
 			loadedCount = Math.min(5, maxPage);
 			viewerState.page = 1;
 		}
@@ -157,7 +178,7 @@
 
 	const preloadImageAsync = async (url: string) => {
 		new Promise((resolve, reject) => {
-			const img = new Image();
+			const img = new window.Image();
 			img.onload = resolve;
 			img.onerror = reject;
 			img.src = url;
@@ -227,7 +248,7 @@
 </script>
 
 <div class="viewer-root">
-	{#if file.type === MediaType.Comic && comicViewMode === 'fit-to-scroll'}
+	{#if (file.type === MediaType.Comic || file.type === MediaType.Image) && comicViewMode === 'fit-to-scroll'}
 		<!-- Scroll mode: all pages stacked vertically with lazy loading -->
 		<div class="fit-to-scroll">
 			{#each Array.from({ length: loadedCount }, (_, i) => i + 1) as pageNum}
@@ -251,7 +272,7 @@
 					<img
 						use:trackPage={pageNum}
 						data-page={pageNum}
-						src={`${config.apiServer}/api/comics/${comic.id}/${pageNum}`}
+						src={pageApiUrl(file.type, file.id, pageNum)}
 						alt={`Page ${pageNum}`}
 						class="scroll-page"
 						onerror={() => {
@@ -265,13 +286,13 @@
 					<span>Loading…</span>
 				</div>
 			{:else}
-				<div class="scroll-end">End of comic</div>
+				<div class="scroll-end">End of {file.type === MediaType.Image ? 'album' : 'comic'}</div>
 			{/if}
 		</div>
 	{:else}
 		<!-- Paged mode -->
 		<div class={comicViewMode}>
-			{#if file.type === MediaType.Comic}
+			{#if file.type === MediaType.Comic || file.type === MediaType.Image}
 				<ProgressBar hideLabel max={maxPage} value={page} />
 				<div onclick={onClickImage} role="none">
 					{#if pageError}
@@ -295,7 +316,7 @@
 						<img
 							bind:this={comicTarget}
 							src={`${objUrl}${pageRetry > 0 ? `?r=${pageRetry}` : ''}`}
-							alt="comic content"
+							alt="page content"
 							onload={() => {
 								loading = false;
 								preloadImageAsync(nextUrl);
@@ -339,7 +360,7 @@
 	{/if}
 </div>
 
-{#if file.type === MediaType.Comic}
+{#if file.type === MediaType.Comic || file.type === MediaType.Image}
 	<div class="bottom-bar">
 		{#if comicViewMode === 'fit-to-scroll'}
 			<span class="jump-label">{viewerState.page} / {maxPage}</span>

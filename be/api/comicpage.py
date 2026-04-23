@@ -3,6 +3,7 @@ import datetime
 import io
 import os
 from fastapi import APIRouter, Depends, Response
+from core.auth import require_auth, require_media_auth
 from fastapi_utils.api_model import APIMessage
 from fastapi_utils.cbv import cbv
 from PIL import Image
@@ -32,7 +33,7 @@ class ComicPageCBV:
         return comic
 
     @router.get("/api/comics/{id}/{page}", tags=["comicpage"])
-    def get(self, id: int, page: int) -> Response:
+    def get(self, id: int, page: int, _: None = Depends(require_media_auth)) -> Response:
         comic = self.__get(id)
         cf = comicfile.create_open(comic.path)
         if cf is None:
@@ -51,7 +52,7 @@ class ComicPageCBV:
         abort(404, "Page not found")
 
     @router.post("/api/comics/{id}/{page}/like", tags=["comicpage"])
-    def like(self, id: int, page: int):
+    def like(self, id: int, page: int, _: None = Depends(require_auth)):
         comic = self.__get(id)
         name = f"{comic.name}_{page}.jpg"
         path = os.path.join(global_data.Config.Image.liked_path, name)
@@ -70,7 +71,7 @@ class ComicPageCBV:
         return APIMessage(detail="OK")
 
     @router.post("/api/comics/{id}/{page}/cover", tags=["comicpage"])
-    def set_cover(self, id: int, page: int):
+    def set_cover(self, id: int, page: int, _: None = Depends(require_auth)):
         comic = self.__get(id)
         cf = comicfile.create_open(comic.path)
         if cf is None:

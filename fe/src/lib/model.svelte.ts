@@ -1,6 +1,6 @@
 import { config } from '$lib/config.svelte';
 import type { ComicEntity, ImageEntity, VideoEntity } from './client';
-import { ComicEntitySchema, VideoEntitySchema } from './client/schemas.gen';
+import { ComicEntitySchema, ImageEntitySchema, VideoEntitySchema } from './client/schemas.gen';
 import { separateFilename } from './utility';
 
 export enum MediaType {
@@ -124,6 +124,16 @@ export class Comic extends MediaFile {
 			default:
 				return super.compareTo(other, comparison);
 		}
+	}
+}
+export class Image extends MediaFile {
+	page: number;
+	get coverUrl(): string {
+		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg`;
+	}
+	constructor(json: ImageEntity) {
+		super(MediaType.Image, json);
+		this.page = json.page ?? ImageEntitySchema.properties.page.default;
 	}
 }
 export class Video extends MediaFile {

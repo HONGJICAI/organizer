@@ -1,9 +1,9 @@
 <script lang="ts">
 	import FileCard from '$lib/components/FileCard.svelte';
 	import HorizontalScroller from '$lib/components/HorizontalScroller.svelte';
-	import { Comic, MediaFile, MediaType, Video } from '$lib/model.svelte';
+	import { Comic, Image, Video } from '$lib/model.svelte';
 	import { SkeletonPlaceholder } from 'carbon-components-svelte';
-	import { Book, Image, MediaLibrary } from 'carbon-icons-svelte';
+	import { Book, Image as ImageIcon, MediaLibrary } from 'carbon-icons-svelte';
 	import { goto } from '$app/navigation';
 
 	let { data } = $props();
@@ -52,7 +52,7 @@
 
 	<section class="media-section">
 		<a class="section-heading" href="/image">
-			<Image size={20} />
+			<ImageIcon size={20} />
 			<span>Images</span>
 		</a>
 		<HorizontalScroller>
@@ -62,10 +62,7 @@
 				{/each}
 			{:then images}
 				{#each images.data ?? [] as file}
-					<FileCard
-						file={new MediaFile(MediaType.Image, file)}
-						onClickFile={(f) => goto(`/image/${f.id}`)}
-					/>
+					<FileCard file={new Image(file)} onClickFile={(f) => goto(`/image/${f.id}`)} />
 				{/each}
 			{:catch error}
 				<div class="error">{error}</div>

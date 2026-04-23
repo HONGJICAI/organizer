@@ -63,25 +63,25 @@ class TestGet:
 
 
 # ---------------------------------------------------------------------------
-# POST /api/comics/{id}/detail
+# GET /api/comics/{id}/detail
 # ---------------------------------------------------------------------------
 
 class TestDetail:
     def test_comic_not_found(self, client):
-        r = client.post("/api/comics/999/detail")
+        r = client.get("/api/comics/999/detail")
         assert r.status_code == 404
 
     def test_file_not_found(self, client, session):
         insert_comic(session, 1)
         with patch("comicfile.create_open", return_value=None):
-            r = client.post("/api/comics/1/detail")
+            r = client.get("/api/comics/1/detail")
         assert r.status_code == 404
 
     def test_success(self, client, session):
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.post("/api/comics/1/detail")
+            r = client.get("/api/comics/1/detail")
         assert r.status_code == 200
         assert len(r.json()["pageDetails"]) == 3
 

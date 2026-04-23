@@ -109,7 +109,7 @@ export async function setupMock(authRequired: boolean) {
 			comic.name = body.name;
 			return HttpResponse.json({ name: body.name });
 		}),
-		http.post('/api/comics/:id/detail', async ({ params }) => {
+		http.get('/api/comics/:id/detail', async ({ params }) => {
 			await delay(600);
 			const comic = findComic(params.id);
 			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });

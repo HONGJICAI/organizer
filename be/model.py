@@ -60,6 +60,8 @@ class VideoEntity(FileEntity, table=True):
 
 
 class ImageEntity(FileEntity):
+    page: int = Field(default=0)
+
     @staticmethod
     def from_path(path: pathlib.Path, id: int):
         ret = ImageEntity(**FileEntity.from_path(path).model_dump())

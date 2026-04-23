@@ -1,23 +1,19 @@
-"""Pydantic models for image-related responses"""
-from datetime import datetime
-from typing import List
+"""Pydantic models for image-related requests and responses"""
 from pydantic import BaseModel
+from typing import List
 
 
-class ImageFileResponse(BaseModel):
+class ImagePageDetailResponse(BaseModel):
     name: str
-    url: str
 
 
-class ImageFolderResponse(BaseModel):
-    id: str
+class ImageDetailResponse(BaseModel):
+    pageDetails: List[ImagePageDetailResponse]
+
+
+class ImageRenameRequest(BaseModel):
     name: str
-    path: str
-    count: int
-    size: int
-    updateTime: datetime
-    coverUrl: str
 
 
-class ImageFolderDetailResponse(ImageFolderResponse):
-    files: List[ImageFileResponse]
+class ImageRenameResponse(BaseModel):
+    name: str

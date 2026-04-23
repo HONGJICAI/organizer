@@ -19,7 +19,11 @@ async def lifespan(app: FastAPI):
     # Run startup tasks
     await cleanup_missing_comics()
 
-    # Kick off a one-shot background scan for new media files
+    # Bootstrap in-memory image store (synchronous, fast)
+    from api.images import bootstrap as bootstrap_images
+    bootstrap_images()
+
+    # Kick off a one-shot background scan for new media files (comics + videos)
     from api.system import _run_scan
     threading.Thread(target=_run_scan, args=("all",), daemon=True).start()
     print("Background scan started", flush=True)

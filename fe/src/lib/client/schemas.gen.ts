@@ -13,6 +13,18 @@ export const APIMessageSchema = {
     description: 'A lightweight utility class intended for use with simple message-returning endpoints.'
 } as const;
 
+export const AuthStatusResponseSchema = {
+    properties: {
+        required: {
+            type: 'boolean',
+            title: 'Required'
+        }
+    },
+    type: 'object',
+    required: ['required'],
+    title: 'AuthStatusResponse'
+} as const;
+
 export const ComicDetailResponseSchema = {
     properties: {
         pageDetails: {
@@ -25,7 +37,8 @@ export const ComicDetailResponseSchema = {
     },
     type: 'object',
     required: ['pageDetails'],
-    title: 'ComicDetailResponse'
+    title: 'ComicDetailResponse',
+    description: 'Response for comic details'
 } as const;
 
 export const ComicEntitySchema = {
@@ -62,8 +75,15 @@ export const ComicEntitySchema = {
             default: false
         },
         lastViewedTime: {
-            type: 'string',
-            format: 'date-time',
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
             title: 'Lastviewedtime'
         },
         lastViewedPosition: {
@@ -79,8 +99,7 @@ export const ComicEntitySchema = {
         entityUpdateTime: {
             type: 'string',
             format: 'date-time',
-            title: 'Entityupdatetime',
-            default: '2025-03-16T17:04:36.800392'
+            title: 'Entityupdatetime'
         },
         page: {
             type: 'integer',
@@ -102,7 +121,34 @@ export const ComicPageDetailResponseSchema = {
     },
     type: 'object',
     required: ['name'],
-    title: 'ComicPageDetailResponse'
+    title: 'ComicPageDetailResponse',
+    description: 'Response for comic page details'
+} as const;
+
+export const ComicRenameRequestSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'ComicRenameRequest',
+    description: 'Request to rename a comic'
+} as const;
+
+export const ComicRenameResponseSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'ComicRenameResponse',
+    description: 'Response for comic rename operation'
 } as const;
 
 export const FavorResponseSchema = {
@@ -114,7 +160,8 @@ export const FavorResponseSchema = {
     },
     type: 'object',
     required: ['favorited'],
-    title: 'FavorResponse'
+    title: 'FavorResponse',
+    description: 'Response for favor/unfavor operations'
 } as const;
 
 export const HTTPValidationErrorSchema = {
@@ -129,6 +176,41 @@ export const HTTPValidationErrorSchema = {
     },
     type: 'object',
     title: 'HTTPValidationError'
+} as const;
+
+export const HealthResponseSchema = {
+    properties: {
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        cache_size: {
+            type: 'integer',
+            title: 'Cache Size'
+        },
+        message: {
+            type: 'string',
+            title: 'Message'
+        }
+    },
+    type: 'object',
+    required: ['status', 'cache_size', 'message'],
+    title: 'HealthResponse'
+} as const;
+
+export const ImageDetailResponseSchema = {
+    properties: {
+        pageDetails: {
+            items: {
+                '$ref': '#/components/schemas/ImagePageDetailResponse'
+            },
+            type: 'array',
+            title: 'Pagedetails'
+        }
+    },
+    type: 'object',
+    required: ['pageDetails'],
+    title: 'ImageDetailResponse'
 } as const;
 
 export const ImageEntitySchema = {
@@ -165,8 +247,15 @@ export const ImageEntitySchema = {
             default: false
         },
         lastViewedTime: {
-            type: 'string',
-            format: 'date-time',
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
             title: 'Lastviewedtime'
         },
         lastViewedPosition: {
@@ -182,8 +271,12 @@ export const ImageEntitySchema = {
         entityUpdateTime: {
             type: 'string',
             format: 'date-time',
-            title: 'Entityupdatetime',
-            default: '2025-03-16T17:04:36.800392'
+            title: 'Entityupdatetime'
+        },
+        page: {
+            type: 'integer',
+            title: 'Page',
+            default: 0
         }
     },
     type: 'object',
@@ -191,19 +284,7 @@ export const ImageEntitySchema = {
     title: 'ImageEntity'
 } as const;
 
-export const MessageResponseSchema = {
-    properties: {
-        msg: {
-            type: 'string',
-            title: 'Msg'
-        }
-    },
-    type: 'object',
-    required: ['msg'],
-    title: 'MessageResponse'
-} as const;
-
-export const RenameRequestSchema = {
+export const ImagePageDetailResponseSchema = {
     properties: {
         name: {
             type: 'string',
@@ -212,10 +293,10 @@ export const RenameRequestSchema = {
     },
     type: 'object',
     required: ['name'],
-    title: 'RenameRequest'
+    title: 'ImagePageDetailResponse'
 } as const;
 
-export const RenameResponseSchema = {
+export const ImageRenameRequestSchema = {
     properties: {
         name: {
             type: 'string',
@@ -224,7 +305,83 @@ export const RenameResponseSchema = {
     },
     type: 'object',
     required: ['name'],
-    title: 'RenameResponse'
+    title: 'ImageRenameRequest'
+} as const;
+
+export const ImageRenameResponseSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'ImageRenameResponse'
+} as const;
+
+export const LoginRequestSchema = {
+    properties: {
+        password: {
+            type: 'string',
+            title: 'Password'
+        }
+    },
+    type: 'object',
+    required: ['password'],
+    title: 'LoginRequest'
+} as const;
+
+export const LoginResponseSchema = {
+    properties: {
+        token: {
+            type: 'string',
+            title: 'Token'
+        }
+    },
+    type: 'object',
+    required: ['token'],
+    title: 'LoginResponse'
+} as const;
+
+export const ScanResponseSchema = {
+    properties: {
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        message: {
+            type: 'string',
+            title: 'Message'
+        }
+    },
+    type: 'object',
+    required: ['status', 'message'],
+    title: 'ScanResponse'
+} as const;
+
+export const ScanStatusResponseSchema = {
+    properties: {
+        running: {
+            type: 'boolean',
+            title: 'Running'
+        },
+        last_result: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Result'
+        }
+    },
+    type: 'object',
+    required: ['running'],
+    title: 'ScanStatusResponse'
 } as const;
 
 export const ValidationErrorSchema = {
@@ -250,6 +407,13 @@ export const ValidationErrorSchema = {
         type: {
             type: 'string',
             title: 'Error Type'
+        },
+        input: {
+            title: 'Input'
+        },
+        ctx: {
+            type: 'object',
+            title: 'Context'
         }
     },
     type: 'object',
@@ -291,8 +455,15 @@ export const VideoEntitySchema = {
             default: false
         },
         lastViewedTime: {
-            type: 'string',
-            format: 'date-time',
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
             title: 'Lastviewedtime'
         },
         lastViewedPosition: {
@@ -308,8 +479,7 @@ export const VideoEntitySchema = {
         entityUpdateTime: {
             type: 'string',
             format: 'date-time',
-            title: 'Entityupdatetime',
-            default: '2025-03-16T17:04:36.800392'
+            title: 'Entityupdatetime'
         },
         durationInSecond: {
             type: 'integer',
@@ -320,4 +490,16 @@ export const VideoEntitySchema = {
     type: 'object',
     required: ['id', 'size', 'name', 'path', 'updateTime'],
     title: 'VideoEntity'
+} as const;
+
+export const MessageResponseSchema = {
+    type: 'object',
+    properties: {
+        msg: {
+            type: 'string',
+            title: 'Msg'
+        }
+    },
+    required: ['msg'],
+    title: 'MessageResponse'
 } as const;

@@ -1,7 +1,7 @@
 import { defaultPlugins } from '@hey-api/openapi-ts';
 
 export default {
-	input: 'http://127.0.0.1:8001/openapi.json',
+	input: 'http://127.0.0.1:8001/api/openapi.json',
 	output: './src/lib/client',
 	plugins: [
 		...defaultPlugins,

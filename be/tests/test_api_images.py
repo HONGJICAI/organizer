@@ -1,121 +1,253 @@
+"""Tests for in-memory image API"""
+import pytest
+from datetime import datetime
 from conftest import make_jpeg_bytes
+import api.images as img_api
+from model import ImageEntity
 
 
-class TestGetImages:
-    def test_no_scan_dir_returns_empty(self, client, monkeypatch):
+def make_entity(id=1, name="album", path="/nonexistent/album", page=3, **kwargs) -> ImageEntity:
+    return ImageEntity(id=id, name=name, path=path, size=1000, updateTime=datetime.now(), page=page, **kwargs)
+
+
+@pytest.fixture(autouse=True)
+def clear_store():
+    img_api._store.clear()
+    yield
+    img_api._store.clear()
+
+
+def set_store(*entities: ImageEntity):
+    img_api._store.clear()
+    img_api._store.update({e.id: e for e in entities})
+
+
+@pytest.fixture
+def scan_env(tmp_path, monkeypatch):
+    """Fixture providing separate scan_path and nginx_path under tmp_path."""
+    import global_data
+    scan_dir = tmp_path / "scan"
+    scan_dir.mkdir()
+    nginx_dir = tmp_path / "nginx"
+    nginx_dir.mkdir()
+    monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(scan_dir)])
+    monkeypatch.setattr(global_data.Config, "nginx_image_path", str(nginx_dir))
+    return scan_dir
+
+
+class TestBootstrap:
+    def test_loads_folders_with_images(self, scan_env):
+        for name in ["album1", "album2"]:
+            d = scan_env / name
+            d.mkdir()
+            (d / "a.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        assert len(img_api._store) == 2
+
+    def test_assigns_integer_ids(self, scan_env):
+        d = scan_env / "album"
+        d.mkdir()
+        (d / "a.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        assert list(img_api._store.keys()) == [1]
+        assert isinstance(img_api._store[1].id, int)
+
+    def test_empty_folders_excluded(self, scan_env):
+        (scan_env / "empty").mkdir()
+        d = scan_env / "has_images"
+        d.mkdir()
+        (d / "a.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        assert len(img_api._store) == 1
+
+    def test_nonexistent_scan_path_skipped(self, monkeypatch):
         import global_data
         monkeypatch.setattr(global_data.Config.Image, "scan_pathes", ["/nonexistent/xyz"])
+        img_api.bootstrap()
+        assert len(img_api._store) == 0
+
+    def test_sets_page_count(self, scan_env):
+        d = scan_env / "album"
+        d.mkdir()
+        for i in range(3):
+            (d / f"{i}.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        assert img_api._store[1].page == 3
+
+
+class TestGetAll:
+    def test_empty(self, client):
         r = client.get("/api/images")
         assert r.status_code == 200
         assert r.json() == []
 
-    def test_no_subfolders_returns_empty(self, client, tmp_path, monkeypatch):
-        import global_data
-        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(tmp_path)])
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(tmp_path / "nginx"))
-        (tmp_path / "nginx").mkdir()
+    def test_returns_all(self, client):
+        set_store(make_entity(id=1), make_entity(id=2, name="b"))
         r = client.get("/api/images")
-        assert r.status_code == 200
-        assert r.json() == []
-
-    def test_folders_with_images_returned(self, client, tmp_path, monkeypatch):
-        import global_data
-        nginx_dir = tmp_path / "nginx"
-        nginx_dir.mkdir()
-        album1 = tmp_path / "album1"
-        album1.mkdir()
-        (album1 / "a.jpg").write_bytes(make_jpeg_bytes())
-        album2 = tmp_path / "album2"
-        album2.mkdir()
-        (album2 / "b.jpg").write_bytes(make_jpeg_bytes())
-        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(tmp_path)])
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(nginx_dir))
-        r = client.get("/api/images")
-        assert r.status_code == 200
         assert len(r.json()) == 2
 
-    def test_empty_folder_excluded(self, client, tmp_path, monkeypatch):
-        import global_data
-        nginx_dir = tmp_path / "nginx"
-        nginx_dir.mkdir()
-        (tmp_path / "with_images").mkdir()
-        (tmp_path / "with_images" / "a.jpg").write_bytes(make_jpeg_bytes())
-        (tmp_path / "empty").mkdir()
-        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(tmp_path)])
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(nginx_dir))
-        r = client.get("/api/images")
-        assert len(r.json()) == 1
-        assert r.json()[0]["id"] == "with_images"
+    def test_sorted_by_update_time_desc(self, client):
+        e1 = make_entity(id=1, name="old")
+        e1.updateTime = datetime(2020, 1, 1)
+        e2 = make_entity(id=2, name="new")
+        e2.updateTime = datetime(2023, 1, 1)
+        set_store(e1, e2)
+        names = [e["name"] for e in client.get("/api/images").json()]
+        assert names[0] == "new"
 
-    def test_non_image_files_excluded_from_count(self, client, tmp_path, monkeypatch):
-        import global_data
-        nginx_dir = tmp_path / "nginx"
-        nginx_dir.mkdir()
-        album = tmp_path / "album"
-        album.mkdir()
-        (album / "a.jpg").write_bytes(make_jpeg_bytes())
-        (album / "readme.txt").write_text("not an image")
-        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(tmp_path)])
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(nginx_dir))
-        r = client.get("/api/images")
-        assert r.json()[0]["count"] == 1
+    def test_top_param(self, client):
+        set_store(make_entity(id=1), make_entity(id=2, name="b"), make_entity(id=3, name="c"))
+        r = client.get("/api/images?top=2")
+        assert len(r.json()) == 2
 
-    def test_response_shape(self, client, tmp_path, monkeypatch):
-        import global_data
-        nginx_dir = tmp_path / "nginx"
-        nginx_dir.mkdir()
-        album = tmp_path / "my-album"
-        album.mkdir()
-        (album / "photo.jpg").write_bytes(make_jpeg_bytes())
-        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(tmp_path)])
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(nginx_dir))
-        r = client.get("/api/images")
-        item = r.json()[0]
-        assert item["id"] == "my-album"
-        assert item["name"] == "my-album"
-        assert "path" in item
-        assert "count" in item
-        assert "size" in item
-        assert "updateTime" in item
-        assert item["coverUrl"] == "/images/my-album/photo.jpg"
+    def test_id_is_integer(self, client):
+        set_store(make_entity(id=7))
+        assert client.get("/api/images").json()[0]["id"] == 7
 
 
-class TestGetImageFolder:
-    def test_get_existing_folder(self, client, tmp_path, monkeypatch):
-        import global_data
-        nginx_dir = tmp_path / "nginx"
-        nginx_dir.mkdir()
-        album = tmp_path / "gallery"
-        album.mkdir()
-        (album / "001.jpg").write_bytes(make_jpeg_bytes())
-        (album / "002.jpg").write_bytes(make_jpeg_bytes())
-        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(tmp_path)])
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(nginx_dir))
-        r = client.get("/api/images/gallery")
+class TestGet:
+    def test_existing(self, client):
+        set_store(make_entity(id=1, name="album", page=5))
+        r = client.get("/api/images/1")
         assert r.status_code == 200
-        data = r.json()
-        assert data["id"] == "gallery"
-        assert data["count"] == 2
-        assert len(data["files"]) == 2
-        assert data["files"][0]["url"] == "/images/gallery/001.jpg"
+        assert r.json()["id"] == 1
+        assert r.json()["page"] == 5
 
-    def test_get_missing_folder_returns_404(self, client, tmp_path, monkeypatch):
-        import global_data
-        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(tmp_path)])
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(tmp_path))
-        r = client.get("/api/images/nonexistent")
-        assert r.status_code == 404
+    def test_missing_returns_404(self, client):
+        assert client.get("/api/images/999").status_code == 404
 
-    def test_files_sorted(self, client, tmp_path, monkeypatch):
-        import global_data
-        nginx_dir = tmp_path / "nginx"
-        nginx_dir.mkdir()
-        album = tmp_path / "sorted"
-        album.mkdir()
+
+class TestGetPage:
+    def test_valid_page(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "001.jpg").write_bytes(make_jpeg_bytes())
+        (d / "002.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=2))
+        r = client.get("/api/images/1/1")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("image/")
+
+    def test_out_of_range_returns_404(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "001.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=1))
+        assert client.get("/api/images/1/99").status_code == 404
+
+    def test_updates_last_viewed(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "001.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=1))
+        client.get("/api/images/1/1")
+        assert img_api._store[1].lastViewedPosition == 1
+        assert img_api._store[1].lastViewedTime is not None
+
+    def test_missing_image_returns_404(self, client):
+        assert client.get("/api/images/999/1").status_code == 404
+
+
+class TestDetail:
+    def test_returns_sorted_filenames(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
         for name in ["c.jpg", "a.jpg", "b.jpg"]:
-            (album / name).write_bytes(make_jpeg_bytes())
-        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [str(tmp_path)])
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(nginx_dir))
-        r = client.get("/api/images/sorted")
-        names = [f["name"] for f in r.json()["files"]]
+            (d / name).write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=3))
+        r = client.get("/api/images/1/detail")
+        assert r.status_code == 200
+        names = [p["name"] for p in r.json()["pageDetails"]]
         assert names == ["a.jpg", "b.jpg", "c.jpg"]
+
+    def test_missing_returns_404(self, client):
+        assert client.get("/api/images/999/detail").status_code == 404
+
+
+class TestFavor:
+    def test_favor(self, client):
+        set_store(make_entity(id=1))
+        r = client.post("/api/images/1/favor")
+        assert r.status_code == 200
+        assert r.json()["favorited"] is True
+        assert img_api._store[1].favorited is True
+
+    def test_unfavor(self, client):
+        set_store(make_entity(id=1, favorited=True))
+        r = client.request("DELETE", "/api/images/1/favor")
+        assert r.status_code == 200
+        assert r.json()["favorited"] is False
+        assert img_api._store[1].favorited is False
+
+    def test_missing_returns_404(self, client):
+        assert client.post("/api/images/999/favor").status_code == 404
+
+
+class TestRefresh:
+    def test_updates_page_count(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "001.jpg").write_bytes(make_jpeg_bytes())
+        (d / "002.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=0))
+        r = client.post("/api/images/1/refresh")
+        assert r.status_code == 200
+        assert r.json()["page"] == 2
+
+    def test_missing_returns_404(self, client):
+        assert client.post("/api/images/999/refresh").status_code == 404
+
+
+class TestRename:
+    def test_renames_folder(self, client, tmp_path):
+        d = tmp_path / "old-name"
+        d.mkdir()
+        set_store(make_entity(id=1, name="old-name", path=str(d)))
+        r = client.post("/api/images/1/rename", json={"name": "new-name"})
+        assert r.status_code == 200
+        assert r.json()["name"] == "new-name"
+        assert img_api._store[1].name == "new-name"
+        assert (tmp_path / "new-name").exists()
+
+    def test_same_name_returns_400(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        set_store(make_entity(id=1, name="album", path=str(d)))
+        assert client.post("/api/images/1/rename", json={"name": "album"}).status_code == 400
+
+    def test_missing_returns_404(self, client):
+        assert client.post("/api/images/999/rename", json={"name": "x"}).status_code == 404
+
+
+class TestDelete:
+    def test_archives_entity(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        set_store(make_entity(id=1, path=str(d)))
+        r = client.delete("/api/images/1")
+        assert r.status_code == 200
+        assert img_api._store[1].archived is True
+
+    def test_favorited_returns_400(self, client):
+        set_store(make_entity(id=1, favorited=True))
+        assert client.delete("/api/images/1").status_code == 400
+
+    def test_missing_returns_404(self, client):
+        assert client.delete("/api/images/999").status_code == 404
+
+
+class TestSetCover:
+    def test_updates_cover_position(self, client, tmp_path, monkeypatch):
+        import global_data
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "001.jpg").write_bytes(make_jpeg_bytes())
+        (d / "002.jpg").write_bytes(make_jpeg_bytes())
+        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(tmp_path))
+        set_store(make_entity(id=1, path=str(d), page=2))
+        r = client.post("/api/images/1/2/cover")
+        assert r.status_code == 200
+        assert img_api._store[1].coverPosition == 2
+
+    def test_missing_returns_404(self, client):
+        assert client.post("/api/images/999/1/cover").status_code == 404

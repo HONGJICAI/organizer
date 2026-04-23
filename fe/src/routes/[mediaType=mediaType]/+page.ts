@@ -1,7 +1,7 @@
 import { ComicsService, ImagesService, VideosService } from '$lib/client/sdk.gen.js';
-import { Comic, MediaFile, MediaType, Video } from '$lib/model.svelte';
+import { Comic, Image, Video } from '$lib/model.svelte';
 interface Map {
-	[key: string]: () => Promise<Comic[] | Video[] | MediaFile[]>;
+	[key: string]: () => Promise<Comic[] | Video[] | Image[]>;
 }
 const mediaTypes: Map = {
 	comic: loadComics,
@@ -22,12 +22,12 @@ async function loadVideos(): Promise<Video[]> {
 	}
 	return data.map((e) => new Video(e));
 }
-async function loadImages(): Promise<MediaFile[]> {
+async function loadImages(): Promise<Image[]> {
 	const { data, error } = await ImagesService.imageGetAll();
 	if (error) {
 		throw error;
 	}
-	return data.map((e) => new MediaFile(MediaType.Image, e));
+	return data.map((e) => new Image(e));
 }
 export async function load({ params }) {
 	const p = mediaTypes[params.mediaType];

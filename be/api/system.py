@@ -20,6 +20,7 @@ _scan_status: dict = {"running": False, "last_result": None}
 
 def _run_scan(media_type: str):
     from loader import ComicLoader, VideoLoader
+    from api.images import bootstrap as bootstrap_images
 
     results = {}
     try:
@@ -29,6 +30,9 @@ def _run_scan(media_type: str):
         if media_type in ("videos", "all"):
             VideoLoader().work()
             results["videos"] = "done"
+        if media_type in ("images", "all"):
+            bootstrap_images()
+            results["images"] = "done"
         _scan_status["last_result"] = {"status": "success", **results}
     except Exception as e:
         _scan_status["last_result"] = {"status": "error", "message": str(e)}
@@ -71,7 +75,7 @@ def health_check() -> HealthResponse:
 
 @router.post("/api/system/scan", tags=["system"])
 def trigger_scan(
-    media_type: Literal["comics", "videos", "all"] = "all",
+    media_type: Literal["comics", "videos", "images", "all"] = "all",
 ) -> ScanResponse:
     """Start a background scan to import new media files into the database."""
     with _scan_lock:

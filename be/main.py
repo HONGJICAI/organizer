@@ -40,9 +40,9 @@ app.add_middleware(
 _protected = [Depends(require_auth)]
 app.include_router(auth.router)
 app.include_router(comics.router, dependencies=_protected)
-app.include_router(comicpage.router, dependencies=_protected)
+app.include_router(comicpage.router)
 app.include_router(videos.router, dependencies=_protected)
-app.include_router(images.router, dependencies=_protected)
+app.include_router(images.router)
 app.include_router(system.router, dependencies=_protected)
 
 
