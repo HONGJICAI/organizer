@@ -2,10 +2,11 @@ services:
   app:
     image: ghcr.io/hongjicai/organizer:latest
     ports:
-      - "80:80"
+      - "81:80"
     volumes:
       - ${COMIC_PATH}:/data/comics
       - ${VIDEO_PATH}:/data/videos
-      - ${IMAGE_PATH:-/tmp/images}:/data/images
-      - ./data/db:/data/db
+      - ${IMAGE_PATH}:/data/images
+      - ${LIKED_PATH}:/data/liked
+      - ./config:/config
     restart: unless-stopped

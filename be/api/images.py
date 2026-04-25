@@ -2,6 +2,7 @@
 import datetime
 import os
 import pathlib
+import shutil
 import threading
 from typing import Dict, List
 
@@ -78,7 +79,12 @@ def bootstrap():
     for scan_path in global_data.Config.Image.scan_pathes:
         if not os.path.isdir(scan_path):
             continue
-        for entry in sorted(os.scandir(scan_path), key=lambda e: e.name):
+        try:
+            entries = sorted(os.scandir(scan_path), key=lambda e: e.name)
+        except OSError as e:
+            print(f"Failed to scan {scan_path}: {e}")
+            continue
+        for entry in entries:
             if not entry.is_dir(follow_symlinks=False):
                 continue
             files = _image_files(entry.path)
@@ -87,7 +93,6 @@ def bootstrap():
             id_counter += 1
             entity = ImageEntity.from_path(pathlib.Path(entry.path), id_counter)
             entity.page = len(files)
-            _gen_cover(entity)
             new_store[id_counter] = entity
 
     with _store_lock:
@@ -164,7 +169,6 @@ class ImageCBV:
         entity.page = len(_image_files(entity.path))
         entity.updateTime = refreshed.updateTime
         entity.size = refreshed.size
-        _gen_cover(entity, overwrite=True)
         return entity.model_dump()
 
     @router.post("/api/images/{id}/rename", tags=["images"])
@@ -190,7 +194,19 @@ class ImageCBV:
         entity = _get(id)
         if entity.favorited:
             abort(400, "Cannot delete favorited image folder")
-        entity.archived = True
+        try:
+            entries = list(os.scandir(entity.path))
+        except OSError as e:
+            abort(500, f"Cannot read folder: {e}")
+        non_image = [
+            e.name for e in entries
+            if e.is_dir() or os.path.splitext(e.name)[1].lower() not in _IMAGE_EXTS
+        ]
+        if non_image:
+            abort(400, f"Folder contains non-image entries: {', '.join(non_image)}")
+        shutil.rmtree(entity.path)
+        with _store_lock:
+            _store.pop(entity.id, None)
         return APIMessage(detail="Deleted")
 
     @router.post("/api/images/{id}/{page}/cover", tags=["images"])
