@@ -4,11 +4,21 @@ import os
 err_message = []
 
 
+_cache_base = os.environ.get(
+    "CACHE_PATH",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "nginx", "html")),
+)
+_log_base = os.environ.get(
+    "LOG_PATH",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "nginx", "logs")),
+)
+
+
 class Config:
-    nginx_access_log_path = "/config/logs/file.access.log"
-    nginx_video_path = "/config/cache/videos"
-    nginx_comic_path = "/config/cache/comics"
-    nginx_image_path = "/config/cache/images"
+    nginx_access_log_path = os.path.join(_log_base, "file.access.log")
+    nginx_video_path = os.path.join(_cache_base, "videos")
+    nginx_comic_path = os.path.join(_cache_base, "comics")
+    nginx_image_path = os.path.join(_cache_base, "images")
 
     class Comic:
         scan_pathes = [os.environ.get("COMIC_SCAN_PATH", "/data/comics")]

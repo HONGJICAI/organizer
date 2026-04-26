@@ -220,13 +220,31 @@ class TestRename:
 
 
 class TestDelete:
-    def test_archives_entity(self, client, tmp_path):
+    def test_deletes_folder(self, client, tmp_path):
         d = tmp_path / "album"
         d.mkdir()
+        (d / "a.jpg").write_bytes(b"")
         set_store(make_entity(id=1, path=str(d)))
         r = client.delete("/api/images/1")
         assert r.status_code == 200
-        assert img_api._store[1].archived is True
+        assert not d.exists()
+        assert 1 not in img_api._store
+
+    def test_rejects_non_image_files(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "a.jpg").write_bytes(b"")
+        (d / "readme.txt").write_bytes(b"")
+        set_store(make_entity(id=1, path=str(d)))
+        assert client.delete("/api/images/1").status_code == 400
+
+    def test_rejects_subdirectory(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "a.jpg").write_bytes(b"")
+        (d / "sub").mkdir()
+        set_store(make_entity(id=1, path=str(d)))
+        assert client.delete("/api/images/1").status_code == 400
 
     def test_favorited_returns_400(self, client):
         set_store(make_entity(id=1, favorited=True))

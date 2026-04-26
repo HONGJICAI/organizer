@@ -25,22 +25,23 @@ COPY --from=fe-builder /build/fe/build /app/fe/build
 COPY nginx/nginx.prod.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
 
-# Directories the BE and nginx expect at runtime.
-# /app/nginx/html/{comics,videos,images} — BE symlinks media here; nginx serves from here.
-# /app/nginx/logs                        — nginx writes access log; BE reads it for cache stats.
-# /data/{comics,videos,images}           — mount your actual media files here.
+# /config/{cache,logs} — BE-generated covers and nginx access log.
+# /data/{comics,videos,images,liked} — mount your actual media files here.
 RUN mkdir -p \
-      /app/nginx/html/comics \
-      /app/nginx/html/videos \
-      /app/nginx/html/images \
-      /app/nginx/logs \
+      /config/cache/comics \
+      /config/cache/videos \
+      /config/cache/images \
+      /config/logs \
+      /config/db \
       /data/comics \
       /data/videos \
       /data/images \
-      /data/db \
+      /data/liked \
       /run/nginx
 
-ENV DB_PATH=/data/db/organizer.db
+ENV DB_PATH=/config/db/prod.sqlite \
+    CACHE_PATH=/config/cache \
+    LOG_PATH=/config/logs
 
 EXPOSE 80
 
