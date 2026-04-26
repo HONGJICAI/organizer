@@ -33,7 +33,12 @@
 		TrashCan,
 		UpdateNow
 	} from 'carbon-icons-svelte';
-	import { ComicsService, VideosService, type ComicDetailResponse } from '$lib/client';
+	import {
+		ComicsService,
+		ImagesService,
+		VideosService,
+		type ComicDetailResponse
+	} from '$lib/client';
 	import { addNotification } from '$lib/state.svelte';
 
 	interface Props {
@@ -88,6 +93,16 @@
 					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				} else {
 					onFileDeleted(permanent);
+					onCloseModal();
+				}
+				break;
+			}
+			case MediaType.Image: {
+				const { error } = await ImagesService.imageDelete({ path: { id: file.id } });
+				if (error) {
+					addNotification(new ErrorNotification({ subtitle: error?.detail }));
+				} else {
+					onFileDeleted(true);
 					onCloseModal();
 				}
 				break;
@@ -303,9 +318,18 @@
 </Modal>
 
 <ComposedModal bind:open={openDeleteModal} on:click:button--primary={() => onClickDelete()}>
-	<ModalHeader label="Changes" title="Confirm delete the comic file" />
+	<ModalHeader
+		label="Changes"
+		title="Confirm delete {mediaType === MediaType.Image
+			? 'image folder'
+			: mediaType === MediaType.Video
+				? 'video'
+				: 'comic'}"
+	/>
 	<ModalBody hasForm>
-		<Checkbox labelText="permenant: including database record" bind:checked={permanent} />
+		{#if mediaType !== MediaType.Image}
+			<Checkbox labelText="permenant: including database record" bind:checked={permanent} />
+		{/if}
 		{#if sendingDelete}
 			<InlineLoading description="Deleting..." />
 		{/if}

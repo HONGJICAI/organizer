@@ -6,8 +6,9 @@ import shutil
 import threading
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, Response
-from core.auth import require_auth, require_media_auth
+from fastapi import APIRouter, Depends, Query, Response
+from fastapi.security import HTTPAuthorizationCredentials
+from core.auth import _bearer, require_auth, require_media_auth
 from fastapi_utils.api_model import APIMessage
 from fastapi_utils.cbv import cbv
 from PIL import Image as PILImage
@@ -129,11 +130,19 @@ class ImageCBV:
         return ImageDetailResponse(pageDetails=[ImagePageDetailResponse(name=f) for f in files])
 
     @router.get("/api/images/{id}/{page}", tags=["images"])
-    def get_page(self, id: int, page: int, _: None = Depends(require_media_auth)) -> Response:
+    def get_page(
+        self,
+        id: int,
+        page: int,
+        credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+        token: str | None = Query(default=None),
+    ) -> Response:
+        if page != 0:
+            require_media_auth(credentials, token)
         entity = _get(id)
         files = _image_files(entity.path)
-        idx = page - 1
-        if idx < 0 or idx >= len(files):
+        idx = 0 if page == 0 else page - 1
+        if idx >= len(files):
             abort(404, "Page not found")
         img_path = os.path.join(entity.path, files[idx])
         try:
@@ -141,8 +150,9 @@ class ImageCBV:
                 content = f.read()
         except OSError:
             abort(404, "Image file not found")
-        entity.lastViewedTime = datetime.datetime.now()
-        entity.lastViewedPosition = page
+        if page != 0:
+            entity.lastViewedTime = datetime.datetime.now()
+            entity.lastViewedPosition = page
         ext = os.path.splitext(files[idx])[1].lower()
         return Response(
             content=content,
