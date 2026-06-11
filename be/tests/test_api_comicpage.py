@@ -3,7 +3,7 @@ from unittest.mock import patch
 import global_data
 from conftest import MockComicfile, insert_comic, make_jpeg_bytes
 from loader import ComicLoader
-from tasks.cache import comic_access_cache
+from model import ComicEntity
 
 
 # ---------------------------------------------------------------------------
@@ -36,14 +36,15 @@ class TestGetPage:
         assert r.status_code == 200
         assert "image/jpeg" in r.headers["content-type"]
 
-    def test_success_records_access_cache(self, client, session):
+    def test_success_records_last_viewed(self, client, session):
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
             client.get("/api/comics/1/2")
-        assert 1 in comic_access_cache
-        _, page = comic_access_cache[1]
-        assert page == 2
+        session.expire_all()
+        comic = session.get(ComicEntity, 1)
+        assert comic.lastViewedPosition == 2
+        assert comic.lastViewedTime is not None
 
     def test_cache_control_header(self, client, session):
         insert_comic(session, 1, page=3)

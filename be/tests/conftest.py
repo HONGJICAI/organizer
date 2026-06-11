@@ -12,7 +12,6 @@ import comicfile
 import db
 import global_data
 from model import ComicEntity, VideoEntity
-from tasks.cache import comic_access_cache
 
 
 # ---------------------------------------------------------------------------
@@ -104,10 +103,8 @@ class MockComicfile:
 
 @pytest.fixture(autouse=True)
 def clear_module_caches():
-    comic_access_cache.clear()
     comicfile.comic_cache.clear()
     yield
-    comic_access_cache.clear()
     comicfile.comic_cache.clear()
 
 

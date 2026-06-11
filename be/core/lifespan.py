@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from tasks.cleanup import cleanup_missing_comics
-from tasks.cache import process_comic_access_cache_loop
 from tasks.backup import backup_database_loop
 
 
@@ -30,13 +29,9 @@ async def lifespan(app: FastAPI):
     
     # Start background tasks and store them in app state
     tasks = []
-    task1 = asyncio.create_task(process_comic_access_cache_loop())
-    task2 = asyncio.create_task(backup_database_loop())
-    # task3 = asyncio.create_task(process_view_history_loop())
-    
+    task1 = asyncio.create_task(backup_database_loop())
+
     tasks.append(task1)
-    tasks.append(task2)
-    # tasks.append(task3)
     
     # Store tasks in app state to prevent garbage collection
     app.state.background_tasks = tasks

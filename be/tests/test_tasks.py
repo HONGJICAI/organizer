@@ -4,74 +4,7 @@ from datetime import datetime
 from sqlmodel import Session, select
 
 from model import ComicEntity
-from tasks.cache import comic_access_cache, process_comic_access_cache
 from tasks.cleanup import cleanup_missing_comics
-
-
-# ---------------------------------------------------------------------------
-# Cache task tests
-# ---------------------------------------------------------------------------
-
-class TestProcessComicAccessCache:
-    def test_empty_cache_is_no_op(self, task_engine):
-        comic_access_cache.clear()
-        asyncio.run(process_comic_access_cache())
-        # No error, cache still empty
-        assert len(comic_access_cache) == 0
-
-    def test_updates_last_viewed(self, task_session, task_engine):
-        comic = ComicEntity(
-            id=1, name="c.zip", path="/c.zip", size=100,
-            updateTime=datetime.now(), page=10,
-        )
-        task_session.add(comic)
-        task_session.commit()
-
-        ts = datetime.now()
-        comic_access_cache[1] = (ts, 7)
-        asyncio.run(process_comic_access_cache())
-
-        with Session(task_engine) as s:
-            c = s.get(ComicEntity, 1)
-            assert c.lastViewedPosition == 7
-            assert c.lastViewedTime is not None
-
-    def test_clears_cache_after_processing(self, task_session, task_engine):
-        comic = ComicEntity(
-            id=2, name="d.zip", path="/d.zip", size=100,
-            updateTime=datetime.now(), page=5,
-        )
-        task_session.add(comic)
-        task_session.commit()
-
-        comic_access_cache[2] = (datetime.now(), 3)
-        asyncio.run(process_comic_access_cache())
-        assert len(comic_access_cache) == 0
-
-    def test_missing_comic_is_skipped(self, task_engine):
-        comic_access_cache[9999] = (datetime.now(), 1)
-        # Should not raise
-        asyncio.run(process_comic_access_cache())
-        assert len(comic_access_cache) == 0
-
-    def test_multiple_entries(self, task_session, task_engine):
-        for i in range(1, 4):
-            comic = ComicEntity(
-                id=i, name=f"{i}.zip", path=f"/{i}.zip", size=100,
-                updateTime=datetime.now(), page=10,
-            )
-            task_session.add(comic)
-        task_session.commit()
-
-        for i in range(1, 4):
-            comic_access_cache[i] = (datetime.now(), i * 2)
-
-        asyncio.run(process_comic_access_cache())
-
-        with Session(task_engine) as s:
-            for i in range(1, 4):
-                c = s.get(ComicEntity, i)
-                assert c.lastViewedPosition == i * 2
 
 
 # ---------------------------------------------------------------------------

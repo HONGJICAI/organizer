@@ -96,23 +96,3 @@ def test_backup_exception_is_caught(tmp_path, monkeypatch):
     (tmp_path / "prod.sqlite").write_bytes(b"db")
     with patch("shutil.copy2", side_effect=OSError("disk full")):
         asyncio.run(backup_database())  # Should not raise
-
-
-# ---------------------------------------------------------------------------
-# tasks/cache.py — error handling in loop
-# ---------------------------------------------------------------------------
-
-def test_cache_loop_cancelled():
-    import asyncio
-    from tasks.cache import process_comic_access_cache_loop
-
-    async def run():
-        task = asyncio.create_task(process_comic_access_cache_loop())
-        await asyncio.sleep(0)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-    asyncio.run(run())

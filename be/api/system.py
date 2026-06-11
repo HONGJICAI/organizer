@@ -4,7 +4,6 @@ from typing import Dict, Literal, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from tasks.cache import comic_access_cache
 from tasks.backup import backup_database
 
 
@@ -46,7 +45,6 @@ def _run_scan(media_type: str):
 
 class HealthResponse(BaseModel):
     status: str
-    cache_size: int
     message: str
 
 
@@ -68,7 +66,6 @@ class ScanStatusResponse(BaseModel):
 def health_check() -> HealthResponse:
     return HealthResponse(
         status="ok",
-        cache_size=len(comic_access_cache),
         message="Application is running",
     )
 
