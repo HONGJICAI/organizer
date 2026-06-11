@@ -15,7 +15,6 @@ import global_data
 from core.exceptions import abort
 from loader import ComicLoader
 from model import ComicEntity
-from tasks.cache import comic_access_cache
 
 
 router = APIRouter()
@@ -40,9 +39,11 @@ class ComicPageCBV:
             abort(404, "Comic file not found")
         ok, bytes = cf.read(page - 1)
         if ok:
-            # Record access in cache (dict assignment is atomic)
-            comic_access_cache[id] = (datetime.datetime.now(), page)
-            
+            comic.lastViewedTime = datetime.datetime.now()
+            comic.lastViewedPosition = page
+            self.session.add(comic)
+            self.session.commit()
+
             return Response(
                 content=bytes,
                 media_type="image/jpeg",

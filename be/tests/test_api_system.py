@@ -1,25 +1,12 @@
 import time
 from unittest.mock import patch
 
-from tasks.cache import comic_access_cache
-
 
 class TestHealth:
     def test_status_ok(self, client):
         r = client.get("/api/health")
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
-
-    def test_cache_size_empty(self, client):
-        r = client.get("/api/health")
-        assert r.json()["cache_size"] == 0
-
-    def test_cache_size_with_entries(self, client):
-        from datetime import datetime
-        comic_access_cache[1] = (datetime.now(), 5)
-        comic_access_cache[2] = (datetime.now(), 3)
-        r = client.get("/api/health")
-        assert r.json()["cache_size"] == 2
 
     def test_message_present(self, client):
         r = client.get("/api/health")

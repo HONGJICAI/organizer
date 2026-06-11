@@ -67,7 +67,6 @@ export type HttpValidationError = {
 
 export type HealthResponse = {
     status: string;
-    cache_size: number;
     message: string;
 };
 

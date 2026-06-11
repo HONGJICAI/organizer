@@ -184,17 +184,13 @@ export const HealthResponseSchema = {
             type: 'string',
             title: 'Status'
         },
-        cache_size: {
-            type: 'integer',
-            title: 'Cache Size'
-        },
         message: {
             type: 'string',
             title: 'Message'
         }
     },
     type: 'object',
-    required: ['status', 'cache_size', 'message'],
+    required: ['status', 'message'],
     title: 'HealthResponse'
 } as const;
 
