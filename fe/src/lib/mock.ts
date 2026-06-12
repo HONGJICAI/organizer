@@ -46,7 +46,9 @@ export async function setupMock(authRequired: boolean) {
 	authState.required = authRequired;
 
 	const comics = genMockComics(100);
-	const images = genMockComics(24);
+	// The backend skips folder-size computation at scan time (size stays 0
+	// until the refresh endpoint fills it) — mirror that for image folders.
+	const images = genMockComics(24).map((i) => ({ ...i, size: 0 }));
 	const findComic = (id: string | readonly string[] | undefined) =>
 		id !== undefined ? comics.find((c) => c.id === Number(id)) : undefined;
 	const findImage = (id: string | readonly string[] | undefined) =>
@@ -176,6 +178,14 @@ export async function setupMock(authRequired: boolean) {
 			if (idx === -1) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
 			images.splice(idx, 1);
 			return HttpResponse.json({ msg: 'Deleted' });
+		}),
+		http.post('/api/images/:id/refresh', async ({ params }) => {
+			await delay(800);
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			image.size = faker.number.int({ min: 1000, max: 10000000 });
+			image.entityUpdateTime = new Date().toISOString();
+			return HttpResponse.json(image);
 		}),
 		http.put('/api/images/:id/progress', async ({ params, request }) => {
 			const image = findImage(params.id);
