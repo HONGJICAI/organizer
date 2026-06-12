@@ -100,7 +100,7 @@
 			case MediaType.Image: {
 				const { error } = await ImagesService.imageDelete({ path: { id: file.id } });
 				if (error) {
-					addNotification(new ErrorNotification({ subtitle: error?.detail }));
+					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				} else {
 					onFileDeleted(true);
 					onCloseModal();
