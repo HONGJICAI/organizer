@@ -36,12 +36,15 @@ _store_lock = threading.Lock()
 
 
 def _image_files(folder_path: str) -> List[str]:
+    # scandir + DirEntry.is_file() reads d_type from the directory listing,
+    # avoiding a stat() per file (listdir + isfile costs one stat each).
     try:
-        names = [
-            f for f in os.listdir(folder_path)
-            if os.path.isfile(os.path.join(folder_path, f))
-            and os.path.splitext(f)[1].lower() in _IMAGE_EXTS
-        ]
+        with os.scandir(folder_path) as it:
+            names = [
+                e.name for e in it
+                if e.is_file()
+                and os.path.splitext(e.name)[1].lower() in _IMAGE_EXTS
+            ]
     except OSError:
         return []
     return sorted(names)
@@ -84,9 +87,17 @@ def bootstrap():
             if not files:
                 continue
             id_counter += 1
-            entity = ImageEntity.from_path(pathlib.Path(entry.path), id_counter)
-            entity.page = len(files)
-            new_store[id_counter] = entity
+            # size is left at 0 here: computing it means a recursive stat() of
+            # every file (see get_dir_size), which makes bootstrap minutes-slow
+            # on large/remote folders. The refresh endpoint fills it on demand.
+            new_store[id_counter] = ImageEntity(
+                id=id_counter,
+                size=0,
+                name=entry.name,
+                path=entry.path,
+                updateTime=datetime.datetime.fromtimestamp(entry.stat().st_mtime),
+                page=len(files),
+            )
 
     with _store_lock:
         _store.clear()

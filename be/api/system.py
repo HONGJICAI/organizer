@@ -23,15 +23,18 @@ def _run_scan(media_type: str):
 
     results = {}
     try:
+        # Images first: bootstrap is cheap (one readdir per folder) and the
+        # in-memory store is empty until it runs, while comic/video scans can
+        # take a while without leaving the UI empty.
+        if media_type in ("images", "all"):
+            bootstrap_images()
+            results["images"] = "done"
         if media_type in ("comics", "all"):
             ComicLoader().work()
             results["comics"] = "done"
         if media_type in ("videos", "all"):
             VideoLoader().work()
             results["videos"] = "done"
-        if media_type in ("images", "all"):
-            bootstrap_images()
-            results["images"] = "done"
         _scan_status["last_result"] = {"status": "success", **results}
     except Exception as e:
         _scan_status["last_result"] = {"status": "error", "message": str(e)}
