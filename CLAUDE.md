@@ -39,7 +39,7 @@ npm run format       # prettier --write
 npm run api          # regenerate the OpenAPI client (see below)
 ```
 
-Cloud-environment gotcha: `fe/package-lock.json` resolves packages against `registry.npmmirror.com`. If that mirror is blocked, temporarily rewrite the registry (`sed -i 's|registry.npmmirror.com|registry.npmjs.org|g' package-lock.json`), install, then `git checkout package-lock.json` — never commit the rewritten lockfile.
+`fe/package-lock.json` resolves packages against the official `registry.npmjs.org` — keep it that way. If you regenerate it behind an npm mirror, rewrite the URLs back before committing (`sed -i 's|registry.npmmirror.com|registry.npmjs.org|g' package-lock.json`).
 
 ## Generated API client — never hand-edit
 
