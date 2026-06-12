@@ -28,6 +28,13 @@ class TestGetPage:
             r = client.get("/api/comics/1/99")
         assert r.status_code == 404
 
+    def test_page_zero_or_negative_returns_404(self, client, session):
+        insert_comic(session, 1, page=3)
+        mock_cf = MockComicfile(pages=3)
+        with patch("comicfile.create_open", return_value=mock_cf):
+            assert client.get("/api/comics/1/0").status_code == 404
+            assert client.get("/api/comics/1/-1").status_code == 404
+
     def test_success_returns_jpeg(self, client, session):
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
@@ -165,6 +172,11 @@ class TestLike:
         mock_cf = MockComicfile(pages=2)
         with patch("comicfile.create_open", return_value=mock_cf):
             r = client.post("/api/comics/1/99/like")
+        assert r.status_code == 404
+
+    def test_page_zero_returns_404(self, client, session):
+        insert_comic(session, 1, page=2)
+        r = client.post("/api/comics/1/0/like")
         assert r.status_code == 404
 
     def test_creates_image_file(self, client, session, tmp_path, monkeypatch):

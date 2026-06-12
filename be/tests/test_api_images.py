@@ -135,6 +135,14 @@ class TestGetPage:
         set_store(make_entity(id=1, path=str(d), page=1))
         assert client.get("/api/images/1/99").status_code == 404
 
+    def test_negative_page_returns_404(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "001.jpg").write_bytes(make_jpeg_bytes())
+        (d / "002.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=2))
+        assert client.get("/api/images/1/-1").status_code == 404
+
     def test_get_does_not_record_progress(self, client, tmp_path):
         d = tmp_path / "album"
         d.mkdir()

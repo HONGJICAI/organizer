@@ -167,19 +167,26 @@
 	});
 
 	// Report reading progress, debounced so flipping through pages only sends
-	// the position the reader settles on.
-	$effect(() => {
-		const position = viewerState.page;
+	// the position the reader settles on. The viewer flushes the pending
+	// position on unmount, otherwise closing within the debounce window would
+	// lose the last page read.
+	let reportedPosition = 0;
+	function reportProgress(position: number) {
+		if (position === reportedPosition) return;
 		if (position < 1 || maxPage < 1) return;
 		if (file.type !== MediaType.Comic && file.type !== MediaType.Image) return;
-		const timer = setTimeout(() => {
-			const opts = { path: { id: file.id }, body: { position } };
-			if (file.type === MediaType.Comic) {
-				ComicpageService.comicPageUpdateProgress(opts);
-			} else {
-				ImagesService.imageUpdateProgress(opts);
-			}
-		}, 1000);
+		reportedPosition = position;
+		const opts = { path: { id: file.id }, body: { position } };
+		if (file.type === MediaType.Comic) {
+			ComicpageService.comicPageUpdateProgress(opts);
+		} else {
+			ImagesService.imageUpdateProgress(opts);
+		}
+	}
+
+	$effect(() => {
+		const position = viewerState.page;
+		const timer = setTimeout(() => reportProgress(position), 1000);
 		return () => clearTimeout(timer);
 	});
 
@@ -192,6 +199,7 @@
 		return () => {
 			window.removeEventListener('keydown', handleKeydown);
 			viewerState.active = false;
+			reportProgress(viewerState.page);
 		};
 	});
 

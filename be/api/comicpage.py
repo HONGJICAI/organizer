@@ -64,9 +64,12 @@ class ComicPageCBV:
         id: int,
         page: int,
         request: Request,
-        width: int = Query(default=None, ge=1, le=4096),
+        width: int | None = Query(default=None, ge=1, le=4096),
         _: None = Depends(require_media_auth),
     ) -> Response:
+        # Reject 0/negative early: page - 1 would otherwise index from the end.
+        if page < 1:
+            abort(404, "Page not found")
         comic = self.__get(id)
         etag = page_etag(id, page, comic.updateTime, width)
         headers = {"cache-control": PAGE_CACHE_CONTROL, "etag": etag}
@@ -104,6 +107,8 @@ class ComicPageCBV:
 
     @router.post("/api/comics/{id}/{page}/like", tags=["comicpage"])
     def like(self, id: int, page: int, _: None = Depends(require_auth)):
+        if page < 1:
+            abort(404, "Page not found")
         comic = self.__get(id)
         name = f"{comic.name}_{page}.jpg"
         path = os.path.join(global_data.Config.Image.liked_path, name)

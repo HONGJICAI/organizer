@@ -127,10 +127,13 @@ class ImageCBV:
         id: int,
         page: int,
         request: Request,
-        width: int = Query(default=None, ge=1, le=4096),
+        width: int | None = Query(default=None, ge=1, le=4096),
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
         token: str | None = Query(default=None),
     ) -> Response:
+        # page=0 means cover; negative would index from the end of the folder.
+        if page < 0:
+            abort(404, "Page not found")
         if page != 0:
             require_media_auth(credentials, token)
         entity = _get(id)

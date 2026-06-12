@@ -598,7 +598,7 @@ export type ComicPageGetData = {
         page: number;
     };
     query?: {
-        width?: number;
+        width?: number | null;
         token?: string | null;
     };
     url: '/api/comics/{id}/{page}';
@@ -1073,7 +1073,7 @@ export type ImageGetPageData = {
         page: number;
     };
     query?: {
-        width?: number;
+        width?: number | null;
         token?: string | null;
     };
     url: '/api/images/{id}/{page}';
