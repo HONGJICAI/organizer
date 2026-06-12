@@ -46,8 +46,11 @@ export async function setupMock(authRequired: boolean) {
 	authState.required = authRequired;
 
 	const comics = genMockComics(100);
+	const images = genMockComics(24);
 	const findComic = (id: string | readonly string[] | undefined) =>
 		id !== undefined ? comics.find((c) => c.id === Number(id)) : undefined;
+	const findImage = (id: string | readonly string[] | undefined) =>
+		id !== undefined ? images.find((c) => c.id === Number(id)) : undefined;
 
 	const handlers = [
 		http.get('/api/auth/status', async () => {
@@ -150,9 +153,47 @@ export async function setupMock(authRequired: boolean) {
 			await delay(1000);
 			return HttpResponse.text('Error: Not Implemented', { status: 501 });
 		}),
-		http.get('/api/images', async () => {
-			await delay(1000);
+		http.get('/api/videos/:id', async () => {
 			return HttpResponse.text('Error: Not Implemented', { status: 501 });
+		}),
+		http.delete('/api/videos/:id', async () => {
+			return HttpResponse.text('Error: Not Implemented', { status: 501 });
+		}),
+		http.get('/api/images', async ({ request }) => {
+			await delay(800);
+			const top = new URL(request.url).searchParams.get('top');
+			return HttpResponse.json(top ? images.slice(0, Number(top)) : images);
+		}),
+		http.get('/api/images/:id', async ({ params }) => {
+			await delay(300);
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			return HttpResponse.json(image);
+		}),
+		http.delete('/api/images/:id', async ({ params }) => {
+			await delay(500);
+			const idx = images.findIndex((c) => c.id === Number(params.id));
+			if (idx === -1) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			images.splice(idx, 1);
+			return HttpResponse.json({ msg: 'Deleted' });
+		}),
+		http.put('/api/images/:id/progress', async ({ params, request }) => {
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			const body = (await request.json()) as { position: number };
+			image.lastViewedPosition = body.position;
+			image.lastViewedTime = new Date().toISOString();
+			return HttpResponse.json({ position: body.position, lastViewedTime: image.lastViewedTime });
+		}),
+		http.get('/api/images/:id/:page', async () => {
+			const w = faker.number.int({ min: 100, max: 1000 });
+			const h = faker.number.int({ min: 100, max: 1000 });
+			return HttpResponse.arrayBuffer(await generateImageArrayBuffer(w, h));
+		}),
+		http.get('/images/*', async () => {
+			const w = faker.number.int({ min: 100, max: 1000 });
+			const h = faker.number.int({ min: 100, max: 1000 });
+			return HttpResponse.arrayBuffer(await generateImageArrayBuffer(w, h));
 		})
 	];
 

@@ -11,8 +11,8 @@ A self-hosted manga/media organizer. `be/` is a FastAPI + SQLModel (SQLite) back
 Development happens in cloud environments; correctness is enforced by automation, not manual testing. The rules:
 
 1. **Backend: every feature ships with API-level tests.** `.github/workflows/be-ci.yml` runs `ruff check` and `pytest --cov=. --cov-fail-under=90` — the build fails below 90% coverage. New endpoints need tests for the success path and the error paths (404/400) in `be/tests/test_api_<router>.py`.
-2. **Frontend: mock data must cover every backend feature the UI uses.** Any backend endpoint consumed by the frontend must have an MSW handler in `fe/src/lib/mock.ts`, with faker-generated data matching the real response schema exactly (same fields, same types as `fe/src/lib/client/types.gen.ts`). When you add or change a backend endpoint and its frontend usage, update `mock.ts` in the same change — otherwise the Vercel preview silently breaks.
-3. **Frontend has no CI workflow yet.** Quality relies on husky pre-commit hooks (prettier + eslint on staged files) and on you running `npm run check` and `npx vitest run` before pushing.
+2. **Frontend: mock data must cover every backend feature the UI uses.** Any backend endpoint consumed by the frontend must have an MSW handler in `fe/src/lib/mock.ts`, with faker-generated data matching the real response schema exactly (same fields, same types as `fe/src/lib/client/types.gen.ts`). This is machine-enforced: `fe/src/lib/mock-parity.test.ts` statically extracts every endpoint the app consumes (SDK calls and raw `/api/...` URLs) and fails if `mock.ts` lacks a handler. It checks presence, not payload shape — keeping mock data schema-accurate is still on you.
+3. **Frontend CI** (`.github/workflows/fe-ci.yml`) runs `npm run lint`, `npm run check`, `npx vitest run` (which includes the mock-parity test), and `npm run build`. Husky pre-commit hooks additionally run prettier + eslint on staged files.
 
 ## Commands
 
@@ -48,8 +48,6 @@ Cloud-environment gotcha: `fe/package-lock.json` resolves packages against `regi
 1. Start the backend on port 8001.
 2. `cd fe && npm run api`
 3. Revert the generated `baseUrl` change: `git checkout src/lib/client/client.gen.ts` (it must stay `baseUrl: ''`; the real URL is set at runtime by the connect flow).
-
-`npm run check` currently reports a few pre-existing errors inside `client.gen.ts` (hey-api package version mismatch) — don't chase them as part of unrelated work.
 
 ## Backend architecture
 
