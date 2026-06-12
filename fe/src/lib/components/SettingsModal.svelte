@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { client } from '$lib/client/client.gen';
-	import { config, PageWidthMode } from '$lib/config.svelte';
+	import { config, PageWidthMode, savePrefs } from '$lib/config.svelte';
 	import { ContentSwitcher, Modal, NumberInput, Switch, TextInput } from 'carbon-components-svelte';
 	import { FitToHeight, FitToScreen, FitToWidth, ArrowsVertical } from 'carbon-icons-svelte';
 
@@ -31,6 +31,7 @@
 		config.viewMode = viewMode;
 		config.pageWidthMode = pageWidthMode;
 		config.pageWidthCustom = pageWidthCustom;
+		savePrefs();
 		client.setConfig({
 			baseUrl: config.apiServer
 		});
