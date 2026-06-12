@@ -28,7 +28,7 @@ def page_etag(entity_id: int, page: int, updateTime: datetime.datetime, width: i
 
 
 def resize_to_width(buf: bytes, width: int) -> tuple[bytes, str] | None:
-    """Downscale image bytes to the given width (keeps aspect ratio, returns JPEG).
+    """Downscale image bytes to the given width (keeps aspect ratio, returns WebP).
 
     Returns None when the image is already narrow enough or cannot be decoded.
     """
@@ -39,9 +39,12 @@ def resize_to_width(buf: bytes, width: int) -> tuple[bytes, str] | None:
     if img.width <= width:
         return None
     img.thumbnail((width, img.height * width // img.width))
+    if img.mode != "RGBA":
+        img = img.convert("RGB")
     out = io.BytesIO()
-    img.convert("RGB").save(out, "JPEG", quality=85)
-    return out.getvalue(), "image/jpeg"
+    # method=0 favors encode speed; still far smaller than JPEG for comic pages.
+    img.save(out, "WEBP", quality=80, method=0)
+    return out.getvalue(), "image/webp"
 
 
 @cbv(router)

@@ -99,7 +99,7 @@ class TestGetPage:
         with patch("comicfile.create_open", return_value=mock_cf):
             r = client.get("/api/comics/1/1?width=5")
         assert r.status_code == 200
-        assert r.headers["content-type"] == "image/jpeg"
+        assert r.headers["content-type"] == "image/webp"
         img = Image.open(io.BytesIO(r.content))
         assert img.width == 5
 
