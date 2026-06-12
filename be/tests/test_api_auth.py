@@ -1,4 +1,7 @@
 import core.auth as auth_module
+from unittest.mock import patch
+
+from conftest import MockComicfile, insert_comic
 
 
 class TestStatus:
@@ -58,4 +61,40 @@ class TestProtectedRoute:
     def test_blocked_with_wrong_token(self, client, monkeypatch):
         monkeypatch.setattr(auth_module, "ADMIN_PASSWORD", "secret")
         r = client.get("/api/comics", headers={"Authorization": "Bearer badtoken"})
+        assert r.status_code == 401
+
+
+class TestMediaAuth:
+    """require_media_auth: media endpoints accept Bearer or ?token= (for <img> loads)."""
+
+    def _setup(self, client, session, monkeypatch):
+        monkeypatch.setattr(auth_module, "ADMIN_PASSWORD", "secret")
+        insert_comic(session, 1, page=3)
+        return client.post("/api/auth/login", json={"password": "secret"}).json()["token"]
+
+    def test_blocked_without_token(self, client, session, monkeypatch):
+        self._setup(client, session, monkeypatch)
+        r = client.get("/api/comics/1/1")
+        assert r.status_code == 401
+
+    def test_blocked_with_wrong_query_token(self, client, session, monkeypatch):
+        self._setup(client, session, monkeypatch)
+        r = client.get("/api/comics/1/1?token=badtoken")
+        assert r.status_code == 401
+
+    def test_accessible_with_query_token(self, client, session, monkeypatch):
+        token = self._setup(client, session, monkeypatch)
+        with patch("comicfile.create_open", return_value=MockComicfile(pages=3)):
+            r = client.get(f"/api/comics/1/1?token={token}")
+        assert r.status_code == 200
+
+    def test_accessible_with_bearer_header(self, client, session, monkeypatch):
+        token = self._setup(client, session, monkeypatch)
+        with patch("comicfile.create_open", return_value=MockComicfile(pages=3)):
+            r = client.get("/api/comics/1/1", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+
+    def test_wrong_bearer_with_no_query_token_blocked(self, client, session, monkeypatch):
+        self._setup(client, session, monkeypatch)
+        r = client.get("/api/comics/1/1", headers={"Authorization": "Bearer badtoken"})
         assert r.status_code == 401
