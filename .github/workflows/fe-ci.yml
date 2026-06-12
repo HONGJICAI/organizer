@@ -1,0 +1,42 @@
+name: FE CI
+
+on:
+  push:
+    paths:
+      - "fe/**"
+      - ".github/workflows/fe-ci.yml"
+  pull_request:
+    paths:
+      - "fe/**"
+      - ".github/workflows/fe-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: fe/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run check
+
+      - name: Test
+        run: npx vitest run
+
+      - name: Build
+        run: npm run build
