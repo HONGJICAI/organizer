@@ -6,7 +6,7 @@ import shutil
 import threading
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from core.auth import _bearer, require_auth, require_media_auth
 from fastapi_utils.api_model import APIMessage
@@ -14,10 +14,11 @@ from fastapi_utils.cbv import cbv
 from PIL import Image as PILImage
 
 import global_data
-from comicfile import allowImgs
+from api.comicpage import PAGE_CACHE_CONTROL, page_etag, resize_to_width
+from comicfile import allowImgs, mediaTypes
 from core.exceptions import abort
 from model import ImageEntity
-from schemas.common import FavorResponse
+from schemas.common import FavorResponse, ProgressRequest, ProgressResponse
 from schemas.image import (
     ImageDetailResponse,
     ImagePageDetailResponse,
@@ -32,15 +33,6 @@ _IMAGE_EXTS = set(allowImgs)
 # In-memory store: {id: ImageEntity}
 _store: Dict[int, ImageEntity] = {}
 _store_lock = threading.Lock()
-
-_MEDIA_TYPES = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".bmp": "image/bmp",
-}
 
 
 def _image_files(folder_path: str) -> List[str]:
@@ -134,12 +126,21 @@ class ImageCBV:
         self,
         id: int,
         page: int,
+        request: Request,
+        width: int | None = Query(default=None, ge=1, le=4096),
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
         token: str | None = Query(default=None),
     ) -> Response:
+        # page=0 means cover; negative would index from the end of the folder.
+        if page < 0:
+            abort(404, "Page not found")
         if page != 0:
             require_media_auth(credentials, token)
         entity = _get(id)
+        etag = page_etag(id, page, entity.updateTime, width)
+        headers = {"cache-control": PAGE_CACHE_CONTROL, "etag": etag}
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=headers)
         files = _image_files(entity.path)
         idx = 0 if page == 0 else page - 1
         if idx >= len(files):
@@ -150,14 +151,26 @@ class ImageCBV:
                 content = f.read()
         except OSError:
             abort(404, "Image file not found")
-        if page != 0:
-            entity.lastViewedTime = datetime.datetime.now()
-            entity.lastViewedPosition = page
         ext = os.path.splitext(files[idx])[1].lower()
-        return Response(
-            content=content,
-            media_type=_MEDIA_TYPES.get(ext, "image/jpeg"),
-            headers={"cache-control": "max-age=604800"},
+        media_type = mediaTypes.get(ext, "image/jpeg")
+        # Resizing a GIF would drop animation frames, so serve it untouched.
+        if width is not None and ext != ".gif":
+            resized = resize_to_width(content, width)
+            if resized is not None:
+                content, media_type = resized
+        return Response(content=content, media_type=media_type, headers=headers)
+
+    @router.put("/api/images/{id}/progress", tags=["images"])
+    def update_progress(
+        self, id: int, req: ProgressRequest, _: None = Depends(require_auth)
+    ) -> ProgressResponse:
+        entity = _get(id)
+        if entity.page > 0 and req.position > entity.page:
+            abort(400, "Position out of range")
+        entity.lastViewedPosition = req.position
+        entity.lastViewedTime = datetime.datetime.now()
+        return ProgressResponse(
+            position=entity.lastViewedPosition, lastViewedTime=entity.lastViewedTime
         )
 
     @router.post("/api/images/{id}/favor", tags=["images"])

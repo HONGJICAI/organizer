@@ -340,6 +340,39 @@ export const LoginResponseSchema = {
     title: 'LoginResponse'
 } as const;
 
+export const ProgressRequestSchema = {
+    properties: {
+        position: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Position',
+            description: '1-based page position'
+        }
+    },
+    type: 'object',
+    required: ['position'],
+    title: 'ProgressRequest',
+    description: 'Request to update reading progress'
+} as const;
+
+export const ProgressResponseSchema = {
+    properties: {
+        position: {
+            type: 'integer',
+            title: 'Position'
+        },
+        lastViewedTime: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Lastviewedtime'
+        }
+    },
+    type: 'object',
+    required: ['position', 'lastViewedTime'],
+    title: 'ProgressResponse',
+    description: 'Response for reading progress update'
+} as const;
+
 export const ScanResponseSchema = {
     properties: {
         status: {
@@ -365,7 +398,6 @@ export const ScanStatusResponseSchema = {
         last_result: {
             anyOf: [
                 {
-                    additionalProperties: true,
                     type: 'object'
                 },
                 {
@@ -403,13 +435,6 @@ export const ValidationErrorSchema = {
         type: {
             type: 'string',
             title: 'Error Type'
-        },
-        input: {
-            title: 'Input'
-        },
-        ctx: {
-            type: 'object',
-            title: 'Context'
         }
     },
     type: 'object',

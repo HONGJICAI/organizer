@@ -118,6 +118,14 @@ export async function setupMock(authRequired: boolean) {
 			}));
 			return HttpResponse.json({ pageDetails });
 		}),
+		http.put('/api/comics/:id/progress', async ({ params, request }) => {
+			const comic = findComic(params.id);
+			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			const body = (await request.json()) as { position: number };
+			comic.lastViewedPosition = body.position;
+			comic.lastViewedTime = new Date().toISOString();
+			return HttpResponse.json({ position: body.position, lastViewedTime: comic.lastViewedTime });
+		}),
 		http.post('/api/comics/:id/:page/like', async () => {
 			await delay(200);
 			return HttpResponse.json({ msg: 'Liked' });

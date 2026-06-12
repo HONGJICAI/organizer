@@ -10,6 +10,15 @@ import rarfile
 allowImgs = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"]
 allowZips = [".zip", ".rar"]
 
+mediaTypes = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+
 
 class Comicfile:
     @abstractmethod
