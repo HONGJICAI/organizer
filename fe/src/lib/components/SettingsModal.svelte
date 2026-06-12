@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { client } from '$lib/client/client.gen';
-	import { config } from '$lib/config.svelte';
-	import { ContentSwitcher, Modal, Switch, TextInput } from 'carbon-components-svelte';
+	import { config, PageWidthMode } from '$lib/config.svelte';
+	import { ContentSwitcher, Modal, NumberInput, Switch, TextInput } from 'carbon-components-svelte';
 	import { FitToHeight, FitToScreen, FitToWidth, ArrowsVertical } from 'carbon-icons-svelte';
 
 	interface Props {
@@ -11,7 +11,9 @@
 	let { open = $bindable(false), onCloseModal = () => undefined }: Props = $props();
 	let apiServer = $state(config.apiServer),
 		staticServer = $state(config.staticServer),
-		viewMode = $state(config.viewMode);
+		viewMode = $state(config.viewMode),
+		pageWidthMode = $state(config.pageWidthMode),
+		pageWidthCustom = $state(config.pageWidthCustom);
 </script>
 
 <Modal
@@ -27,6 +29,8 @@
 		config.apiServer = apiServer;
 		config.staticServer = staticServer;
 		config.viewMode = viewMode;
+		config.pageWidthMode = pageWidthMode;
+		config.pageWidthCustom = pageWidthCustom;
 		client.setConfig({
 			baseUrl: config.apiServer
 		});
@@ -52,6 +56,29 @@
 				<div class="switch-label"><ArrowsVertical /><span>Scroll</span></div>
 			</Switch>
 		</ContentSwitcher>
+	</div>
+	<h>Page Width</h>
+	<div>
+		<ContentSwitcher bind:selectedIndex={pageWidthMode}>
+			<Switch>
+				<div class="switch-label"><span>Original</span></div>
+			</Switch>
+			<Switch>
+				<div class="switch-label"><span>Device</span></div>
+			</Switch>
+			<Switch>
+				<div class="switch-label"><span>Custom</span></div>
+			</Switch>
+		</ContentSwitcher>
+		{#if pageWidthMode === PageWidthMode.Custom}
+			<NumberInput
+				label="Custom width (px)"
+				min={1}
+				max={4096}
+				step={10}
+				bind:value={pageWidthCustom}
+			/>
+		{/if}
 	</div>
 </Modal>
 

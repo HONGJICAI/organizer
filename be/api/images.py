@@ -14,7 +14,7 @@ from fastapi_utils.cbv import cbv
 from PIL import Image as PILImage
 
 import global_data
-from api.comicpage import PAGE_CACHE_CONTROL, page_etag
+from api.comicpage import PAGE_CACHE_CONTROL, page_etag, resize_to_width
 from comicfile import allowImgs, mediaTypes
 from core.exceptions import abort
 from model import ImageEntity
@@ -127,13 +127,14 @@ class ImageCBV:
         id: int,
         page: int,
         request: Request,
+        width: int = Query(default=None, ge=1, le=4096),
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
         token: str | None = Query(default=None),
     ) -> Response:
         if page != 0:
             require_media_auth(credentials, token)
         entity = _get(id)
-        etag = page_etag(id, page, entity.updateTime, None)
+        etag = page_etag(id, page, entity.updateTime, width)
         headers = {"cache-control": PAGE_CACHE_CONTROL, "etag": etag}
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers=headers)
@@ -148,11 +149,13 @@ class ImageCBV:
         except OSError:
             abort(404, "Image file not found")
         ext = os.path.splitext(files[idx])[1].lower()
-        return Response(
-            content=content,
-            media_type=mediaTypes.get(ext, "image/jpeg"),
-            headers=headers,
-        )
+        media_type = mediaTypes.get(ext, "image/jpeg")
+        # Resizing a GIF would drop animation frames, so serve it untouched.
+        if width is not None and ext != ".gif":
+            resized = resize_to_width(content, width)
+            if resized is not None:
+                content, media_type = resized
+        return Response(content=content, media_type=media_type, headers=headers)
 
     @router.put("/api/images/{id}/progress", tags=["images"])
     def update_progress(

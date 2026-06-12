@@ -1073,6 +1073,7 @@ export type ImageGetPageData = {
         page: number;
     };
     query?: {
+        width?: number;
         token?: string | null;
     };
     url: '/api/images/{id}/{page}';

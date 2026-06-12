@@ -17,7 +17,7 @@
 		SuccessNotification,
 		Video
 	} from '$lib/model.svelte';
-	import { config, ViewMode } from '$lib/config.svelte';
+	import { config, PageWidthMode, ViewMode } from '$lib/config.svelte';
 	import { onMount, tick } from 'svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { viewerState } from '$lib/viewerState.svelte';
@@ -74,12 +74,36 @@
 	let image = $derived(file as Image);
 	let video = $derived(file as Video);
 
+	// Server-side page width cap, keep in sync with the backend's `width` query param.
+	const MAX_PAGE_WIDTH = 4096;
+
+	function pageWidth(): number | null {
+		switch (config.pageWidthMode) {
+			case PageWidthMode.Device:
+				return Math.min(
+					MAX_PAGE_WIDTH,
+					Math.round(window.innerWidth * (window.devicePixelRatio || 1))
+				);
+			case PageWidthMode.Custom:
+				return config.pageWidthCustom > 0
+					? Math.min(MAX_PAGE_WIDTH, Math.round(config.pageWidthCustom))
+					: null;
+			default:
+				return null;
+		}
+	}
+
 	function pageApiUrl(mediaType: MediaType, id: number, pageNum: number): string {
 		const base =
 			mediaType === MediaType.Image
 				? `${config.apiServer}/api/images/${id}/${pageNum}`
 				: `${config.apiServer}/api/comics/${id}/${pageNum}`;
-		return authState.token ? `${base}?token=${authState.token}` : base;
+		const params = new URLSearchParams();
+		if (authState.token) params.set('token', authState.token);
+		const width = pageWidth();
+		if (width) params.set('width', String(width));
+		const qs = params.toString();
+		return qs ? `${base}?${qs}` : base;
 	}
 
 	$effect(() => {
@@ -332,7 +356,7 @@
 					{:else}
 						<img
 							bind:this={comicTarget}
-							src={`${objUrl}${pageRetry > 0 ? `?r=${pageRetry}` : ''}`}
+							src={`${objUrl}${pageRetry > 0 ? `${objUrl.includes('?') ? '&' : '?'}r=${pageRetry}` : ''}`}
 							alt="page content"
 							onload={() => {
 								loading = false;

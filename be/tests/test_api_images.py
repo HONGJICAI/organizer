@@ -154,6 +154,18 @@ class TestGetPage:
         r2 = client.get("/api/images/1/1", headers={"if-none-match": etag})
         assert r2.status_code == 304
 
+    def test_width_downscales_image(self, client, tmp_path):
+        import io
+        from PIL import Image
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "001.jpg").write_bytes(make_jpeg_bytes())  # 10x10
+        set_store(make_entity(id=1, path=str(d), page=1))
+        r = client.get("/api/images/1/1?width=5")
+        assert r.status_code == 200
+        img = Image.open(io.BytesIO(r.content))
+        assert img.width == 5
+
     def test_missing_image_returns_404(self, client):
         assert client.get("/api/images/999/1").status_code == 404
 
