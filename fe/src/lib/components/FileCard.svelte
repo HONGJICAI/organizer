@@ -13,7 +13,10 @@
 
 <div class="card">
 	<Tile bind:light on:click={() => onClickFile(file)}>
-		<div class="left-top"><Tag>{file.size}MB</Tag></div>
+		<!-- size 0 means "not computed yet" (image folders skip it at scan time) -->
+		{#if file.size > 0}
+			<div class="left-top"><Tag>{file.size}MB</Tag></div>
+		{/if}
 		<div class="top-right">
 			{#if comic.viewed && comic.lastViewed === comic.page}
 				<Tag type="green">{comic.page}p</Tag>

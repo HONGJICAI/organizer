@@ -16,6 +16,7 @@
 	} from 'carbon-components-svelte';
 	import {
 		Comic,
+		Image,
 		MediaType,
 		type MediaFile,
 		Video,
@@ -141,19 +142,34 @@
 	let sendingRefresh = $state(false);
 	async function onClickRefresh() {
 		sendingRefresh = true;
-		const { data, error } = await ComicsService.comicRefresh({
+		const requestData = {
 			path: {
 				id: file.id
 			}
-		});
-		if (error) {
-			addNotification(new ErrorNotification({ subtitle: error?.msg }));
-		}
-		if (data) {
-			if (mediaType === MediaType.Comic) {
-				file = new Comic(data);
+		};
+		switch (mediaType) {
+			case MediaType.Comic: {
+				const { data, error } = await ComicsService.comicRefresh(requestData);
+				if (error) {
+					addNotification(new ErrorNotification({ subtitle: error?.msg }));
+				}
+				if (data) {
+					file = new Comic(data);
+					addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
+				}
+				break;
 			}
-			addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
+			case MediaType.Image: {
+				const { data, error } = await ImagesService.imageRefresh(requestData);
+				if (error) {
+					addNotification(new ErrorNotification({ subtitle: error?.msg }));
+				}
+				if (data) {
+					file = new Image(data);
+					addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
+				}
+				break;
+			}
 		}
 		sendingRefresh = false;
 	}
@@ -231,7 +247,7 @@
 		{/if}
 	</div>
 	<div class="horizontal">
-		<TextInput labelText="Size" value={`${file.size}MB`} readonly />
+		<TextInput labelText="Size" value={file.size > 0 ? `${file.size}MB` : 'Unknown'} readonly />
 		{#if comicfile}
 			<TextInput labelText="Page" value={comicfile.page} readonly />
 		{/if}
@@ -273,7 +289,7 @@
 			icon={UpdateNow}
 			iconDescription="Refresh"
 			on:click={() => onClickRefresh()}
-			disabled={sendingRefresh || file.archived}
+			disabled={sendingRefresh || file.archived || mediaType === MediaType.Video}
 		/>
 		<CopyButton text={file.name} />
 		<Button
