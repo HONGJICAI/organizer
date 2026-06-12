@@ -21,7 +21,7 @@
 	import { onMount, tick } from 'svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { viewerState } from '$lib/viewerState.svelte';
-	import { ComicpageService } from '$lib/client';
+	import { ComicpageService, ImagesService } from '$lib/client';
 	import { authState } from '$lib/auth.svelte';
 
 	interface Props {
@@ -140,6 +140,23 @@
 		if (comicViewMode !== 'fit-to-scroll') {
 			viewerState.page = page;
 		}
+	});
+
+	// Report reading progress, debounced so flipping through pages only sends
+	// the position the reader settles on.
+	$effect(() => {
+		const position = viewerState.page;
+		if (position < 1 || maxPage < 1) return;
+		if (file.type !== MediaType.Comic && file.type !== MediaType.Image) return;
+		const timer = setTimeout(() => {
+			const opts = { path: { id: file.id }, body: { position } };
+			if (file.type === MediaType.Comic) {
+				ComicpageService.comicPageUpdateProgress(opts);
+			} else {
+				ImagesService.imageUpdateProgress(opts);
+			}
+		}, 1000);
+		return () => clearTimeout(timer);
 	});
 
 	onMount(() => {

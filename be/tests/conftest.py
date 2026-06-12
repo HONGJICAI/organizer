@@ -75,9 +75,9 @@ def insert_video(
 # ---------------------------------------------------------------------------
 
 class MockComicfile:
-    def __init__(self, pages: int = 3):
+    def __init__(self, pages: int = 3, names: list[str] | None = None):
         self._pages = pages
-        self._namelist = [f"{i:04d}.jpg" for i in range(pages)]
+        self._namelist = names or [f"{i:04d}.jpg" for i in range(pages)]
         self._opened = True
 
     @property

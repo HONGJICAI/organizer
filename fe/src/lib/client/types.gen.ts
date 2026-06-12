@@ -109,6 +109,24 @@ export type LoginResponse = {
     token: string;
 };
 
+/**
+ * Request to update reading progress
+ */
+export type ProgressRequest = {
+    /**
+     * 1-based page position
+     */
+    position: number;
+};
+
+/**
+ * Response for reading progress update
+ */
+export type ProgressResponse = {
+    position: number;
+    lastViewedTime: string;
+};
+
 export type ScanResponse = {
     status: string;
     message: string;
@@ -125,10 +143,6 @@ export type ValidationError = {
     loc: Array<string | number>;
     msg: string;
     type: string;
-    input?: unknown;
-    ctx?: {
-        [key: string]: unknown;
-    };
 };
 
 export type VideoEntity = {
@@ -584,6 +598,7 @@ export type ComicPageGetData = {
         page: number;
     };
     query?: {
+        width?: number;
         token?: string | null;
     };
     url: '/api/comics/{id}/{page}';
@@ -620,6 +635,49 @@ export type ComicPageGetResponses = {
      */
     200: unknown;
 };
+
+export type ComicPageUpdateProgressData = {
+    body: ProgressRequest;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/comics/{id}/progress';
+};
+
+export type ComicPageUpdateProgressErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicPageUpdateProgressError = ComicPageUpdateProgressErrors[keyof ComicPageUpdateProgressErrors];
+
+export type ComicPageUpdateProgressResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProgressResponse;
+};
+
+export type ComicPageUpdateProgressResponse = ComicPageUpdateProgressResponses[keyof ComicPageUpdateProgressResponses];
 
 export type ComicPageLikeData = {
     body?: never;
@@ -1051,6 +1109,49 @@ export type ImageGetPageResponses = {
      */
     200: unknown;
 };
+
+export type ImageUpdateProgressData = {
+    body: ProgressRequest;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/progress';
+};
+
+export type ImageUpdateProgressErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageUpdateProgressError = ImageUpdateProgressErrors[keyof ImageUpdateProgressErrors];
+
+export type ImageUpdateProgressResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProgressResponse;
+};
+
+export type ImageUpdateProgressResponse = ImageUpdateProgressResponses[keyof ImageUpdateProgressResponses];
 
 export type ImageUnfavorData = {
     body?: never;

@@ -135,17 +135,46 @@ class TestGetPage:
         set_store(make_entity(id=1, path=str(d), page=1))
         assert client.get("/api/images/1/99").status_code == 404
 
-    def test_updates_last_viewed(self, client, tmp_path):
+    def test_get_does_not_record_progress(self, client, tmp_path):
         d = tmp_path / "album"
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=1))
         client.get("/api/images/1/1")
-        assert img_api._store[1].lastViewedPosition == 1
-        assert img_api._store[1].lastViewedTime is not None
+        assert img_api._store[1].lastViewedPosition == 0
+        assert img_api._store[1].lastViewedTime is None
+
+    def test_if_none_match_returns_304(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "001.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=1))
+        r1 = client.get("/api/images/1/1")
+        etag = r1.headers["etag"]
+        r2 = client.get("/api/images/1/1", headers={"if-none-match": etag})
+        assert r2.status_code == 304
 
     def test_missing_image_returns_404(self, client):
         assert client.get("/api/images/999/1").status_code == 404
+
+
+class TestUpdateProgress:
+    def test_missing_returns_404(self, client):
+        r = client.put("/api/images/999/progress", json={"position": 1})
+        assert r.status_code == 404
+
+    def test_success(self, client):
+        set_store(make_entity(id=1, page=3))
+        r = client.put("/api/images/1/progress", json={"position": 2})
+        assert r.status_code == 200
+        assert r.json()["position"] == 2
+        assert img_api._store[1].lastViewedPosition == 2
+        assert img_api._store[1].lastViewedTime is not None
+
+    def test_position_beyond_last_page_rejected(self, client):
+        set_store(make_entity(id=1, page=3))
+        r = client.put("/api/images/1/progress", json={"position": 4})
+        assert r.status_code == 400
 
 
 class TestDetail:
