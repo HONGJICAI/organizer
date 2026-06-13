@@ -4,6 +4,8 @@ WORKDIR /build/fe
 COPY fe/package*.json ./
 RUN npm pkg delete scripts.prepare && npm ci
 COPY fe/ ./
+# Hide the "try demo (mock data)" button in the self-hosted image.
+ENV VITE_HIDE_MOCK=1
 RUN npm run build
 
 # ── Stage 2: production runtime ───────────────────────────────────────────────

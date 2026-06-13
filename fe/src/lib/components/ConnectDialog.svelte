@@ -8,6 +8,9 @@
 	let serverUrl = $state('');
 	let openSettings = $state(false);
 
+	// Hidden in the Docker image (built with VITE_HIDE_MOCK=1); shown by default.
+	const showMockButton = import.meta.env.VITE_HIDE_MOCK !== '1';
+
 	onMount(async () => {
 		const params = new URLSearchParams(window.location.search);
 
@@ -37,6 +40,15 @@
 		const ok = await connect(serverUrl);
 		if (ok) {
 			const { invalidateAll } = await import('$app/navigation');
+			await invalidateAll();
+		}
+	}
+
+	async function handleMock() {
+		const ok = await connectMock(false);
+		if (ok) {
+			const { goto, invalidateAll } = await import('$app/navigation');
+			await goto('/', { replaceState: true });
 			await invalidateAll();
 		}
 	}
@@ -74,6 +86,11 @@
 					/>
 				{/if}
 				<Button type="submit" style="width:100%;max-width:none">Connect</Button>
+				{#if showMockButton}
+					<Button kind="tertiary" style="width:100%;max-width:none" on:click={handleMock}>
+						Try demo (mock data)
+					</Button>
+				{/if}
 			</form>
 		{/if}
 	</div>
