@@ -196,6 +196,23 @@ export async function setupMock(authRequired: boolean) {
 			image.entityUpdateTime = new Date().toISOString();
 			return HttpResponse.json(image);
 		}),
+		http.post('/api/images/:id/convert-to-comic', async ({ params }) => {
+			await delay(1200);
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			// Mirror the backend: a new comic is created from the album's images
+			// (named after the resulting zip file) and added to the comic library.
+			const newComic = {
+				...image,
+				id: Math.max(0, ...comics.map((c) => c.id)) + 1,
+				name: `${image.name}.zip`,
+				path: `/data/comics/${image.name}.zip`,
+				archived: false,
+				entityUpdateTime: new Date().toISOString()
+			};
+			comics.push(newComic);
+			return HttpResponse.json(newComic);
+		}),
 		http.put('/api/images/:id/progress', async ({ params, request }) => {
 			const image = findImage(params.id);
 			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });

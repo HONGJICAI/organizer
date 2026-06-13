@@ -1371,6 +1371,49 @@ export type ImageSetCoverResponses = {
     200: unknown;
 };
 
+export type ImageConvertToComicData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/convert-to-comic';
+};
+
+export type ImageConvertToComicErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageConvertToComicError = ImageConvertToComicErrors[keyof ImageConvertToComicErrors];
+
+export type ImageConvertToComicResponses = {
+    /**
+     * Successful Response
+     */
+    200: ComicEntity;
+};
+
+export type ImageConvertToComicResponse = ImageConvertToComicResponses[keyof ImageConvertToComicResponses];
+
 export type HealthCheckData = {
     body?: never;
     path?: never;

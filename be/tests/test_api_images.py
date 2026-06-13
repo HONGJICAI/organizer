@@ -303,6 +303,72 @@ class TestDelete:
         assert client.delete("/api/images/999").status_code == 404
 
 
+class TestConvertToComic:
+    def _album(self, tmp_path, pages=3):
+        d = tmp_path / "album" / "My Album"
+        d.mkdir(parents=True)
+        for i in range(pages):
+            (d / f"{i:03d}.jpg").write_bytes(make_jpeg_bytes())
+        return d
+
+    def _comic_dir(self, tmp_path, monkeypatch):
+        import global_data
+        comic_dir = tmp_path / "comics_src"
+        comic_dir.mkdir()
+        monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [str(comic_dir)])
+        return comic_dir
+
+    def test_creates_comic_zip(self, client, tmp_path, monkeypatch):
+        import zipfile
+        d = self._album(tmp_path, pages=3)
+        comic_dir = self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="My Album", path=str(d), page=3))
+
+        r = client.post("/api/images/1/convert-to-comic")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["name"] == "My Album.zip"
+        assert body["page"] == 3
+
+        zip_path = comic_dir / "My Album.zip"
+        assert zip_path.exists()
+        with zipfile.ZipFile(zip_path) as zf:
+            assert sorted(zf.namelist()) == ["000.jpg", "001.jpg", "002.jpg"]
+
+    def test_source_folder_preserved(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path)
+        self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="My Album", path=str(d)))
+        assert client.post("/api/images/1/convert-to-comic").status_code == 200
+        assert d.exists()
+        assert 1 in img_api._store
+
+    def test_imports_into_comic_db(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path)
+        self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="My Album", path=str(d)))
+        client.post("/api/images/1/convert-to-comic")
+        listing = client.get("/api/comics").json()
+        assert any(c["name"] == "My Album.zip" for c in listing)
+
+    def test_empty_folder_returns_400(self, client, tmp_path, monkeypatch):
+        d = tmp_path / "empty"
+        d.mkdir()
+        self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="empty", path=str(d), page=0))
+        assert client.post("/api/images/1/convert-to-comic").status_code == 400
+
+    def test_duplicate_returns_400(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path)
+        self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="My Album", path=str(d)))
+        assert client.post("/api/images/1/convert-to-comic").status_code == 200
+        assert client.post("/api/images/1/convert-to-comic").status_code == 400
+
+    def test_missing_returns_404(self, client):
+        assert client.post("/api/images/999/convert-to-comic").status_code == 404
+
+
 class TestSetCover:
     def test_updates_cover_position(self, client, tmp_path, monkeypatch):
         import global_data
