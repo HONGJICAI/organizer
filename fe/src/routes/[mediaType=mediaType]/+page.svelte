@@ -232,9 +232,12 @@
 				<div class="card-flexbox">
 					{#if searchFilesInCurrentPage.length === 0}
 						<div class="empty-state">
-							<p>No files found</p>
 							{#if searchStr}
+								<p>No files match your search</p>
 								<p class="empty-hint">Try a different search term or clear the filter.</p>
+							{:else}
+								<p>Nothing found here</p>
+								<p class="empty-hint">There are no items in this view yet.</p>
 							{/if}
 						</div>
 					{:else}

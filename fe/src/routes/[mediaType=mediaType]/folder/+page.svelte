@@ -140,7 +140,8 @@
 			<div class="card-flexbox">
 				{#if displayFiles.length === 0 && subfolders.length === 0}
 					<div class="empty-state">
-						<p>This folder is empty.</p>
+						<p>Nothing found in current folder</p>
+						<p class="empty-hint">This folder has no items to show.</p>
 					</div>
 				{:else}
 					{#each filesInPage as file, idx (file.id)}
@@ -270,5 +271,14 @@
 		padding: 3rem 1rem;
 		text-align: center;
 		color: var(--cds-text-02, #c6c6c6);
+	}
+	.empty-state p {
+		font-size: 1.125rem;
+		margin: 0;
+	}
+	.empty-hint {
+		font-size: 0.875rem !important;
+		margin-top: 0.5rem !important;
+		color: var(--cds-text-03, #8d8d8d) !important;
 	}
 </style>
