@@ -23,14 +23,25 @@
 	let dataLoaded = $state(false);
 	let files = $state([] as MediaFile[]);
 	$effect(() => {
+		const pending = data.files;
+		// reset immediately so a slow/failed load never shows the previous
+		// media type's content (e.g. switching image -> empty/erroring video)
 		dataLoaded = false;
-		data.files
+		files = [];
+		let cancelled = false;
+		pending
 			?.then((f) => {
-				files = f;
+				if (!cancelled) files = f;
+			})
+			.catch(() => {
+				if (!cancelled) files = [];
 			})
 			.finally(() => {
-				dataLoaded = true;
+				if (!cancelled) dataLoaded = true;
 			});
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	let mediaType = $derived(page.params.mediaType);
