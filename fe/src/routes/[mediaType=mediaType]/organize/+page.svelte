@@ -2,6 +2,7 @@
 	import { ComicsService } from '$lib/client';
 	import { Comic, ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
+	import { page } from '$app/state';
 	import {
 		Breadcrumb,
 		BreadcrumbItem,
@@ -13,7 +14,7 @@
 		ToolbarContent,
 		ToolbarSearch
 	} from 'carbon-components-svelte';
-	import { Renew, TrashCan } from 'carbon-icons-svelte';
+	import { Home, Renew, TrashCan } from 'carbon-icons-svelte';
 
 	interface Row {
 		id: number;
@@ -22,6 +23,7 @@
 		coverUrl: string;
 	}
 
+	let mediaType = $derived(page.params.mediaType);
 	let loading = $state(true);
 	let rows = $state<Row[]>([]);
 	let selectedRowIds = $state<number[]>([]);
@@ -79,10 +81,11 @@
 	load();
 </script>
 
-<Breadcrumb>
-	<BreadcrumbItem href="/">Home</BreadcrumbItem>
-	<BreadcrumbItem href="/comic">Comic</BreadcrumbItem>
-	<BreadcrumbItem href="/comic/organize" isCurrentPage>Organize</BreadcrumbItem>
+<Breadcrumb noTrailingSlash>
+	<BreadcrumbItem href="/{mediaType}">
+		<span class="crumb"><Home size={16} /><span>{mediaType}</span></span>
+	</BreadcrumbItem>
+	<BreadcrumbItem isCurrentPage>Organize</BreadcrumbItem>
 </Breadcrumb>
 <h1>Missing Files</h1>
 <p class="hint">
@@ -154,6 +157,12 @@
 {/if}
 
 <style>
+	.crumb {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
 	.hint {
 		max-width: 60rem;
 		margin: 0.5rem 0 1rem;
