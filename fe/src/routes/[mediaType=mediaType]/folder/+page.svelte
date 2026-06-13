@@ -2,6 +2,8 @@
 	import {
 		Breadcrumb,
 		BreadcrumbItem,
+		Select,
+		SelectItem,
 		SkeletonPlaceholder,
 		Tile,
 		Toggle
@@ -9,8 +11,9 @@
 	import { Folder, Home } from 'carbon-icons-svelte';
 	import { goto, pushState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { MediaFile } from '$lib/model.svelte';
+	import { MediaFile, MediaFileComparison, type MediaFileComparisonType } from '$lib/model.svelte';
 	import { buildFolderTree, findNode, collectFiles, nodeKey } from '$lib/folderTree';
+	import { getOrderByOptions } from '../orderByOptions.js';
 	import FileCard from '$lib/components/FileCard.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
 	import FileContent from '$lib/components/FileContent.svelte';
@@ -34,6 +37,9 @@
 	let includeSub = $state(false);
 	let pageSize = $state(20);
 	let selectedFile: MediaFile | undefined = $state();
+	let orderBy = $state<MediaFileComparisonType>(MediaFileComparison.Name);
+	let reverse = $state(false);
+	let orderByOptions = $derived(files[0] ? getOrderByOptions(files[0].type) : []);
 
 	// archived files belong to the Archive view, not the folder browser
 	let visibleFiles = $derived(files.filter((f) => !f.archived));
@@ -54,7 +60,7 @@
 	let displayFiles = $derived(
 		(includeSub ? collectFiles(currentNode) : currentNode.files)
 			.slice()
-			.sort((a, b) => a.name.localeCompare(b.name))
+			.sort((a, b) => (reverse ? -a.compareTo(b, orderBy) : a.compareTo(b, orderBy)))
 	);
 	let filesInPage = $derived(displayFiles.slice((curPage - 1) * pageSize, curPage * pageSize));
 
@@ -87,7 +93,17 @@
 				</BreadcrumbItem>
 			{/each}
 		</Breadcrumb>
-		<Toggle labelText="Include subfolders" size="sm" bind:toggled={includeSub} />
+		<div class="controls">
+			{#if orderByOptions.length > 0}
+				<Select size="sm" hideLabel bind:selected={orderBy}>
+					{#each orderByOptions as { value, text } (value)}
+						<SelectItem {value} {text} />
+					{/each}
+				</Select>
+			{/if}
+			<Toggle labelText="Reverse" size="sm" bind:toggled={reverse} />
+			<Toggle labelText="Include subfolders" size="sm" bind:toggled={includeSub} />
+		</div>
 	</div>
 
 	{#if !dataLoaded}
@@ -191,6 +207,12 @@
 	}
 	.crumb:hover {
 		text-decoration: underline;
+	}
+	.controls {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		flex-shrink: 0;
 	}
 	.folder-grid {
 		display: flex;
