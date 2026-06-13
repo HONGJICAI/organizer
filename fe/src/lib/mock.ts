@@ -2,26 +2,19 @@ import { faker } from '@faker-js/faker';
 import { delay, http, HttpResponse } from 'msw';
 import { authState } from '$lib/auth.svelte';
 
-// Fake directory trees so the folder view has structure to drill into.
-const mockFolders = [
-	'AuthorA/Series One',
-	'AuthorA/Series Two',
-	'AuthorB',
-	'Doujin/2024',
-	'Doujin/2025',
-	'Magazines'
-];
-
 const genMockComics = (number: number) =>
 	faker.helpers.uniqueArray(faker.number.int, number).map((id) => {
 		const page = faker.number.int({ min: 1, max: 100 });
-		const name = `[${faker.person.firstName()}] ${faker.commerce.productName()}`;
+		const author = faker.person.firstName();
+		const name = `[${author}] ${faker.commerce.productName()}`;
 		const lastViewedTime = faker.datatype.boolean() ? faker.date.past().toISOString() : null;
 		return {
 			id,
 			size: faker.number.int({ min: 1000, max: 10000000 }),
 			name,
-			path: `/data/comics/${faker.helpers.arrayElement(mockFolders)}/${name}`,
+			// group by author so the folder view has a natural tree (faker's
+			// limited name pool means several authors get multiple works)
+			path: `/data/comics/${author}/${name}`,
 			updateTime: faker.date.past().toISOString(),
 			archived: faker.datatype.boolean(0.1),
 			favorited: faker.datatype.boolean(0.2),
