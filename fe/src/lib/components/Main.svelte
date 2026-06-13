@@ -64,12 +64,15 @@
 					<HeaderPanelLink href="/">Home</HeaderPanelLink>
 					<HeaderPanelDivider>Comics</HeaderPanelDivider>
 					<HeaderPanelLink href="/comic">Home</HeaderPanelLink>
+					<HeaderPanelLink href="/comic/folder">Folder</HeaderPanelLink>
 					<HeaderPanelLink href="/comic/tag">Tag</HeaderPanelLink>
 					<HeaderPanelLink href="/comic/organize">Organize</HeaderPanelLink>
 					<HeaderPanelDivider>Videos</HeaderPanelDivider>
 					<HeaderPanelLink href="/video">Home</HeaderPanelLink>
+					<HeaderPanelLink href="/video/folder">Folder</HeaderPanelLink>
 					<HeaderPanelDivider>Images</HeaderPanelDivider>
 					<HeaderPanelLink href="/image">Home</HeaderPanelLink>
+					<HeaderPanelLink href="/image/folder">Folder</HeaderPanelLink>
 				</HeaderPanelLinks>
 			</HeaderAction>
 		{/if}

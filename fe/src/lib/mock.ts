@@ -5,13 +5,16 @@ import { authState } from '$lib/auth.svelte';
 const genMockComics = (number: number) =>
 	faker.helpers.uniqueArray(faker.number.int, number).map((id) => {
 		const page = faker.number.int({ min: 1, max: 100 });
-		const name = `[${faker.person.firstName()}] ${faker.commerce.productName()}`;
+		const author = faker.person.firstName();
+		const name = `[${author}] ${faker.commerce.productName()}`;
 		const lastViewedTime = faker.datatype.boolean() ? faker.date.past().toISOString() : null;
 		return {
 			id,
 			size: faker.number.int({ min: 1000, max: 10000000 }),
 			name,
-			path: `/${id}/${name}`,
+			// group by author so the folder view has a natural tree (faker's
+			// limited name pool means several authors get multiple works)
+			path: `/data/comics/${author}/${name}`,
 			updateTime: faker.date.past().toISOString(),
 			archived: faker.datatype.boolean(0.1),
 			favorited: faker.datatype.boolean(0.2),

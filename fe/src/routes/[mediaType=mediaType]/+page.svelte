@@ -34,14 +34,25 @@
 	let dataLoaded = $state(false);
 	let files = $state([] as MediaFile[]);
 	$effect(() => {
+		const pending = data.files;
+		// reset immediately so a slow/failed load never shows the previous
+		// media type's content while switching between comic/video/image
 		dataLoaded = false;
-		data.files
+		files = [];
+		let cancelled = false;
+		pending
 			?.then((f) => {
-				files = f;
+				if (!cancelled) files = f;
+			})
+			.catch(() => {
+				if (!cancelled) files = [];
 			})
 			.finally(() => {
-				dataLoaded = true;
+				if (!cancelled) dataLoaded = true;
 			});
+		return () => {
+			cancelled = true;
+		};
 	});
 	let searchStr: string = $state('');
 	let curPage = $state(1);
@@ -232,9 +243,12 @@
 				<div class="card-flexbox">
 					{#if searchFilesInCurrentPage.length === 0}
 						<div class="empty-state">
-							<p>No files found</p>
 							{#if searchStr}
+								<p>No files match your search</p>
 								<p class="empty-hint">Try a different search term or clear the filter.</p>
+							{:else}
+								<p>Nothing found here</p>
+								<p class="empty-hint">There are no items in this view yet.</p>
 							{/if}
 						</div>
 					{:else}
