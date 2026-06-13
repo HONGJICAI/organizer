@@ -2,6 +2,16 @@ import { faker } from '@faker-js/faker';
 import { delay, http, HttpResponse } from 'msw';
 import { authState } from '$lib/auth.svelte';
 
+// Fake directory trees so the folder view has structure to drill into.
+const mockFolders = [
+	'AuthorA/Series One',
+	'AuthorA/Series Two',
+	'AuthorB',
+	'Doujin/2024',
+	'Doujin/2025',
+	'Magazines'
+];
+
 const genMockComics = (number: number) =>
 	faker.helpers.uniqueArray(faker.number.int, number).map((id) => {
 		const page = faker.number.int({ min: 1, max: 100 });
@@ -11,7 +21,7 @@ const genMockComics = (number: number) =>
 			id,
 			size: faker.number.int({ min: 1000, max: 10000000 }),
 			name,
-			path: `/${id}/${name}`,
+			path: `/data/comics/${faker.helpers.arrayElement(mockFolders)}/${name}`,
 			updateTime: faker.date.past().toISOString(),
 			archived: faker.datatype.boolean(0.1),
 			favorited: faker.datatype.boolean(0.2),
