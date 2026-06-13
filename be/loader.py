@@ -23,6 +23,10 @@ p = ThreadPool(8)
 
 
 class Loader:
+    # Subclasses set this to their SQLModel table class so the shared reconcile
+    # can flag/clear the ``missing`` column generically.
+    entity_cls = None
+
     def __init__(self):
         self._starting_id = 0
         self.lock = threading.Lock()
@@ -40,6 +44,9 @@ class Loader:
         old_pathes = set(self._load_old())
         all_pathes = set(self._load_all())
         print(f"old: {len(old_pathes)}, all: {len(all_pathes)}")
+        # Reconcile the missing flag first: a file can disappear without any new
+        # file appearing, so this must run even when the early-returns below fire.
+        self._reconcile_missing(all_pathes)
         if len(all_pathes) == 0:
             print("not work due to no file, perhaps specify wrong pathes?")
             return
@@ -60,6 +67,34 @@ class Loader:
             new_entities = [e for e in entities if e is not None]
 
         self._commit_news(new_entities)
+
+    def _reconcile_missing(self, present_pathes: set):
+        """Flag DB rows whose file is gone and clear ones that reappeared.
+
+        Scoped to non-archived rows — archived entries are deliberate
+        "deleted the file, kept the record" tombstones and must never be
+        flagged. Skipped entirely when the scan found nothing on disk: an
+        empty result almost always means a misconfigured or unmounted scan
+        path, and flagging the whole library missing in that case is exactly
+        the data-loss footgun we're trying to avoid. The next successful scan
+        self-heals the flag once files reappear.
+        """
+        if self.entity_cls is None or not present_pathes:
+            return
+        with Session(db.engine) as session:
+            entities = session.exec(
+                select(self.entity_cls).where(self.entity_cls.archived == False)  # noqa: E712
+            ).all()
+            changed = 0
+            for e in entities:
+                should_miss = e.path not in present_pathes
+                if e.missing != should_miss:
+                    e.missing = should_miss
+                    session.add(e)
+                    changed += 1
+            if changed:
+                session.commit()
+                print(f"reconcile: updated missing flag on {changed} entit(y/ies)")
 
     @abstractmethod
     def _load_old(self) -> List[str]:
@@ -106,6 +141,7 @@ def scan(exts: List[str], pathes: List[str]):
 
 class ComicLoader(Loader):
     comic_ext = [".zip", ".rar", ""]
+    entity_cls = ComicEntity
 
     def __init__(self):
         super().__init__()
@@ -195,6 +231,7 @@ class VideoLoader(Loader):
         ".m4v",
         ".webm",
     ]
+    entity_cls = VideoEntity
     _starting_id: int
 
     def __init__(self):

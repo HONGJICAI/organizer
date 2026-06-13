@@ -239,6 +239,75 @@ class TestComicLoaderWork:
             assert len(s.exec(select(ComicEntity)).all()) == 1
 
 
+class TestReconcileMissing:
+    def test_flags_gone_keeps_present(self, task_session, task_engine):
+        insert_comic(task_session, id=1, name="here.zip", path="/lib/here.zip")
+        insert_comic(task_session, id=2, name="gone.zip", path="/lib/gone.zip")
+        ComicLoader()._reconcile_missing({"/lib/here.zip"})
+        with Session(task_engine) as s:
+            assert not s.get(ComicEntity, 1).missing
+            assert s.get(ComicEntity, 2).missing
+
+    def test_clears_when_file_reappears(self, task_session, task_engine):
+        insert_comic(task_session, id=1, name="back.zip",
+                     path="/lib/back.zip", missing=True)
+        ComicLoader()._reconcile_missing({"/lib/back.zip"})
+        with Session(task_engine) as s:
+            assert not s.get(ComicEntity, 1).missing
+
+    def test_never_flags_archived(self, task_session, task_engine):
+        # Archived rows are deliberate "deleted file, kept record" tombstones.
+        insert_comic(task_session, id=1, name="arch.zip",
+                     path="/lib/arch.zip", archived=True)
+        ComicLoader()._reconcile_missing({"/somewhere/else.zip"})
+        with Session(task_engine) as s:
+            assert not s.get(ComicEntity, 1).missing
+
+    def test_empty_scan_does_not_flag(self, task_session, task_engine):
+        # An empty scan usually means an unmounted/misconfigured path — flagging
+        # the whole library here would be the data-loss footgun we avoid.
+        insert_comic(task_session, id=1, name="x.zip",
+                     path="/lib/x.zip", missing=True)
+        insert_comic(task_session, id=2, name="y.zip", path="/lib/y.zip")
+        ComicLoader()._reconcile_missing(set())
+        with Session(task_engine) as s:
+            # nothing changes: neither flagged nor cleared
+            assert s.get(ComicEntity, 1).missing
+            assert not s.get(ComicEntity, 2).missing
+
+    def test_work_flags_missing_even_with_no_new_files(
+        self, task_session, task_engine, tmp_path, monkeypatch
+    ):
+        f = tmp_path / "present.zip"
+        make_zip_comic(str(f), pages=1)
+        insert_comic(task_session, id=1, name="present.zip", path=str(f))
+        insert_comic(task_session, id=2, name="gone.zip",
+                     path=str(tmp_path / "gone.zip"))
+        monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [str(tmp_path)])
+        cover_dir = tmp_path / "covers"
+        cover_dir.mkdir()
+        monkeypatch.setattr(global_data.Config, "nginx_comic_path", str(cover_dir))
+
+        loader = ComicLoader()
+        with patch.object(ComicLoader, "gen_comic_cover", return_value=True):
+            loader.work()
+
+        with Session(task_engine) as s:
+            assert not s.get(ComicEntity, 1).missing
+            assert s.get(ComicEntity, 2).missing
+
+    def test_video_reconcile(self, task_session, task_engine):
+        task_session.add(VideoEntity(id=1, name="here.mp4", path="/v/here.mp4",
+                                     size=0, updateTime=datetime.now()))
+        task_session.add(VideoEntity(id=2, name="gone.mp4", path="/v/gone.mp4",
+                                     size=0, updateTime=datetime.now()))
+        task_session.commit()
+        VideoLoader()._reconcile_missing({"/v/here.mp4"})
+        with Session(task_engine) as s:
+            assert not s.get(VideoEntity, 1).missing
+            assert s.get(VideoEntity, 2).missing
+
+
 # ---------------------------------------------------------------------------
 # VideoLoader
 # ---------------------------------------------------------------------------

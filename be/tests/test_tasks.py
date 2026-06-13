@@ -1,10 +1,4 @@
 import asyncio
-from datetime import datetime
-
-from sqlmodel import Session, select
-
-from model import ComicEntity
-from tasks.cleanup import cleanup_missing_comics
 
 
 # ---------------------------------------------------------------------------
@@ -69,68 +63,3 @@ class TestBackupDatabase:
         asyncio.run(backup_database())
         backups = list(backup_dir.glob("prod_*.sqlite"))
         assert len(backups) == 7
-
-
-# ---------------------------------------------------------------------------
-# Cleanup task tests
-# ---------------------------------------------------------------------------
-
-class TestCleanupMissingComics:
-    def test_empty_db(self, task_engine):
-        asyncio.run(cleanup_missing_comics())
-
-    def test_keeps_existing_file(self, task_session, task_engine, tmp_path):
-        f = tmp_path / "present.zip"
-        f.write_bytes(b"data")
-        comic = ComicEntity(
-            id=1, name="present.zip", path=str(f),
-            size=100, updateTime=datetime.now(), page=1,
-        )
-        task_session.add(comic)
-        task_session.commit()
-
-        asyncio.run(cleanup_missing_comics())
-
-        with Session(task_engine) as s:
-            assert s.get(ComicEntity, 1) is not None
-
-    def test_removes_missing_file(self, task_session, task_engine):
-        comic = ComicEntity(
-            id=2, name="gone.zip", path="/nonexistent/gone.zip",
-            size=100, updateTime=datetime.now(), page=1,
-        )
-        task_session.add(comic)
-        task_session.commit()
-
-        asyncio.run(cleanup_missing_comics())
-
-        with Session(task_engine) as s:
-            assert s.get(ComicEntity, 2) is None
-
-    def test_skips_archived_even_if_missing(self, task_session, task_engine):
-        comic = ComicEntity(
-            id=3, name="archived.zip", path="/nonexistent/archived.zip",
-            size=100, updateTime=datetime.now(), page=1, archived=True,
-        )
-        task_session.add(comic)
-        task_session.commit()
-
-        asyncio.run(cleanup_missing_comics())
-
-        with Session(task_engine) as s:
-            assert s.get(ComicEntity, 3) is not None
-
-    def test_removes_multiple_missing(self, task_session, task_engine):
-        for i in range(1, 4):
-            comic = ComicEntity(
-                id=i, name=f"missing{i}.zip", path=f"/gone/{i}.zip",
-                size=100, updateTime=datetime.now(), page=1,
-            )
-            task_session.add(comic)
-        task_session.commit()
-
-        asyncio.run(cleanup_missing_comics())
-
-        with Session(task_engine) as s:
-            remaining = s.exec(select(ComicEntity)).all()
-            assert len(remaining) == 0

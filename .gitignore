@@ -3,3 +3,4 @@ nginx/logs/
 *.sqlite
 .env
 .coverage
+node_modules/

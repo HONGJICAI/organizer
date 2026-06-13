@@ -26,6 +26,7 @@ export type ComicEntity = {
     updateTime: string;
     archived?: boolean;
     favorited?: boolean;
+    missing?: boolean;
     lastViewedTime?: string | null;
     lastViewedPosition?: number;
     coverPosition?: number;
@@ -82,6 +83,7 @@ export type ImageEntity = {
     updateTime: string;
     archived?: boolean;
     favorited?: boolean;
+    missing?: boolean;
     lastViewedTime?: string | null;
     lastViewedPosition?: number;
     coverPosition?: number;
@@ -153,6 +155,7 @@ export type VideoEntity = {
     updateTime: string;
     archived?: boolean;
     favorited?: boolean;
+    missing?: boolean;
     lastViewedTime?: string | null;
     lastViewedPosition?: number;
     coverPosition?: number;
@@ -250,7 +253,7 @@ export type ComicGetAllData = {
     body?: never;
     path?: never;
     query?: {
-        fileMiss?: unknown;
+        fileMiss?: boolean;
         top?: number;
     };
     url: '/api/comics';
