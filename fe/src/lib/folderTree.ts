@@ -19,6 +19,8 @@ export interface FolderNode {
 	totalCount: number;
 	/** Recursive count of unread files in this subtree. */
 	unreadCount: number;
+	/** Recursive sum of file sizes (MB) in this subtree. */
+	totalSize: number;
 }
 
 /** Split a path on both POSIX and Windows separators, dropping empty segments. */
@@ -47,19 +49,22 @@ function commonPrefixLength(segArrays: string[][]): number {
 }
 
 function makeNode(name: string, segments: string[]): FolderNode {
-	return { name, segments, children: [], files: [], totalCount: 0, unreadCount: 0 };
+	return { name, segments, children: [], files: [], totalCount: 0, unreadCount: 0, totalSize: 0 };
 }
 
 function computeCounts(node: FolderNode): void {
 	let total = node.files.length;
 	let unread = node.files.filter((f) => !f.viewed).length;
+	let size = node.files.reduce((sum, f) => sum + f.size, 0);
 	for (const child of node.children) {
 		computeCounts(child);
 		total += child.totalCount;
 		unread += child.unreadCount;
+		size += child.totalSize;
 	}
 	node.totalCount = total;
 	node.unreadCount = unread;
+	node.totalSize = size;
 }
 
 function sortTree(node: FolderNode): void {

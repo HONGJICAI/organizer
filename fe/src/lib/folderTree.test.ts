@@ -2,14 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { buildFolderTree, findNode, nodeKey, collectFiles, type FolderNode } from './folderTree';
 import type { MediaFile } from './model.svelte';
 
-/** Minimal stub — buildFolderTree only reads path / name / viewed. */
-function file(path: string, opts: { viewed?: boolean } = {}): MediaFile {
+/** Minimal stub — buildFolderTree only reads path / name / viewed / size. */
+function file(path: string, opts: { viewed?: boolean; size?: number } = {}): MediaFile {
 	const name =
 		path
 			.split(/[/\\]+/)
 			.filter(Boolean)
 			.pop() ?? '';
-	return { path, name, viewed: opts.viewed ?? false } as unknown as MediaFile;
+	return {
+		path,
+		name,
+		viewed: opts.viewed ?? false,
+		size: opts.size ?? 0
+	} as unknown as MediaFile;
 }
 
 function childNames(node: FolderNode): string[] {
@@ -78,6 +83,17 @@ describe('buildFolderTree', () => {
 		const a = findNode(tree, 'A')!;
 		expect(a.totalCount).toBe(2);
 		expect(a.unreadCount).toBe(1);
+	});
+
+	it('aggregates total size recursively', () => {
+		const tree = buildFolderTree([
+			file('/data/comics/A/x.zip', { size: 10 }),
+			file('/data/comics/A/sub/y.zip', { size: 5 }),
+			file('/data/comics/B/z.zip', { size: 2 })
+		]);
+		expect(tree.totalSize).toBe(17);
+		expect(findNode(tree, 'A')!.totalSize).toBe(15);
+		expect(findNode(tree, 'B')!.totalSize).toBe(2);
 	});
 
 	it('returns an empty root for no files', () => {

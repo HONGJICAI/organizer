@@ -56,7 +56,22 @@
 			key: currentNode.segments.slice(0, i + 1).join('/')
 		}))
 	);
-	let subfolders = $derived(includeSub ? [] : currentNode.children);
+	// Sub-folders sort with the same control. Only Name and Size map to a
+	// folder-level metric; for other criteria folders keep a stable name order.
+	let subfolders = $derived.by(() => {
+		if (includeSub) {
+			return [];
+		}
+		const list = currentNode.children.slice();
+		list.sort((a, b) => {
+			const cmp =
+				orderBy === MediaFileComparison.Size
+					? a.totalSize - b.totalSize
+					: a.name.localeCompare(b.name);
+			return reverse ? -cmp : cmp;
+		});
+		return list;
+	});
 	let displayFiles = $derived(
 		(includeSub ? collectFiles(currentNode) : currentNode.files)
 			.slice()
@@ -77,6 +92,8 @@
 		selectedFile = file;
 		pushState('', { showFileDetailModal: true });
 	};
+	const formatSize = (mb: number) =>
+		mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 </script>
 
 <div class="layout" id={page.state.showFileContent ? 'hidelist' : null}>
@@ -121,7 +138,7 @@
 							<Folder size={20} />
 							<span class="folder-name">{folder.name}</span>
 							<span class="folder-count">
-								{folder.totalCount}
+								{folder.totalCount} · {formatSize(folder.totalSize)}
 								{#if folder.unreadCount > 0}<span class="unread">· {folder.unreadCount} unread</span
 									>{/if}
 							</span>
