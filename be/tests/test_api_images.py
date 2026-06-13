@@ -324,7 +324,7 @@ class TestConvertToComic:
         comic_dir = self._comic_dir(tmp_path, monkeypatch)
         set_store(make_entity(id=1, name="My Album", path=str(d), page=3))
 
-        r = client.post("/api/images/1/convert-to-comic")
+        r = client.post("/api/images/1/convert")
         assert r.status_code == 200
         body = r.json()
         assert body["name"] == "My Album.zip"
@@ -339,7 +339,7 @@ class TestConvertToComic:
         d = self._album(tmp_path)
         self._comic_dir(tmp_path, monkeypatch)
         set_store(make_entity(id=1, name="My Album", path=str(d)))
-        assert client.post("/api/images/1/convert-to-comic").status_code == 200
+        assert client.post("/api/images/1/convert").status_code == 200
         assert d.exists()
         assert 1 in img_api._store
 
@@ -347,7 +347,7 @@ class TestConvertToComic:
         d = self._album(tmp_path)
         self._comic_dir(tmp_path, monkeypatch)
         set_store(make_entity(id=1, name="My Album", path=str(d)))
-        client.post("/api/images/1/convert-to-comic")
+        client.post("/api/images/1/convert")
         listing = client.get("/api/comics").json()
         assert any(c["name"] == "My Album.zip" for c in listing)
 
@@ -356,17 +356,17 @@ class TestConvertToComic:
         d.mkdir()
         self._comic_dir(tmp_path, monkeypatch)
         set_store(make_entity(id=1, name="empty", path=str(d), page=0))
-        assert client.post("/api/images/1/convert-to-comic").status_code == 400
+        assert client.post("/api/images/1/convert").status_code == 400
 
     def test_duplicate_returns_400(self, client, tmp_path, monkeypatch):
         d = self._album(tmp_path)
         self._comic_dir(tmp_path, monkeypatch)
         set_store(make_entity(id=1, name="My Album", path=str(d)))
-        assert client.post("/api/images/1/convert-to-comic").status_code == 200
-        assert client.post("/api/images/1/convert-to-comic").status_code == 400
+        assert client.post("/api/images/1/convert").status_code == 200
+        assert client.post("/api/images/1/convert").status_code == 400
 
     def test_missing_returns_404(self, client):
-        assert client.post("/api/images/999/convert-to-comic").status_code == 404
+        assert client.post("/api/images/999/convert").status_code == 404
 
 
 class TestSetCover:

@@ -256,8 +256,8 @@ class ImageCBV:
             return Response(status_code=200)
         abort(500)
 
-    @router.post("/api/images/{id}/convert-to-comic", tags=["images"])
-    def convert_to_comic(self, id: int, _: None = Depends(require_auth)) -> ComicEntity:
+    @router.post("/api/images/{id}/convert", tags=["images"])
+    def convert(self, id: int, _: None = Depends(require_auth)) -> ComicEntity:
         """Package an image folder into a zip comic file and import it.
 
         The original images are stored verbatim (deflate-compressed) under

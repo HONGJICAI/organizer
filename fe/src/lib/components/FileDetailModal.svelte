@@ -195,10 +195,10 @@
 		sendingRename = false;
 	}
 	let sendingConvert = $state(false);
-	async function onClickConvertToComic() {
+	async function onClickConvert() {
 		if (sendingConvert) return;
 		sendingConvert = true;
-		const { data, error } = await ImagesService.imageConvertToComic({ path: { id: file.id } });
+		const { data, error } = await ImagesService.imageConvert({ path: { id: file.id } });
 		if (error) {
 			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		} else if (data) {
@@ -325,7 +325,7 @@
 			<Button
 				icon={Book}
 				iconDescription="Convert to comic"
-				on:click={() => onClickConvertToComic()}
+				on:click={() => onClickConvert()}
 				disabled={sendingConvert || file.archived}
 			/>
 		{/if}

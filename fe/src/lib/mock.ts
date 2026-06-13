@@ -196,7 +196,7 @@ export async function setupMock(authRequired: boolean) {
 			image.entityUpdateTime = new Date().toISOString();
 			return HttpResponse.json(image);
 		}),
-		http.post('/api/images/:id/convert-to-comic', async ({ params }) => {
+		http.post('/api/images/:id/convert', async ({ params }) => {
 			await delay(1200);
 			const image = findImage(params.id);
 			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });

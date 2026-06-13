@@ -1371,16 +1371,16 @@ export type ImageSetCoverResponses = {
     200: unknown;
 };
 
-export type ImageConvertToComicData = {
+export type ImageConvertData = {
     body?: never;
     path: {
         id: number;
     };
     query?: never;
-    url: '/api/images/{id}/convert-to-comic';
+    url: '/api/images/{id}/convert';
 };
 
-export type ImageConvertToComicErrors = {
+export type ImageConvertErrors = {
     /**
      * Bad Request
      */
@@ -1403,16 +1403,16 @@ export type ImageConvertToComicErrors = {
     500: MessageResponse;
 };
 
-export type ImageConvertToComicError = ImageConvertToComicErrors[keyof ImageConvertToComicErrors];
+export type ImageConvertError = ImageConvertErrors[keyof ImageConvertErrors];
 
-export type ImageConvertToComicResponses = {
+export type ImageConvertResponses = {
     /**
      * Successful Response
      */
     200: ComicEntity;
 };
 
-export type ImageConvertToComicResponse = ImageConvertToComicResponses[keyof ImageConvertToComicResponses];
+export type ImageConvertResponse = ImageConvertResponses[keyof ImageConvertResponses];
 
 export type HealthCheckData = {
     body?: never;
