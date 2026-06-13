@@ -22,7 +22,11 @@ class VideoCBV:
 
     @router.get("/api/videos", tags=["videos"])
     def get_all(self, top: int = None) -> List[VideoEntity]:
-        statement = select(VideoEntity).order_by(VideoEntity.updateTime.desc())
+        # Hide videos whose file is gone (flag maintained by the scan reconcile),
+        # so an unmounted drive doesn't surface ghost entries.
+        statement = select(VideoEntity).where(
+            VideoEntity.missing == False  # noqa: E712
+        ).order_by(VideoEntity.updateTime.desc())
         if top is not None:
             statement = statement.limit(top)
         video_entities = self.session.exec(statement).all()

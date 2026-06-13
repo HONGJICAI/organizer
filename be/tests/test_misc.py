@@ -22,6 +22,30 @@ def test_get_session_yields_session():
         pass
 
 
+def test_ensure_column_adds_and_is_idempotent(monkeypatch):
+    """The hand-rolled migration must add a missing column to an existing
+    table (SQLModel.create_all never ALTERs) and be safe to run repeatedly."""
+    from sqlalchemy import create_engine as sa_create_engine
+    import db
+
+    eng = sa_create_engine("sqlite://")
+    with eng.connect() as conn:
+        conn.exec_driver_sql("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+        conn.commit()
+    monkeypatch.setattr(db, "engine", eng)
+
+    def cols():
+        with eng.connect() as conn:
+            return {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(t)")}
+
+    assert "flag" not in cols()
+    db._ensure_column("t", "flag", "flag BOOLEAN NOT NULL DEFAULT 0")
+    assert "flag" in cols()
+    # second run is a no-op, not an error
+    db._ensure_column("t", "flag", "flag BOOLEAN NOT NULL DEFAULT 0")
+    assert "flag" in cols()
+
+
 # ---------------------------------------------------------------------------
 # core/openapi.py — custom_openapi_schema
 # ---------------------------------------------------------------------------

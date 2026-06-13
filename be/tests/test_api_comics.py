@@ -30,17 +30,25 @@ class TestGetAll:
         r = client.get("/api/comics?top=2")
         assert len(r.json()) == 2
 
-    def test_file_miss_returns_only_missing(self, client, session, tmp_path):
-        existing = tmp_path / "exists.zip"
-        existing.write_bytes(b"data")
-        insert_comic(session, 1, "exists.zip", str(existing))
-        insert_comic(session, 2, "missing.zip", "/no/such/file.zip")
+    def test_default_excludes_missing(self, client, session):
+        # The missing flag is maintained by the scan reconcile; the default
+        # list hides flagged rows so an unmounted drive shows no ghosts.
+        insert_comic(session, 1, "here.zip")
+        insert_comic(session, 2, "gone.zip", missing=True)
+        r = client.get("/api/comics")
+        assert r.status_code == 200
+        names = [c["name"] for c in r.json()]
+        assert names == ["here.zip"]
+
+    def test_file_miss_returns_only_missing(self, client, session):
+        insert_comic(session, 1, "here.zip")
+        insert_comic(session, 2, "gone.zip", missing=True)
         r = client.get("/api/comics?fileMiss=true")
         assert r.status_code == 200
         names = [c["name"] for c in r.json()]
-        assert names == ["missing.zip"]
+        assert names == ["gone.zip"]
 
-    def test_file_miss_false_returns_all(self, client, session):
+    def test_file_miss_false_returns_present(self, client, session):
         insert_comic(session, 1)
         r = client.get("/api/comics?fileMiss=false")
         assert len(r.json()) == 1

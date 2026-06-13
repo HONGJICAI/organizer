@@ -70,7 +70,7 @@
 <Breadcrumb>
 	<BreadcrumbItem href="/">Home</BreadcrumbItem>
 	<BreadcrumbItem href="/comic">Comic</BreadcrumbItem>
-	<BreadcrumbItem href="/comic/orgnize" isCurrentPage>Orgnize</BreadcrumbItem>
+	<BreadcrumbItem href="/comic/organize" isCurrentPage>Organize</BreadcrumbItem>
 </Breadcrumb>
 <h1>File Not Found Entities</h1>
 <container>

@@ -74,6 +74,11 @@ export const ComicEntitySchema = {
             title: 'Favorited',
             default: false
         },
+        missing: {
+            type: 'boolean',
+            title: 'Missing',
+            default: false
+        },
         lastViewedTime: {
             anyOf: [
                 {
@@ -240,6 +245,11 @@ export const ImageEntitySchema = {
         favorited: {
             type: 'boolean',
             title: 'Favorited',
+            default: false
+        },
+        missing: {
+            type: 'boolean',
+            title: 'Missing',
             default: false
         },
         lastViewedTime: {
@@ -473,6 +483,11 @@ export const VideoEntitySchema = {
         favorited: {
             type: 'boolean',
             title: 'Favorited',
+            default: false
+        },
+        missing: {
+            type: 'boolean',
+            title: 'Missing',
             default: false
         },
         lastViewedTime: {

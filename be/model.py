@@ -22,6 +22,11 @@ class FileEntity(SQLModel):
     updateTime: datetime
     archived: bool = Field(default=False)
     favorited: bool = Field(default=False)
+    # Set by the scan reconcile when the backing file is gone from disk; cleared
+    # when it reappears. Never auto-set on archived rows (those are intentional
+    # "deleted file, kept record" tombstones). The list API filters on this so a
+    # temporarily-unmounted drive hides entries instead of destroying records.
+    missing: bool = Field(default=False)
     lastViewedTime: Optional[datetime] = Field(default=None)
     lastViewedPosition: int = Field(default=0)
     coverPosition: int = Field(default=0)

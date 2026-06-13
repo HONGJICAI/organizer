@@ -4,7 +4,6 @@ import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from tasks.cleanup import cleanup_missing_comics
 from tasks.backup import backup_database_loop
 
 
@@ -15,12 +14,12 @@ async def lifespan(app: FastAPI):
     print("Application startup...", flush=True)
     print("=" * 50, flush=True)
     
-    # Run startup tasks
-    await cleanup_missing_comics()
-
     # Kick off a one-shot background scan for media files (images + comics +
-    # videos). The image bootstrap runs here too — it stats every folder, so
-    # doing it synchronously would block startup on large/remote libraries.
+    # videos). The scan also reconciles the `missing` flag (loader.work) —
+    # files gone from disk get flagged (and hidden from the list API) rather
+    # than deleted, so an unmounted external drive never loses its records.
+    # The image bootstrap runs here too — it stats every folder, so doing it
+    # synchronously would block startup on large/remote libraries.
     from api.system import _run_scan
     threading.Thread(target=_run_scan, args=("all",), daemon=True).start()
     print("Background scan started", flush=True)

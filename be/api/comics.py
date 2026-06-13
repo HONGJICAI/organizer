@@ -31,21 +31,18 @@ class ComicCBV:
     session: Session = Depends(db.get_session)
 
     @router.get("/api/comics", tags=["comics"], response_model_exclude_none=True, response_model_exclude_defaults=True)
-    def get_all(self, fileMiss=False, top: int = None) -> List[ComicEntity]:
-        statement = select(ComicEntity).order_by(
-            ComicEntity.updateTime.desc()
-        )
+    def get_all(self, fileMiss: bool = False, top: int = None) -> List[ComicEntity]:
+        # `missing` is maintained by the scan reconcile (loader.work), so this
+        # filters on the stored flag instead of stat-ing the filesystem on every
+        # request. fileMiss=true is the organize page asking for the gone files;
+        # the default list hides them so an unmounted drive doesn't show ghosts.
+        statement = select(ComicEntity).where(
+            ComicEntity.missing == fileMiss  # noqa: E712
+        ).order_by(ComicEntity.updateTime.desc())
         if top is not None:
             statement = statement.limit(top)
         comic_entities = self.session.exec(statement).all()
-        if fileMiss:
-            invalid_comics: List[ComicEntity] = []
-            for comic in comic_entities:
-                if not os.path.exists(comic.path):
-                    invalid_comics.append(comic)
-            return [comic.model_dump() for comic in invalid_comics]
-        else:
-            return [comic.model_dump() for comic in comic_entities]
+        return [comic.model_dump() for comic in comic_entities]
 
     def __get(self, id: int) -> ComicEntity:
         statement = select(ComicEntity).where(ComicEntity.id == id)

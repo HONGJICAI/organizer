@@ -18,6 +18,7 @@ const genMockComics = (number: number) =>
 			updateTime: faker.date.past().toISOString(),
 			archived: faker.datatype.boolean(0.1),
 			favorited: faker.datatype.boolean(0.2),
+			missing: faker.datatype.boolean(0.1),
 			lastViewedTime,
 			lastViewedPosition: lastViewedTime ? faker.number.int({ min: 0, max: page }) : null,
 			coverPosition: faker.number.int({ min: 1, max: 100 }),
@@ -70,8 +71,13 @@ export async function setupMock(authRequired: boolean) {
 		}),
 		http.get('/api/comics', async ({ request }) => {
 			await delay(1000);
-			const top = new URL(request.url).searchParams.get('top');
-			return HttpResponse.json(top ? comics.slice(0, Number(top)) : comics);
+			const params = new URL(request.url).searchParams;
+			const fileMiss = params.get('fileMiss') === 'true';
+			// Mirror the backend: fileMiss=true returns the gone files (organize
+			// page); the default list hides them.
+			const filtered = comics.filter((c) => Boolean(c.missing) === fileMiss);
+			const top = params.get('top');
+			return HttpResponse.json(top ? filtered.slice(0, Number(top)) : filtered);
 		}),
 		http.get('/api/comics/:id', async ({ params }) => {
 			await delay(300);
