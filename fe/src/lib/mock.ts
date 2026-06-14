@@ -147,7 +147,12 @@ export async function setupMock(authRequired: boolean) {
 		http.post('/api/comics/:id/pages/:page/cover', async ({ params }) => {
 			await delay(200);
 			const comic = findComic(params.id);
-			if (comic) comic.coverPosition = Number(params.page);
+			if (comic) {
+				comic.coverPosition = Number(params.page);
+				// Mirror the backend: regenerating the cover bumps entityUpdateTime,
+				// which the frontend uses as the cover URL's cache-busting token.
+				comic.entityUpdateTime = new Date().toISOString();
+			}
 			return HttpResponse.json({ msg: 'Cover set' });
 		}),
 		http.get('/api/comics/:id/pages/:page', async () => {

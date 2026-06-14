@@ -278,9 +278,11 @@
 		if (error) {
 			addNotification(new ErrorNotification({ subtitle: 'Failed to set as cover' }));
 		} else {
-			fetch(file.coverUrl, { cache: 'reload', mode: 'no-cors' });
-			const cover = document.getElementById(file.coverId) as HTMLImageElement;
-			if (cover) cover.src = file.coverUrl;
+			// The backend rewrote the cover under the same filename. Bump the
+			// version field so `coverUrl` changes and every <img> bound to it
+			// re-fetches the new image (the server bumps the same field, so a later
+			// reload from the API stays consistent).
+			file.entityUpdateTime = new Date().toISOString();
 			addNotification(new SuccessNotification({ subtitle: 'Successfully set as cover' }));
 		}
 	}

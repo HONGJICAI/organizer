@@ -58,8 +58,16 @@ export class MediaFile {
 	get coverId(): string {
 		return `cover-${this.id}`;
 	}
+	// Cache-busting suffix appended to every cover URL. The backend rewrites the
+	// cover JPEG under a stable filename (e.g. `{id}_0.jpg`), so without a version
+	// token the browser/nginx/CDN keep serving the stale image after a refresh or
+	// "set as cover". `entityUpdateTime` is bumped server-side whenever the cover
+	// is regenerated, so it changes the URL exactly when the bytes change.
+	protected get coverVersion(): string {
+		return this.entityUpdateTime ? `?v=${encodeURIComponent(this.entityUpdateTime)}` : '';
+	}
 	get coverUrl(): string {
-		return `${config.staticServer}/${this.type}s/${this.name}`;
+		return `${config.staticServer}/${this.type}s/${this.name}${this.coverVersion}`;
 	}
 	get lastViewedLabel(): string {
 		if (this.lastViewedTime) {
@@ -123,7 +131,7 @@ export class MediaFile {
 export class Comic extends MediaFile {
 	page = $state(0);
 	get coverUrl(): string {
-		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg`;
+		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg${this.coverVersion}`;
 	}
 	constructor(json: ComicEntity) {
 		super(MediaType.Comic, json);
@@ -147,7 +155,7 @@ export class Comic extends MediaFile {
 export class Image extends MediaFile {
 	page = $state(0);
 	get coverUrl(): string {
-		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg`;
+		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg${this.coverVersion}`;
 	}
 	constructor(json: ImageEntity) {
 		super(MediaType.Image, json);
@@ -161,7 +169,7 @@ export class Image extends MediaFile {
 export class Video extends MediaFile {
 	durationInSecond = $state(0);
 	get coverUrl(): string {
-		return `${config.staticServer}/${this.type}s/${this.id}.jpg`;
+		return `${config.staticServer}/${this.type}s/${this.id}.jpg${this.coverVersion}`;
 	}
 	constructor(json: VideoEntity) {
 		super(MediaType.Video, json);

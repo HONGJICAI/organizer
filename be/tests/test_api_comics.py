@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import patch
 
 
@@ -137,6 +138,21 @@ class TestRefresh:
     def test_not_found(self, client):
         r = client.post("/api/comics/999/refresh")
         assert r.status_code == 404
+
+    def test_bumps_cover_version(self, client, session, tmp_path):
+        # Regenerating the cover must bump entityUpdateTime so the frontend's
+        # cache-busting cover URL changes.
+        path = tmp_path / "comic.zip"
+        make_zip_comic(str(path), pages=4)
+        old = datetime(2000, 1, 1)
+        insert_comic(
+            session, 1, name="comic.zip", path=str(path), page=0,
+            entityUpdateTime=old,
+        )
+        with patch.object(ComicLoader, "gen_comic_cover", return_value=True):
+            r = client.post("/api/comics/1/refresh")
+        assert r.status_code == 200
+        assert datetime.fromisoformat(r.json()["entityUpdateTime"]) > old
 
 
 # ---------------------------------------------------------------------------
