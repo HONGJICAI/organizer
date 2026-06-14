@@ -42,12 +42,12 @@
 		type ComicDetailResponse
 	} from '$lib/client';
 	import { addNotification } from '$lib/state.svelte';
+	import { goto } from '$app/navigation';
 
 	interface Props {
 		open?: boolean;
 		onCloseModal?: () => void;
 		file: MediaFile;
-		onClickTag?: (tag: string) => void;
 		onClickPrimaryButton?: () => void;
 		onFileDeleted?: (permenant: boolean) => void;
 	}
@@ -56,7 +56,6 @@
 		open = $bindable(false),
 		onCloseModal = () => undefined,
 		file = $bindable(),
-		onClickTag = () => undefined,
 		onClickPrimaryButton = () => undefined,
 		onFileDeleted = () => undefined
 	}: Props = $props();
@@ -275,9 +274,14 @@
 		<TextInput labelText="Last Viewed" value={file.lastViewedLabel} readonly />
 	</div>
 	<div>
-		<p>Tags</p>
+		<p>Tags (click to search everywhere)</p>
 		{#each separateFilename(separateToTagsFrom ?? '') as tag}
-			<Tag type="teal" title={tag} on:click={() => onClickTag(tag)} interactive={true}>{tag}</Tag>
+			<Tag
+				type="teal"
+				title={`Search "${tag}" across all media`}
+				on:click={() => goto(`/search?q=${encodeURIComponent(tag)}`)}
+				interactive={true}>{tag}</Tag
+			>
 		{/each}
 	</div>
 

@@ -275,7 +275,6 @@
 				history.back();
 			}}
 			bind:file={selectedFile}
-			{onClickTag}
 			onClickPrimaryButton={() => {
 				pushState('', {
 					showFileDetailModal: false,
