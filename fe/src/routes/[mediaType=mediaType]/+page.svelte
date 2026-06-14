@@ -32,6 +32,7 @@
 	} from 'carbon-icons-svelte';
 	import { page } from '$app/state';
 	import { config } from '$lib/config.svelte.js';
+	import { refreshMediaFiles } from '$lib/mediaStore';
 	import PaginationContainer from '$lib/components/PaginationContainer.svelte';
 	import { slide, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
@@ -106,6 +107,7 @@
 		syncStateToUrl();
 	};
 	const onRefresh = () => {
+		refreshMediaFiles(page.params.mediaType);
 		invalidateAll();
 	};
 	const onCategoryChange = (e: CustomEvent<number>) => {
