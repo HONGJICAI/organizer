@@ -31,13 +31,36 @@
 
 	const maxPage = $derived(file.page ?? 0);
 	const viewClass = $derived(viewModeClass(config.viewMode as ViewMode));
+	// Only the "contain" mode is zoom/pan capable: it has a fixed-height,
+	// overflow-hidden stage so gesture handling never fights native scrolling.
+	const zoomable = $derived(config.viewMode === ViewMode.Contain);
 	const objUrl = $derived(pageApiUrl(file.type, file.id, page));
 	const nextUrl = $derived(page + 1 <= maxPage ? pageApiUrl(file.type, file.id, page + 1) : '');
 
-	// Reset the paged error whenever the page changes.
+	// ----- Zoom & pan state (contain mode) -----
+	let viewport: HTMLDivElement | null = $state(null);
+	let scale = $state(1);
+	let tx = $state(0);
+	let ty = $state(0);
+	let gesturing = $state(false);
+
+	const MIN_SCALE = 1;
+	const MAX_SCALE = 6;
+	const TAP_SLOP = 8; // px of movement still counted as a tap, not a drag
+	const DBL_MS = 250; // double-tap / -click window
+
+	function resetZoom() {
+		scale = 1;
+		tx = 0;
+		ty = 0;
+	}
+
+	// Reset the paged error and any zoom whenever the page or view mode changes.
 	$effect(() => {
 		page;
+		config.viewMode;
 		pageError = false;
+		resetZoom();
 	});
 
 	// Drive the viewer chrome (title bar page counter, progress reporter).
@@ -83,15 +106,162 @@
 		window.scrollTo(0, 0);
 	};
 
+	// Navigate by left/right half. Used directly by the non-zoomable modes; the
+	// zoomable mode routes taps through here only when not zoomed in.
+	function navByPoint(clientX: number, rect: DOMRect) {
+		if (clientX < rect.left + rect.width / 2) goPrevPage();
+		else goNextPage();
+	}
+
 	function onClickImage(e: MouseEvent): void {
 		const ct = e.currentTarget as HTMLElement;
 		if (!ct) return;
-		const { left, right } = ct.getBoundingClientRect();
-		if (e.x < left + (right - left) / 2) {
-			goPrevPage();
+		navByPoint(e.clientX, ct.getBoundingClientRect());
+	}
+
+	// ----- Gesture helpers (contain mode) -----
+
+	function clampPan() {
+		if (!viewport || !comicTarget) return;
+		const vw = viewport.clientWidth;
+		const vh = viewport.clientHeight;
+		const iw = comicTarget.clientWidth * scale;
+		const ih = comicTarget.clientHeight * scale;
+		const maxX = Math.max(0, (iw - vw) / 2);
+		const maxY = Math.max(0, (ih - vh) / 2);
+		tx = Math.min(maxX, Math.max(-maxX, tx));
+		ty = Math.min(maxY, Math.max(-maxY, ty));
+	}
+
+	// Zoom by `ratio` keeping the screen point (fx, fy) anchored. The transform is
+	// `translate(tx,ty) scale(scale)` about the stage centre, so a focal point f
+	// maps as: tx' = r*tx + (1-r)*(f - centre).
+	function zoomAt(fx: number, fy: number, ratio: number) {
+		if (!viewport) return;
+		const ns = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * ratio));
+		const r = ns / scale;
+		if (r === 1) return;
+		const rect = viewport.getBoundingClientRect();
+		const cx = rect.left + rect.width / 2;
+		const cy = rect.top + rect.height / 2;
+		tx = r * tx + (1 - r) * (fx - cx);
+		ty = r * ty + (1 - r) * (fy - cy);
+		scale = ns;
+		if (scale === 1) {
+			tx = 0;
+			ty = 0;
 		} else {
-			goNextPage();
+			clampPan();
 		}
+	}
+
+	const pointers = new Map<number, { x: number; y: number }>();
+	let moved = 0;
+	let lastDist = 0;
+	let lastMid: { x: number; y: number } | null = null;
+	let lastTapAt = 0;
+	let pendingNav: ReturnType<typeof setTimeout> | null = null;
+
+	function onPointerDown(e: PointerEvent) {
+		// Leave right/middle mouse to the context menu.
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
+		viewport?.setPointerCapture?.(e.pointerId);
+		pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		gesturing = true;
+		if (pointers.size === 1) {
+			moved = 0;
+		} else if (pointers.size === 2) {
+			const [a, b] = [...pointers.values()];
+			lastDist = Math.hypot(a.x - b.x, a.y - b.y);
+			lastMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+		}
+	}
+
+	function onPointerMove(e: PointerEvent) {
+		const prev = pointers.get(e.pointerId);
+		if (!prev) return;
+		pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		if (pointers.size >= 2) {
+			const [a, b] = [...pointers.values()];
+			const dist = Math.hypot(a.x - b.x, a.y - b.y);
+			const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+			if (lastDist > 0 && lastMid) {
+				zoomAt(mid.x, mid.y, dist / lastDist);
+				tx += mid.x - lastMid.x;
+				ty += mid.y - lastMid.y;
+				clampPan();
+			}
+			lastDist = dist;
+			lastMid = mid;
+		} else {
+			const dx = e.clientX - prev.x;
+			const dy = e.clientY - prev.y;
+			moved += Math.hypot(dx, dy);
+			if (scale > 1) {
+				tx += dx;
+				ty += dy;
+				clampPan();
+			}
+		}
+	}
+
+	function onPointerUp(e: PointerEvent) {
+		const wasTap = pointers.size === 1 && moved < TAP_SLOP;
+		pointers.delete(e.pointerId);
+		if (pointers.size < 2) {
+			lastDist = 0;
+			lastMid = null;
+		}
+		if (pointers.size === 0) gesturing = false;
+		if (wasTap) handleTap(e.clientX, e.clientY);
+	}
+
+	function handleTap(x: number, y: number) {
+		if (!viewport) return;
+		const now = Date.now();
+		if (now - lastTapAt < DBL_MS) {
+			// Double tap / click: toggle between fit and 2.5x at the tap point.
+			lastTapAt = 0;
+			if (pendingNav) {
+				clearTimeout(pendingNav);
+				pendingNav = null;
+			}
+			if (scale > 1) resetZoom();
+			else zoomAt(x, y, 2.5);
+			return;
+		}
+		lastTapAt = now;
+		if (scale > 1) return; // taps don't navigate while zoomed in
+		// Defer navigation so a quick second tap can cancel it (double-tap zoom).
+		const rect = viewport.getBoundingClientRect();
+		pendingNav = setTimeout(() => {
+			pendingNav = null;
+			navByPoint(x, rect);
+		}, DBL_MS);
+	}
+
+	function onWheel(e: WheelEvent) {
+		e.preventDefault();
+		zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
+	}
+
+	// Action wiring all gesture listeners; `wheel` needs passive:false to be able
+	// to preventDefault the browser's page zoom.
+	function gestures(node: HTMLElement) {
+		node.addEventListener('pointerdown', onPointerDown);
+		node.addEventListener('pointermove', onPointerMove);
+		node.addEventListener('pointerup', onPointerUp);
+		node.addEventListener('pointercancel', onPointerUp);
+		node.addEventListener('wheel', onWheel, { passive: false });
+		return {
+			destroy() {
+				node.removeEventListener('pointerdown', onPointerDown);
+				node.removeEventListener('pointermove', onPointerMove);
+				node.removeEventListener('pointerup', onPointerUp);
+				node.removeEventListener('pointercancel', onPointerUp);
+				node.removeEventListener('wheel', onWheel);
+			}
+		};
 	}
 
 	async function onLikePage() {
@@ -116,44 +286,53 @@
 	}
 </script>
 
-<div class="viewer-root">
-	<div class={viewClass}>
-		<ProgressBar hideLabel max={maxPage} value={page} />
-		<div onclick={onClickImage} role="none">
-			{#if pageError}
-				<div class="page-error">
-					<ImageReference size={32} />
-					<span>Page {page} failed to load</span>
-					<Button
-						size="small"
-						kind="ghost"
-						icon={Renew}
-						on:click={(e) => {
-							e.stopPropagation();
-							pageError = false;
-							pageRetry += 1;
-						}}
-					>
-						Retry
-					</Button>
-				</div>
-			{:else}
-				<img
-					bind:this={comicTarget}
-					src={`${objUrl}${pageRetry > 0 ? `${objUrl.includes('?') ? '&' : '?'}r=${pageRetry}` : ''}`}
-					alt="page content"
-					onload={() => {
-						loading = false;
-						preloadImageAsync(nextUrl);
-					}}
-					onerror={() => {
-						loading = false;
-						pageError = true;
-					}}
-				/>
-			{/if}
+{#snippet pageBody()}
+	{#if pageError}
+		<div class="page-error">
+			<ImageReference size={32} />
+			<span>Page {page} failed to load</span>
+			<Button
+				size="small"
+				kind="ghost"
+				icon={Renew}
+				on:click={(e) => {
+					e.stopPropagation();
+					pageError = false;
+					pageRetry += 1;
+				}}
+			>
+				Retry
+			</Button>
 		</div>
-	</div>
+	{:else}
+		<img
+			bind:this={comicTarget}
+			src={`${objUrl}${pageRetry > 0 ? `${objUrl.includes('?') ? '&' : '?'}r=${pageRetry}` : ''}`}
+			alt="page content"
+			style={`transform: translate3d(${tx}px, ${ty}px, 0) scale(${scale}); transition: ${gesturing ? 'none' : 'transform 0.12s ease-out'};`}
+			onload={() => {
+				loading = false;
+				preloadImageAsync(nextUrl);
+			}}
+			onerror={() => {
+				loading = false;
+				pageError = true;
+			}}
+		/>
+	{/if}
+{/snippet}
+
+<div class="viewer-root">
+	<ProgressBar hideLabel max={maxPage} value={page} />
+	{#if zoomable}
+		<div class="fit-to-contain" class:zoomed={scale > 1} bind:this={viewport} use:gestures>
+			{@render pageBody()}
+		</div>
+	{:else}
+		<div class={viewClass} onclick={onClickImage} role="none">
+			{@render pageBody()}
+		</div>
+	{/if}
 	<ContextMenu target={targets}>
 		<ContextMenuOption indented labelText="Like page" on:click={onLikePage} />
 		<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
@@ -214,7 +393,7 @@
 
 	/* Paged modes */
 	.fit-to-height {
-		overflow-x: hidden;
+		overflow-x: auto;
 	}
 	.fit-to-height img {
 		height: calc(100vh - 6rem);
@@ -227,11 +406,26 @@
 		width: 100vw;
 	}
 
+	/* Contain mode: a fixed-height stage that centres the page both ways and
+	   hosts the zoom/pan transform. */
+	.fit-to-contain {
+		height: calc(100vh - 6rem);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		touch-action: none;
+	}
+	.fit-to-contain.zoomed {
+		cursor: grab;
+	}
 	.fit-to-contain img {
-		max-height: calc(100vh - 6rem);
-		max-width: 100vw;
+		max-height: 100%;
+		max-width: 100%;
 		width: auto;
 		height: auto;
+		transform-origin: center center;
+		will-change: transform;
 	}
 
 	img {
