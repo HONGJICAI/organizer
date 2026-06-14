@@ -21,7 +21,15 @@
 		SelectItem,
 		Toggle
 	} from 'carbon-components-svelte';
-	import { Home, Favorite, RecentlyViewed, UpdateNow, Recycle, Filter } from 'carbon-icons-svelte';
+	import {
+		Home,
+		Favorite,
+		RecentlyViewed,
+		UpdateNow,
+		Recycle,
+		Filter,
+		Search as SearchIcon
+	} from 'carbon-icons-svelte';
 	import { page } from '$app/state';
 	import { config } from '$lib/config.svelte.js';
 	import PaginationContainer from '$lib/components/PaginationContainer.svelte';
@@ -200,6 +208,12 @@
 		</div>
 		<div class="search-bar">
 			<Search bind:value={searchStr} on:blur={() => onSearchBlur(searchStr)} />
+			<Button
+				icon={SearchIcon}
+				iconDescription="Search everywhere"
+				kind="ghost"
+				on:click={() => goto(`/search?q=${encodeURIComponent(searchStr)}`)}
+			/>
 			{#if config.OrderByPosition === 'NextToSearchBar' && orderByOptions}
 				<Select bind:selected={orderBy} labelText="Order By">
 					{#each orderByOptions as { value, text }}

@@ -14,6 +14,8 @@
 	import SettingsAdjust from 'carbon-icons-svelte/lib/SettingsAdjust.svelte';
 	import Menu from 'carbon-icons-svelte/lib/Menu.svelte';
 	import Close from 'carbon-icons-svelte/lib/Close.svelte';
+	import SearchIcon from 'carbon-icons-svelte/lib/Search.svelte';
+	import { goto } from '$app/navigation';
 	import SettingsModal from './SettingsModal.svelte';
 	import { notifications } from '$lib/state.svelte';
 	import { viewerState } from '$lib/viewerState.svelte';
@@ -48,6 +50,9 @@
 	{/if}
 
 	<HeaderUtilities>
+		{#if !viewerState.active}
+			<HeaderGlobalAction aria-label="Search" icon={SearchIcon} on:click={() => goto('/search')} />
+		{/if}
 		<HeaderGlobalAction aria-label="Settings" icon={SettingsAdjust} on:click={onClickSettings} />
 		{#if authState.required}
 			<HeaderGlobalAction
