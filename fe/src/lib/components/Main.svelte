@@ -75,9 +75,11 @@
 					<HeaderPanelDivider>Videos</HeaderPanelDivider>
 					<HeaderPanelLink href="/video">Home</HeaderPanelLink>
 					<HeaderPanelLink href="/video/folder">Folder</HeaderPanelLink>
+					<HeaderPanelLink href="/video/tag">Tag</HeaderPanelLink>
 					<HeaderPanelDivider>Images</HeaderPanelDivider>
 					<HeaderPanelLink href="/image">Home</HeaderPanelLink>
 					<HeaderPanelLink href="/image/folder">Folder</HeaderPanelLink>
+					<HeaderPanelLink href="/image/tag">Tag</HeaderPanelLink>
 				</HeaderPanelLinks>
 			</HeaderAction>
 		{/if}
