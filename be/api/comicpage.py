@@ -135,6 +135,8 @@ class ComicPageCBV:
         if ComicLoader.gen_comic_cover(comic, cf, True, page - 1 if page > 0 else 0):
             rsp = Response(status_code=200)
             comic.coverPosition = page
+            # Bump the cover version so the frontend's cache-busting URL changes.
+            comic.entityUpdateTime = datetime.datetime.now()
             self.session.add(comic)
             self.session.commit()
             return rsp

@@ -377,10 +377,13 @@ class TestSetCover:
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         (d / "002.jpg").write_bytes(make_jpeg_bytes())
         monkeypatch.setattr(global_data.Config, "nginx_image_path", str(tmp_path))
-        set_store(make_entity(id=1, path=str(d), page=2))
+        old = datetime(2000, 1, 1)
+        set_store(make_entity(id=1, path=str(d), page=2, entityUpdateTime=old))
         r = client.post("/api/images/1/pages/2/cover")
         assert r.status_code == 200
         assert img_api._store[1].coverPosition == 2
+        # Cover regenerated under the same filename -> bump the cache-bust token.
+        assert img_api._store[1].entityUpdateTime > old
 
     def test_missing_returns_404(self, client):
         assert client.post("/api/images/999/pages/1/cover").status_code == 404

@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import patch
 
 import global_data
@@ -244,3 +245,31 @@ class TestSetCover:
             with patch.object(ComicLoader, "gen_comic_cover", side_effect=fake_gen):
                 client.post("/api/comics/1/pages/0/cover")
         assert captured["page"] == 0
+
+    def test_bumps_cover_version(self, client, session):
+        # The cover JPEG is rewritten under the same filename, so the cover URL
+        # only changes if entityUpdateTime is bumped — that is what busts the
+        # browser/CDN cache for the new image.
+        old = datetime(2000, 1, 1)
+        insert_comic(session, 1, page=3, coverPosition=1, entityUpdateTime=old)
+        mock_cf = MockComicfile(pages=3)
+        with patch("comicfile.create_open", return_value=mock_cf):
+            with patch.object(ComicLoader, "gen_comic_cover", return_value=True):
+                r = client.post("/api/comics/1/pages/2/cover")
+        assert r.status_code == 200
+        session.expire_all()
+        refreshed = session.get(ComicEntity, 1)
+        assert refreshed.coverPosition == 2
+        assert refreshed.entityUpdateTime > old
+
+    def test_does_not_bump_when_gen_fails(self, client, session):
+        old = datetime(2000, 1, 1)
+        insert_comic(session, 1, page=3, entityUpdateTime=old)
+        mock_cf = MockComicfile(pages=3)
+        with patch("comicfile.create_open", return_value=mock_cf):
+            with patch.object(ComicLoader, "gen_comic_cover", return_value=False):
+                r = client.post("/api/comics/1/pages/2/cover")
+        assert r.status_code == 500
+        session.expire_all()
+        refreshed = session.get(ComicEntity, 1)
+        assert refreshed.entityUpdateTime == old

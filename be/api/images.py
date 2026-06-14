@@ -253,6 +253,8 @@ class ImageCBV:
         cover_page = (page - 1) if page > 0 else 0
         if _gen_cover(entity, overwrite=True, page=cover_page):
             entity.coverPosition = page
+            # Bump the cover version so the frontend's cache-busting URL changes.
+            entity.entityUpdateTime = datetime.datetime.now()
             return Response(status_code=200)
         abort(500)
 

@@ -2,6 +2,7 @@
 import os
 import pathlib
 import shutil
+from datetime import datetime
 from typing import List
 from fastapi import APIRouter, Depends
 from fastapi_utils.api_model import APIMessage
@@ -117,6 +118,10 @@ class ComicCBV:
             comic.page = cf.page
             comic.updateTime = comic_entity_init.updateTime
             ComicLoader.gen_comic_cover(comic, cf)
+            # The cover JPEG is rewritten under the same filename, so bump the
+            # version field that the frontend appends to the cover URL — this is
+            # what busts the browser/nginx/CDN cache for the regenerated image.
+            comic.entityUpdateTime = datetime.now()
             self.session.add(comic)
             self.session.commit()
             self.session.refresh(comic)
