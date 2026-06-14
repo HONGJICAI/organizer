@@ -26,6 +26,7 @@
 	import { separateFilename } from '$lib/utility';
 	import {
 		ApplicationWeb,
+		Book,
 		Edit,
 		Favorite,
 		FavoriteFilled,
@@ -193,6 +194,19 @@
 		}
 		sendingRename = false;
 	}
+	let sendingConvert = $state(false);
+	async function onClickConvert() {
+		if (sendingConvert) return;
+		sendingConvert = true;
+		const { data, error } = await ImagesService.imageConvert({ path: { id: file.id } });
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: error?.msg }));
+		} else if (data) {
+			addNotification(new SuccessNotification({ subtitle: `Converted to comic: ${data.name}` }));
+		}
+		sendingConvert = false;
+	}
+
 	let loadingDetail = $state(false);
 	let comicDetail = $state<ComicDetailResponse>();
 	async function onClickDetail() {
@@ -222,6 +236,7 @@
 		sendingRefresh ||
 		sendingFavorite ||
 		sendingRename ||
+		sendingConvert ||
 		file.archived}
 	on:click:button--primary={() => onClickPrimaryButton()}
 >
@@ -306,7 +321,15 @@
 			href={`honeyview:${file.path}`}
 			disabled={file.archived}
 		/>
-		{#if sendingRefresh || sendingDelete || sendingFavorite || sendingRename}
+		{#if mediaType === MediaType.Image}
+			<Button
+				icon={Book}
+				iconDescription="Convert to comic"
+				on:click={() => onClickConvert()}
+				disabled={sendingConvert || file.archived}
+			/>
+		{/if}
+		{#if sendingRefresh || sendingDelete || sendingFavorite || sendingRename || sendingConvert}
 			<InlineLoading />
 		{/if}
 	</div>

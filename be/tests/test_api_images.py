@@ -124,7 +124,7 @@ class TestGetPage:
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         (d / "002.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=2))
-        r = client.get("/api/images/1/1")
+        r = client.get("/api/images/1/pages/1")
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("image/")
 
@@ -133,7 +133,7 @@ class TestGetPage:
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=1))
-        assert client.get("/api/images/1/99").status_code == 404
+        assert client.get("/api/images/1/pages/99").status_code == 404
 
     def test_negative_page_returns_404(self, client, tmp_path):
         d = tmp_path / "album"
@@ -141,14 +141,14 @@ class TestGetPage:
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         (d / "002.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=2))
-        assert client.get("/api/images/1/-1").status_code == 404
+        assert client.get("/api/images/1/pages/-1").status_code == 404
 
     def test_get_does_not_record_progress(self, client, tmp_path):
         d = tmp_path / "album"
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=1))
-        client.get("/api/images/1/1")
+        client.get("/api/images/1/pages/1")
         assert img_api._store[1].lastViewedPosition == 0
         assert img_api._store[1].lastViewedTime is None
 
@@ -157,9 +157,9 @@ class TestGetPage:
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=1))
-        r1 = client.get("/api/images/1/1")
+        r1 = client.get("/api/images/1/pages/1")
         etag = r1.headers["etag"]
-        r2 = client.get("/api/images/1/1", headers={"if-none-match": etag})
+        r2 = client.get("/api/images/1/pages/1", headers={"if-none-match": etag})
         assert r2.status_code == 304
 
     def test_width_downscales_image(self, client, tmp_path):
@@ -169,13 +169,13 @@ class TestGetPage:
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())  # 10x10
         set_store(make_entity(id=1, path=str(d), page=1))
-        r = client.get("/api/images/1/1?width=5")
+        r = client.get("/api/images/1/pages/1?width=5")
         assert r.status_code == 200
         img = Image.open(io.BytesIO(r.content))
         assert img.width == 5
 
     def test_missing_image_returns_404(self, client):
-        assert client.get("/api/images/999/1").status_code == 404
+        assert client.get("/api/images/999/pages/1").status_code == 404
 
 
 class TestUpdateProgress:
@@ -303,6 +303,72 @@ class TestDelete:
         assert client.delete("/api/images/999").status_code == 404
 
 
+class TestConvertToComic:
+    def _album(self, tmp_path, pages=3):
+        d = tmp_path / "album" / "My Album"
+        d.mkdir(parents=True)
+        for i in range(pages):
+            (d / f"{i:03d}.jpg").write_bytes(make_jpeg_bytes())
+        return d
+
+    def _comic_dir(self, tmp_path, monkeypatch):
+        import global_data
+        comic_dir = tmp_path / "comics_src"
+        comic_dir.mkdir()
+        monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [str(comic_dir)])
+        return comic_dir
+
+    def test_creates_comic_zip(self, client, tmp_path, monkeypatch):
+        import zipfile
+        d = self._album(tmp_path, pages=3)
+        comic_dir = self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="My Album", path=str(d), page=3))
+
+        r = client.post("/api/images/1/convert")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["name"] == "My Album.zip"
+        assert body["page"] == 3
+
+        zip_path = comic_dir / "My Album.zip"
+        assert zip_path.exists()
+        with zipfile.ZipFile(zip_path) as zf:
+            assert sorted(zf.namelist()) == ["000.jpg", "001.jpg", "002.jpg"]
+
+    def test_source_folder_preserved(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path)
+        self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="My Album", path=str(d)))
+        assert client.post("/api/images/1/convert").status_code == 200
+        assert d.exists()
+        assert 1 in img_api._store
+
+    def test_imports_into_comic_db(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path)
+        self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="My Album", path=str(d)))
+        client.post("/api/images/1/convert")
+        listing = client.get("/api/comics").json()
+        assert any(c["name"] == "My Album.zip" for c in listing)
+
+    def test_empty_folder_returns_400(self, client, tmp_path, monkeypatch):
+        d = tmp_path / "empty"
+        d.mkdir()
+        self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="empty", path=str(d), page=0))
+        assert client.post("/api/images/1/convert").status_code == 400
+
+    def test_duplicate_returns_400(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path)
+        self._comic_dir(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, name="My Album", path=str(d)))
+        assert client.post("/api/images/1/convert").status_code == 200
+        assert client.post("/api/images/1/convert").status_code == 400
+
+    def test_missing_returns_404(self, client):
+        assert client.post("/api/images/999/convert").status_code == 404
+
+
 class TestSetCover:
     def test_updates_cover_position(self, client, tmp_path, monkeypatch):
         import global_data
@@ -312,9 +378,9 @@ class TestSetCover:
         (d / "002.jpg").write_bytes(make_jpeg_bytes())
         monkeypatch.setattr(global_data.Config, "nginx_image_path", str(tmp_path))
         set_store(make_entity(id=1, path=str(d), page=2))
-        r = client.post("/api/images/1/2/cover")
+        r = client.post("/api/images/1/pages/2/cover")
         assert r.status_code == 200
         assert img_api._store[1].coverPosition == 2
 
     def test_missing_returns_404(self, client):
-        assert client.post("/api/images/999/1/cover").status_code == 404
+        assert client.post("/api/images/999/pages/1/cover").status_code == 404

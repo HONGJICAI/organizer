@@ -140,17 +140,17 @@ export async function setupMock(authRequired: boolean) {
 			comic.lastViewedTime = new Date().toISOString();
 			return HttpResponse.json({ position: body.position, lastViewedTime: comic.lastViewedTime });
 		}),
-		http.post('/api/comics/:id/:page/like', async () => {
+		http.post('/api/comics/:id/pages/:page/like', async () => {
 			await delay(200);
 			return HttpResponse.json({ msg: 'Liked' });
 		}),
-		http.post('/api/comics/:id/:page/cover', async ({ params }) => {
+		http.post('/api/comics/:id/pages/:page/cover', async ({ params }) => {
 			await delay(200);
 			const comic = findComic(params.id);
 			if (comic) comic.coverPosition = Number(params.page);
 			return HttpResponse.json({ msg: 'Cover set' });
 		}),
-		http.get('/api/comics/:id/:page', async () => {
+		http.get('/api/comics/:id/pages/:page', async () => {
 			const w = faker.number.int({ min: 100, max: 1000 });
 			const h = faker.number.int({ min: 100, max: 1000 });
 			return HttpResponse.arrayBuffer(await generateImageArrayBuffer(w, h));
@@ -196,6 +196,23 @@ export async function setupMock(authRequired: boolean) {
 			image.entityUpdateTime = new Date().toISOString();
 			return HttpResponse.json(image);
 		}),
+		http.post('/api/images/:id/convert', async ({ params }) => {
+			await delay(1200);
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			// Mirror the backend: a new comic is created from the album's images
+			// (named after the resulting zip file) and added to the comic library.
+			const newComic = {
+				...image,
+				id: Math.max(0, ...comics.map((c) => c.id)) + 1,
+				name: `${image.name}.zip`,
+				path: `/data/comics/${image.name}.zip`,
+				archived: false,
+				entityUpdateTime: new Date().toISOString()
+			};
+			comics.push(newComic);
+			return HttpResponse.json(newComic);
+		}),
 		http.put('/api/images/:id/progress', async ({ params, request }) => {
 			const image = findImage(params.id);
 			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
@@ -204,7 +221,7 @@ export async function setupMock(authRequired: boolean) {
 			image.lastViewedTime = new Date().toISOString();
 			return HttpResponse.json({ position: body.position, lastViewedTime: image.lastViewedTime });
 		}),
-		http.get('/api/images/:id/:page', async () => {
+		http.get('/api/images/:id/pages/:page', async () => {
 			const w = faker.number.int({ min: 100, max: 1000 });
 			const h = faker.number.int({ min: 100, max: 1000 });
 			return HttpResponse.arrayBuffer(await generateImageArrayBuffer(w, h));

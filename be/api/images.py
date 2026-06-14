@@ -4,6 +4,7 @@ import os
 import pathlib
 import shutil
 import threading
+import zipfile
 from typing import Dict, List
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -12,12 +13,15 @@ from core.auth import _bearer, require_auth, require_media_auth
 from fastapi_utils.api_model import APIMessage
 from fastapi_utils.cbv import cbv
 from PIL import Image as PILImage
+from sqlmodel import Session, select
 
+import db
 import global_data
 from api.comicpage import PAGE_CACHE_CONTROL, page_etag, resize_to_width
 from comicfile import allowImgs, mediaTypes
 from core.exceptions import abort
-from model import ImageEntity
+from loader import ComicLoader
+from model import ComicEntity, ImageEntity
 from schemas.common import FavorResponse, ProgressRequest, ProgressResponse
 from schemas.image import (
     ImageDetailResponse,
@@ -132,7 +136,7 @@ class ImageCBV:
         files = _image_files(entity.path)
         return ImageDetailResponse(pageDetails=[ImagePageDetailResponse(name=f) for f in files])
 
-    @router.get("/api/images/{id}/{page}", tags=["images"])
+    @router.get("/api/images/{id}/pages/{page}", tags=["images"])
     def get_page(
         self,
         id: int,
@@ -243,7 +247,7 @@ class ImageCBV:
             _store.pop(entity.id, None)
         return APIMessage(detail="Deleted")
 
-    @router.post("/api/images/{id}/{page}/cover", tags=["images"])
+    @router.post("/api/images/{id}/pages/{page}/cover", tags=["images"])
     def set_cover(self, id: int, page: int, _: None = Depends(require_auth)) -> Response:
         entity = _get(id)
         cover_page = (page - 1) if page > 0 else 0
@@ -251,3 +255,56 @@ class ImageCBV:
             entity.coverPosition = page
             return Response(status_code=200)
         abort(500)
+
+    @router.post("/api/images/{id}/convert", tags=["images"])
+    def convert(self, id: int, _: None = Depends(require_auth)) -> ComicEntity:
+        """Package an image folder into a zip comic file and import it.
+
+        The original images are stored verbatim (deflate-compressed) under
+        their existing filenames, so page order matches what the album shows.
+        The source folder is left untouched; the new comic is added to the
+        comic library and gets a cover generated like any scanned comic.
+        """
+        entity = _get(id)
+        files = _image_files(entity.path)
+        if not files:
+            abort(400, "Image folder has no images to convert")
+
+        scan_pathes = global_data.Config.Comic.scan_pathes
+        if not scan_pathes:
+            abort(500, "No comic scan path configured")
+        out_dir = scan_pathes[0]
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except OSError as e:
+            abort(500, f"Cannot create comic directory: {e}")
+        out_path = os.path.join(out_dir, f"{entity.name}.zip")
+
+        if os.path.exists(out_path):
+            abort(400, "A comic file with this name already exists")
+        with Session(db.engine) as session:
+            if session.exec(select(ComicEntity).where(ComicEntity.path == out_path)).first():
+                abort(400, "A comic with this path already exists")
+
+        try:
+            with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for fname in files:
+                    zf.write(os.path.join(entity.path, fname), arcname=fname)
+        except OSError as e:
+            # Don't leave a half-written archive behind for the next scan to pick up.
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            abort(500, f"Failed to create comic file: {e}")
+
+        try:
+            ComicLoader().load(out_path)
+        except Exception as e:
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            abort(400, f"Failed to import comic: {e}")
+
+        with Session(db.engine) as session:
+            comic = session.exec(select(ComicEntity).where(ComicEntity.path == out_path)).first()
+        if comic is None:
+            abort(500, "Comic was created but could not be loaded")
+        return comic.model_dump()
