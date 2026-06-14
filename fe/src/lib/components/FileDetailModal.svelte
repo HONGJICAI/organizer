@@ -16,7 +16,6 @@
 	} from 'carbon-components-svelte';
 	import {
 		Comic,
-		Image,
 		MediaType,
 		type MediaFile,
 		Video,
@@ -157,7 +156,9 @@
 					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				}
 				if (data) {
-					file = new Comic(data);
+					// update in place so the same object held by cached list views
+					// reflects the refresh, instead of replacing it with a new instance
+					file.update(data);
 					addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
 				}
 				break;
@@ -168,7 +169,7 @@
 					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				}
 				if (data) {
-					file = new Image(data);
+					file.update(data);
 					addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
 				}
 				break;

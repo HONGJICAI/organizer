@@ -182,6 +182,13 @@
 		} else {
 			ImagesService.imageUpdateProgress(opts);
 		}
+		// Mirror the progress onto the in-memory file so cached list views (viewed
+		// badge, Recent, sort-by-viewed) stay consistent without a refetch. Fire and
+		// forget, like the request itself.
+		const now = new Date();
+		file.lastViewed = position;
+		file.lastViewedTime = now.toISOString();
+		file.lastViewedDate = now;
 	}
 
 	$effect(() => {

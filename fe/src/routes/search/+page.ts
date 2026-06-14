@@ -1,36 +1,18 @@
-import { ComicsService, ImagesService, VideosService } from '$lib/client/sdk.gen.js';
-import { Comic, Image, Video, type MediaFile } from '$lib/model.svelte';
+import { getMediaFiles } from '$lib/mediaStore';
+import type { MediaFile } from '$lib/model.svelte';
 
-// Global search loads every media type and filters client-side, mirroring the
-// per-type list pages (which already load their whole list and filter in the
-// browser). A failure in one type must not blank the others, so each loader
-// resolves to [] on error.
-async function loadComics(): Promise<MediaFile[]> {
-	const { data, error } = await ComicsService.comicGetAll();
-	if (error || !data) {
-		return [];
-	}
-	return data.map((e) => new Comic(e));
-}
-async function loadVideos(): Promise<MediaFile[]> {
-	const { data, error } = await VideosService.videoGetAll();
-	if (error || !data) {
-		return [];
-	}
-	return data.map((e) => new Video(e));
-}
-async function loadImages(): Promise<MediaFile[]> {
-	const { data, error } = await ImagesService.imageGetAll();
-	if (error || !data) {
-		return [];
-	}
-	return data.map((e) => new Image(e));
+// Global search consumes the same full per-type lists as the list pages, so it
+// shares mediaStore's cache (no extra fetch when arriving from a list page). A
+// failure in one type must not blank the others, so each promise resolves to []
+// on error.
+function safeLoad(mediaType: string): Promise<MediaFile[]> {
+	return (getMediaFiles(mediaType) ?? Promise.resolve([])).catch(() => []);
 }
 
 export function load() {
 	return {
-		comics: loadComics(),
-		videos: loadVideos(),
-		images: loadImages()
+		comics: safeLoad('comic'),
+		videos: safeLoad('video'),
+		images: safeLoad('image')
 	};
 }

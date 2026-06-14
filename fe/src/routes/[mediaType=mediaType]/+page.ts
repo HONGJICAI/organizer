@@ -1,43 +1,17 @@
-import { ComicsService, ImagesService, VideosService } from '$lib/client/sdk.gen.js';
-import { Comic, Image, Video } from '$lib/model.svelte';
-interface Map {
-	[key: string]: () => Promise<Comic[] | Video[] | Image[]>;
-}
-const mediaTypes: Map = {
-	comic: loadComics,
-	video: loadVideos,
-	image: loadImages
-};
-async function loadComics(): Promise<Comic[]> {
-	const { data, error } = await ComicsService.comicGetAll();
-	if (error) {
-		throw error;
-	}
-	return data.map((e) => new Comic(e));
-}
-async function loadVideos(): Promise<Video[]> {
-	const { data, error } = await VideosService.videoGetAll();
-	if (error) {
-		throw error;
-	}
-	return data.map((e) => new Video(e));
-}
-async function loadImages(): Promise<Image[]> {
-	const { data, error } = await ImagesService.imageGetAll();
-	if (error) {
-		throw error;
-	}
-	return data.map((e) => new Image(e));
-}
-export async function load({ params }) {
-	const p = mediaTypes[params.mediaType];
-	if (!p) {
+import { getMediaFiles } from '$lib/mediaStore';
+
+export function load({ params, depends }) {
+	// Scopes the refresh button: invalidate(`app:media:<type>`) re-runs only this
+	// load, not every load in the app.
+	depends(`app:media:${params.mediaType}`);
+	const files = getMediaFiles(params.mediaType);
+	if (!files) {
 		return {
 			status: 404
 		};
 	}
-
 	return {
-		files: p()
+		mediaType: params.mediaType,
+		files
 	};
 }
