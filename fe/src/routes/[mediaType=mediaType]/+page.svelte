@@ -10,7 +10,7 @@
 		MediaFileComparison
 	} from '$lib/model.svelte';
 	import FileContent from '$lib/components/FileContent.svelte';
-	import { goto, invalidateAll, pushState } from '$app/navigation';
+	import { goto, invalidate, pushState } from '$app/navigation';
 	import {
 		ContentSwitcher,
 		Switch,
@@ -69,6 +69,11 @@
 	let selectedFile: MediaFile | undefined = $state();
 	let pageSize = $state(20);
 	let unreadOnly = $state(false);
+	// ids opened from this list during the session. With reading progress now
+	// written back to memory, an item read while "Unread Only" is on would vanish
+	// the moment the reader closes; keeping opened ids visible until the next
+	// refresh/reload avoids yanking the item the user just interacted with.
+	let openedThisSession = $state(new Set<number>());
 	let orderBy = $state<MediaFileComparisonType>(MediaFileComparison.UpdatedDate);
 	let reverse = $state(true);
 	let showFilter = $state(config.DeviceType === 'Desktop');
@@ -93,6 +98,7 @@
 
 	const onClickFile = (file: MediaFile) => {
 		selectedFile = file;
+		openedThisSession = new Set(openedThisSession).add(file.id);
 		pushState('', {
 			showFileDetailModal: true
 		});
@@ -108,7 +114,10 @@
 	};
 	const onRefresh = () => {
 		refreshMediaFiles(page.params.mediaType);
-		invalidateAll();
+		// drop the "keep just-read items visible" exception: a manual refresh is an
+		// explicit ask for the current server state
+		openedThisSession = new Set();
+		invalidate(`app:media:${page.params.mediaType}`);
 	};
 	const onCategoryChange = (e: CustomEvent<number>) => {
 		category = e.detail;
@@ -168,7 +177,10 @@
 		}
 	});
 	let searchFilesInCurrentPage = $derived(
-		(category === Category.Home && unreadOnly ? searchFiles.filter((f) => !f.viewed) : searchFiles)
+		(category === Category.Home && unreadOnly
+			? searchFiles.filter((f) => !f.viewed || openedThisSession.has(f.id))
+			: searchFiles
+		)
 			.sort((a, b) => (reverse ? -a.compareTo(b, orderBy) : a.compareTo(b, orderBy)))
 			.slice((curPage - 1) * pageSize, curPage * pageSize)
 	);
