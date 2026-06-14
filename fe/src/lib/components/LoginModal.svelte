@@ -8,7 +8,7 @@
 	import SettingsAdjust from 'carbon-icons-svelte/lib/SettingsAdjust.svelte';
 	import SettingsModal from './SettingsModal.svelte';
 	import { authState } from '$lib/auth.svelte';
-	import { config } from '$lib/config.svelte';
+	import { AuthService } from '$lib/client/sdk.gen';
 
 	let password = $state('');
 	let loading = $state(false);
@@ -20,21 +20,16 @@
 		loading = true;
 		error = '';
 		try {
-			const r = await fetch(`${config.apiServer}/api/auth/login`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ password })
-			});
-			if (r.status === 401) {
+			const { data, error: err, response } = await AuthService.login({ body: { password } });
+			if (response?.status === 401) {
 				error = 'Invalid password';
 				return;
 			}
-			if (!r.ok) {
+			if (err || !data) {
 				error = 'Server error, please try again';
 				return;
 			}
-			const { token } = await r.json();
-			authState.setToken(token);
+			authState.setToken(data.token);
 		} catch {
 			error = 'Could not reach server';
 		} finally {
