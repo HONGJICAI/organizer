@@ -18,8 +18,8 @@
 </script>
 
 <div class="viewer-root">
+	<ProgressBar hideLabel max={duration} value={videoTime} />
 	<div class={viewClass}>
-		<ProgressBar hideLabel max={duration} value={videoTime} />
 		<video
 			bind:this={videoTarget}
 			{src}
@@ -57,9 +57,17 @@
 		width: 100vw;
 	}
 
+	/* Contain mode: a fixed-height stage that centres the video both ways,
+	   matching the paged reader. */
+	.fit-to-contain {
+		height: calc(100vh - 6rem);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
 	.fit-to-contain video {
-		max-height: calc(100vh - 6rem);
-		max-width: 100vw;
+		max-height: 100%;
+		max-width: 100%;
 		width: auto;
 		height: auto;
 	}
