@@ -1,32 +1,32 @@
-import { config } from '$lib/config.svelte';
-import { Comic, Image, Video } from '$lib/model.svelte';
-interface Map {
-	[key: string]: (id: string) => Promise<Comic | Video | Image>;
+import { ComicsService, ImagesService, VideosService } from '$lib/client/sdk.gen';
+import { Comic, Image, Video, type MediaFile } from '$lib/model.svelte';
+
+interface Loaders {
+	[key: string]: (id: number) => Promise<MediaFile | undefined>;
 }
-const mediaTypes: Map = {
+
+async function loadComic(id: number) {
+	const { data } = await ComicsService.comicGet({ path: { id } });
+	return data ? new Comic(data) : undefined;
+}
+async function loadVideo(id: number) {
+	const { data } = await VideosService.videoGet({ path: { id } });
+	return data ? new Video(data) : undefined;
+}
+async function loadImage(id: number) {
+	const { data } = await ImagesService.imageGet({ path: { id } });
+	return data ? new Image(data) : undefined;
+}
+
+const loaders: Loaders = {
 	comic: loadComic,
 	video: loadVideo,
 	image: loadImage
 };
 
-async function loadComic(id: string) {
-	const rsp = await fetch(`${config.apiServer}/api/comics/${id}`);
-	const json = await rsp.json();
-	return new Comic(json);
-}
-async function loadVideo(id: string) {
-	const rsp = await fetch(`${config.apiServer}/api/videos/${id}`);
-	const json = await rsp.json();
-	return new Video(json);
-}
-async function loadImage(id: string) {
-	const rsp = await fetch(`${config.apiServer}/api/images/${id}`);
-	const json = await rsp.json();
-	return new Image(json);
-}
 export async function load({ params }) {
-	const p = mediaTypes[params.mediaType];
-	if (!p) return { file: undefined };
-	const file = await p(params.id);
+	const loader = loaders[params.mediaType];
+	if (!loader) return { file: undefined };
+	const file = await loader(Number(params.id));
 	return { file };
 }

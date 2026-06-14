@@ -1,4 +1,5 @@
 import { client } from '$lib/client/client.gen';
+import { AuthService } from '$lib/client/sdk.gen';
 import { config } from '$lib/config.svelte';
 import { authState } from '$lib/auth.svelte';
 
@@ -19,9 +20,8 @@ export async function connect(serverUrl: string): Promise<boolean> {
 	client.setConfig({ baseUrl: serverUrl });
 
 	try {
-		const r = await fetch(`${serverUrl}/api/auth/status`);
-		if (!r.ok) throw new Error('Server error');
-		const data = (await r.json()) as { required: boolean };
+		const { data, error } = await AuthService.status();
+		if (error || !data) throw new Error('Server error');
 		authState.required = data.required;
 		localStorage.setItem(SERVER_URL_KEY, serverUrl);
 		connectionState.status = 'connected';
@@ -44,9 +44,8 @@ export async function connectMock(authRequired: boolean): Promise<boolean> {
 		const { setupMock } = await import('$lib/mock');
 		await setupMock(authRequired);
 
-		const r = await fetch('/api/auth/status');
-		if (!r.ok) throw new Error('Mock setup failed');
-		const data = (await r.json()) as { required: boolean };
+		const { data, error } = await AuthService.status();
+		if (error || !data) throw new Error('Mock setup failed');
 		authState.required = data.required;
 		connectionState.status = 'connected';
 		return true;
