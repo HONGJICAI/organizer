@@ -117,6 +117,7 @@
 		open
 		onCloseModal={() => history.back()}
 		bind:file={selectedFile}
+		onClickTag={(tag) => runSearch(tag)}
 		onClickPrimaryButton={() => {
 			if (selectedFile) {
 				goto(`/${selectedFile.type}/${selectedFile.id}`);

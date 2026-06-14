@@ -32,6 +32,7 @@
 		FavoriteFilled,
 		NewTab,
 		Save,
+		Search as SearchIcon,
 		TrashCan,
 		UpdateNow
 	} from 'carbon-icons-svelte';
@@ -48,6 +49,7 @@
 		open?: boolean;
 		onCloseModal?: () => void;
 		file: MediaFile;
+		onClickTag?: (tag: string) => void;
 		onClickPrimaryButton?: () => void;
 		onFileDeleted?: (permenant: boolean) => void;
 	}
@@ -56,6 +58,7 @@
 		open = $bindable(false),
 		onCloseModal = () => undefined,
 		file = $bindable(),
+		onClickTag = () => undefined,
 		onClickPrimaryButton = () => undefined,
 		onFileDeleted = () => undefined
 	}: Props = $props();
@@ -274,14 +277,20 @@
 		<TextInput labelText="Last Viewed" value={file.lastViewedLabel} readonly />
 	</div>
 	<div>
-		<p>Tags (click to search everywhere)</p>
+		<p>Tags</p>
 		{#each separateFilename(separateToTagsFrom ?? '') as tag}
-			<Tag
-				type="teal"
-				title={`Search "${tag}" across all media`}
-				on:click={() => goto(`/search?q=${encodeURIComponent(tag)}`)}
-				interactive={true}>{tag}</Tag
-			>
+			<span class="tag-wrap">
+				<Tag type="teal" title={tag} on:click={() => onClickTag(tag)} interactive={true}>{tag}</Tag>
+				<button
+					type="button"
+					class="tag-global"
+					title={`Search "${tag}" everywhere`}
+					aria-label={`Search "${tag}" everywhere`}
+					onclick={() => goto(`/search?q=${encodeURIComponent(tag)}`)}
+				>
+					<SearchIcon size={16} />
+				</button>
+			</span>
 		{/each}
 	</div>
 
@@ -423,6 +432,27 @@
 		display: flex;
 		flex-direction: row;
 		gap: 0.5rem;
+	}
+
+	.tag-wrap {
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.tag-global {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0 0.5rem 0 -0.25rem;
+		padding: 0.125rem;
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: var(--cds-text-03, #8d8d8d);
+	}
+
+	.tag-global:hover {
+		color: var(--cds-text-01, #f4f4f4);
 	}
 
 	p {
