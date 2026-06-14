@@ -40,18 +40,18 @@ export type MediaFileComparisonType = MediaFileComparison | ComicComparison | Vi
 
 export class MediaFile {
 	name = $state('');
-	path: string;
-	size: number;
+	path = $state('');
+	size = $state(0);
 	type: MediaType;
-	id: number;
-	updateTime: string;
-	updateDate: Date;
-	lastViewed: number;
+	id = $state(0);
+	updateTime = $state('');
+	updateDate = $state(new Date(0));
+	lastViewed = $state(0);
 	lastViewedTime = $state<string | null>(null);
-	lastViewedDate: Date | null;
+	lastViewedDate = $state<Date | null>(null);
 	favorited = $state(false);
 	archived = $state(false);
-	entityUpdateTime: string | null;
+	entityUpdateTime = $state<string | null>(null);
 	get viewed(): boolean {
 		return !!this.lastViewedTime;
 	}
@@ -72,6 +72,15 @@ export class MediaFile {
 	}
 	constructor(type: MediaType, json: ComicEntity | VideoEntity | ImageEntity) {
 		this.type = type;
+		// assignBase is intentionally not overridden by subclasses, so it is safe to
+		// call from the constructor; a subclass field set during super() would be
+		// clobbered by that subclass's own $state field initializers afterwards.
+		this.assignBase(json);
+	}
+	// Copy the persisted entity fields onto this instance. Split out of the
+	// constructor so an in-place refresh (update) can reuse it without creating a
+	// new object, which would break the references held by cached list views.
+	protected assignBase(json: ComicEntity | VideoEntity | ImageEntity) {
 		this.name = json.name;
 		this.path = json.path;
 		// size is in bytes, convert to MB with 2 decimal places
@@ -86,6 +95,11 @@ export class MediaFile {
 		this.favorited = json.favorited ?? false;
 		this.archived = json.archived ?? false;
 		this.entityUpdateTime = json.entityUpdateTime ?? null;
+	}
+	// Refresh this instance in place from a freshly fetched entity. Subclasses
+	// extend it to also copy their own fields.
+	update(json: ComicEntity | VideoEntity | ImageEntity) {
+		this.assignBase(json);
 	}
 	compareTo(other: MediaFile, comparison: MediaFileComparisonType): number {
 		switch (comparison) {
@@ -107,13 +121,17 @@ export class MediaFile {
 	}
 }
 export class Comic extends MediaFile {
-	page: number;
+	page = $state(0);
 	get coverUrl(): string {
 		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg`;
 	}
 	constructor(json: ComicEntity) {
 		super(MediaType.Comic, json);
 		this.page = json.page ?? ComicEntitySchema.properties.page.default;
+	}
+	update(json: ComicEntity | VideoEntity | ImageEntity) {
+		super.update(json);
+		this.page = (json as ComicEntity).page ?? ComicEntitySchema.properties.page.default;
 	}
 	compareTo(other: Comic, comparison: MediaFileComparisonType): number {
 		switch (comparison) {
@@ -127,7 +145,7 @@ export class Comic extends MediaFile {
 	}
 }
 export class Image extends MediaFile {
-	page: number;
+	page = $state(0);
 	get coverUrl(): string {
 		return `${config.staticServer}/${this.type}s/${this.id}_0.jpg`;
 	}
@@ -135,9 +153,13 @@ export class Image extends MediaFile {
 		super(MediaType.Image, json);
 		this.page = json.page ?? ImageEntitySchema.properties.page.default;
 	}
+	update(json: ComicEntity | VideoEntity | ImageEntity) {
+		super.update(json);
+		this.page = (json as ImageEntity).page ?? ImageEntitySchema.properties.page.default;
+	}
 }
 export class Video extends MediaFile {
-	durationInSecond: number;
+	durationInSecond = $state(0);
 	get coverUrl(): string {
 		return `${config.staticServer}/${this.type}s/${this.id}.jpg`;
 	}
@@ -145,6 +167,12 @@ export class Video extends MediaFile {
 		super(MediaType.Video, json);
 		this.durationInSecond =
 			json.durationInSecond ?? VideoEntitySchema.properties.durationInSecond.default;
+	}
+	update(json: ComicEntity | VideoEntity | ImageEntity) {
+		super.update(json);
+		this.durationInSecond =
+			(json as VideoEntity).durationInSecond ??
+			VideoEntitySchema.properties.durationInSecond.default;
 	}
 	compareTo(other: Video, comparison: MediaFileComparisonType): number {
 		switch (comparison) {
