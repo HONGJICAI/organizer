@@ -136,7 +136,7 @@ class ImageCBV:
         files = _image_files(entity.path)
         return ImageDetailResponse(pageDetails=[ImagePageDetailResponse(name=f) for f in files])
 
-    @router.get("/api/images/{id}/{page}", tags=["images"])
+    @router.get("/api/images/{id}/pages/{page}", tags=["images"])
     def get_page(
         self,
         id: int,
@@ -247,7 +247,7 @@ class ImageCBV:
             _store.pop(entity.id, None)
         return APIMessage(detail="Deleted")
 
-    @router.post("/api/images/{id}/{page}/cover", tags=["images"])
+    @router.post("/api/images/{id}/pages/{page}/cover", tags=["images"])
     def set_cover(self, id: int, page: int, _: None = Depends(require_auth)) -> Response:
         entity = _get(id)
         cover_page = (page - 1) if page > 0 else 0

@@ -140,17 +140,17 @@ export async function setupMock(authRequired: boolean) {
 			comic.lastViewedTime = new Date().toISOString();
 			return HttpResponse.json({ position: body.position, lastViewedTime: comic.lastViewedTime });
 		}),
-		http.post('/api/comics/:id/:page/like', async () => {
+		http.post('/api/comics/:id/pages/:page/like', async () => {
 			await delay(200);
 			return HttpResponse.json({ msg: 'Liked' });
 		}),
-		http.post('/api/comics/:id/:page/cover', async ({ params }) => {
+		http.post('/api/comics/:id/pages/:page/cover', async ({ params }) => {
 			await delay(200);
 			const comic = findComic(params.id);
 			if (comic) comic.coverPosition = Number(params.page);
 			return HttpResponse.json({ msg: 'Cover set' });
 		}),
-		http.get('/api/comics/:id/:page', async () => {
+		http.get('/api/comics/:id/pages/:page', async () => {
 			const w = faker.number.int({ min: 100, max: 1000 });
 			const h = faker.number.int({ min: 100, max: 1000 });
 			return HttpResponse.arrayBuffer(await generateImageArrayBuffer(w, h));
@@ -221,7 +221,7 @@ export async function setupMock(authRequired: boolean) {
 			image.lastViewedTime = new Date().toISOString();
 			return HttpResponse.json({ position: body.position, lastViewedTime: image.lastViewedTime });
 		}),
-		http.get('/api/images/:id/:page', async () => {
+		http.get('/api/images/:id/pages/:page', async () => {
 			const w = faker.number.int({ min: 100, max: 1000 });
 			const h = faker.number.int({ min: 100, max: 1000 });
 			return HttpResponse.arrayBuffer(await generateImageArrayBuffer(w, h));

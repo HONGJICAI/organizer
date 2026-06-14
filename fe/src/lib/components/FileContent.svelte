@@ -96,8 +96,8 @@
 	function pageApiUrl(mediaType: MediaType, id: number, pageNum: number): string {
 		const base =
 			mediaType === MediaType.Image
-				? `${config.apiServer}/api/images/${id}/${pageNum}`
-				: `${config.apiServer}/api/comics/${id}/${pageNum}`;
+				? `${config.apiServer}/api/images/${id}/pages/${pageNum}`
+				: `${config.apiServer}/api/comics/${id}/pages/${pageNum}`;
 		const params = new URLSearchParams();
 		if (authState.token) params.set('token', authState.token);
 		const width = pageWidth();

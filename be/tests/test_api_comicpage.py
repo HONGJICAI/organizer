@@ -12,34 +12,34 @@ from model import ComicEntity
 
 class TestGetPage:
     def test_comic_not_found(self, client):
-        r = client.get("/api/comics/999/1")
+        r = client.get("/api/comics/999/pages/1")
         assert r.status_code == 404
 
     def test_file_not_found(self, client, session):
         insert_comic(session, 1, page=3)
         with patch("comicfile.create_open", return_value=None):
-            r = client.get("/api/comics/1/1")
+            r = client.get("/api/comics/1/pages/1")
         assert r.status_code == 404
 
     def test_page_out_of_range(self, client, session):
         insert_comic(session, 1, page=2)
         mock_cf = MockComicfile(pages=2)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.get("/api/comics/1/99")
+            r = client.get("/api/comics/1/pages/99")
         assert r.status_code == 404
 
     def test_page_zero_or_negative_returns_404(self, client, session):
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            assert client.get("/api/comics/1/0").status_code == 404
-            assert client.get("/api/comics/1/-1").status_code == 404
+            assert client.get("/api/comics/1/pages/0").status_code == 404
+            assert client.get("/api/comics/1/pages/-1").status_code == 404
 
     def test_success_returns_jpeg(self, client, session):
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.get("/api/comics/1/1")
+            r = client.get("/api/comics/1/pages/1")
         assert r.status_code == 200
         assert "image/jpeg" in r.headers["content-type"]
 
@@ -47,7 +47,7 @@ class TestGetPage:
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            client.get("/api/comics/1/2")
+            client.get("/api/comics/1/pages/2")
         session.expire_all()
         comic = session.get(ComicEntity, 1)
         assert comic.lastViewedPosition == 0
@@ -57,15 +57,15 @@ class TestGetPage:
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.get("/api/comics/1/1")
+            r = client.get("/api/comics/1/pages/1")
         assert "max-age=604800" in r.headers.get("cache-control", "")
 
     def test_content_type_from_extension(self, client, session):
         insert_comic(session, 1, page=2)
         mock_cf = MockComicfile(pages=2, names=["0000.png", "0001.webp"])
         with patch("comicfile.create_open", return_value=mock_cf):
-            r1 = client.get("/api/comics/1/1")
-            r2 = client.get("/api/comics/1/2")
+            r1 = client.get("/api/comics/1/pages/1")
+            r2 = client.get("/api/comics/1/pages/2")
         assert r1.headers["content-type"] == "image/png"
         assert r2.headers["content-type"] == "image/webp"
 
@@ -73,16 +73,16 @@ class TestGetPage:
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.get("/api/comics/1/1")
+            r = client.get("/api/comics/1/pages/1")
         assert r.headers.get("etag")
 
     def test_if_none_match_returns_304(self, client, session):
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r1 = client.get("/api/comics/1/1")
+            r1 = client.get("/api/comics/1/pages/1")
             etag = r1.headers["etag"]
-            r2 = client.get("/api/comics/1/1", headers={"if-none-match": etag})
+            r2 = client.get("/api/comics/1/pages/1", headers={"if-none-match": etag})
         assert r2.status_code == 304
         assert r2.content == b""
         assert r2.headers["etag"] == etag
@@ -92,9 +92,9 @@ class TestGetPage:
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
             etags = {
-                client.get("/api/comics/1/1").headers["etag"],
-                client.get("/api/comics/1/2").headers["etag"],
-                client.get("/api/comics/1/1?width=5").headers["etag"],
+                client.get("/api/comics/1/pages/1").headers["etag"],
+                client.get("/api/comics/1/pages/2").headers["etag"],
+                client.get("/api/comics/1/pages/1?width=5").headers["etag"],
             }
         assert len(etags) == 3
 
@@ -104,7 +104,7 @@ class TestGetPage:
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)  # pages are 10x10 JPEGs
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.get("/api/comics/1/1?width=5")
+            r = client.get("/api/comics/1/pages/1?width=5")
         assert r.status_code == 200
         assert r.headers["content-type"] == "image/webp"
         img = Image.open(io.BytesIO(r.content))
@@ -116,7 +116,7 @@ class TestGetPage:
         insert_comic(session, 1, page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.get("/api/comics/1/1?width=100")
+            r = client.get("/api/comics/1/pages/1?width=100")
         assert r.status_code == 200
         img = Image.open(io.BytesIO(r.content))
         assert img.width == 10
@@ -158,25 +158,25 @@ class TestUpdateProgress:
 
 class TestLike:
     def test_comic_not_found(self, client):
-        r = client.post("/api/comics/999/1/like")
+        r = client.post("/api/comics/999/pages/1/like")
         assert r.status_code == 404
 
     def test_file_not_found(self, client, session):
         insert_comic(session, 1, page=3)
         with patch("comicfile.create_open", return_value=None):
-            r = client.post("/api/comics/1/1/like")
+            r = client.post("/api/comics/1/pages/1/like")
         assert r.status_code == 404
 
     def test_page_out_of_range(self, client, session):
         insert_comic(session, 1, page=2)
         mock_cf = MockComicfile(pages=2)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.post("/api/comics/1/99/like")
+            r = client.post("/api/comics/1/pages/99/like")
         assert r.status_code == 404
 
     def test_page_zero_returns_404(self, client, session):
         insert_comic(session, 1, page=2)
-        r = client.post("/api/comics/1/0/like")
+        r = client.post("/api/comics/1/pages/0/like")
         assert r.status_code == 404
 
     def test_creates_image_file(self, client, session, tmp_path, monkeypatch):
@@ -185,7 +185,7 @@ class TestLike:
         insert_comic(session, 1, name="hero.zip", page=3)
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
-            r = client.post("/api/comics/1/2/like")
+            r = client.post("/api/comics/1/pages/2/like")
         assert r.status_code == 200
         assert r.json()["detail"] == "OK"
         assert (liked_dir / "hero.zip_2.jpg").exists()
@@ -197,7 +197,7 @@ class TestLike:
         insert_comic(session, 1, name="hero.zip", page=3)
         existing = liked_dir / "hero.zip_1.jpg"
         existing.write_bytes(make_jpeg_bytes())
-        r = client.post("/api/comics/1/1/like")
+        r = client.post("/api/comics/1/pages/1/like")
         assert r.status_code == 200
         assert r.json()["detail"] == "OK"
 
@@ -208,13 +208,13 @@ class TestLike:
 
 class TestSetCover:
     def test_comic_not_found(self, client):
-        r = client.post("/api/comics/999/1/cover")
+        r = client.post("/api/comics/999/pages/1/cover")
         assert r.status_code == 404
 
     def test_file_not_found(self, client, session):
         insert_comic(session, 1, page=3)
         with patch("comicfile.create_open", return_value=None):
-            r = client.post("/api/comics/1/1/cover")
+            r = client.post("/api/comics/1/pages/1/cover")
         assert r.status_code == 404
 
     def test_success(self, client, session):
@@ -222,7 +222,7 @@ class TestSetCover:
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
             with patch.object(ComicLoader, "gen_comic_cover", return_value=True):
-                r = client.post("/api/comics/1/2/cover")
+                r = client.post("/api/comics/1/pages/2/cover")
         assert r.status_code == 200
 
     def test_gen_cover_fails(self, client, session):
@@ -230,7 +230,7 @@ class TestSetCover:
         mock_cf = MockComicfile(pages=3)
         with patch("comicfile.create_open", return_value=mock_cf):
             with patch.object(ComicLoader, "gen_comic_cover", return_value=False):
-                r = client.post("/api/comics/1/2/cover")
+                r = client.post("/api/comics/1/pages/2/cover")
         assert r.status_code == 500
 
     def test_page_zero_uses_zero_index(self, client, session):
@@ -242,5 +242,5 @@ class TestSetCover:
             return True
         with patch("comicfile.create_open", return_value=mock_cf):
             with patch.object(ComicLoader, "gen_comic_cover", side_effect=fake_gen):
-                client.post("/api/comics/1/0/cover")
+                client.post("/api/comics/1/pages/0/cover")
         assert captured["page"] == 0

@@ -604,7 +604,7 @@ export type ComicPageGetData = {
         width?: number | null;
         token?: string | null;
     };
-    url: '/api/comics/{id}/{page}';
+    url: '/api/comics/{id}/pages/{page}';
 };
 
 export type ComicPageGetErrors = {
@@ -689,7 +689,7 @@ export type ComicPageLikeData = {
         page: number;
     };
     query?: never;
-    url: '/api/comics/{id}/{page}/like';
+    url: '/api/comics/{id}/pages/{page}/like';
 };
 
 export type ComicPageLikeErrors = {
@@ -731,7 +731,7 @@ export type ComicPageSetCoverData = {
         page: number;
     };
     query?: never;
-    url: '/api/comics/{id}/{page}/cover';
+    url: '/api/comics/{id}/pages/{page}/cover';
 };
 
 export type ComicPageSetCoverErrors = {
@@ -1079,7 +1079,7 @@ export type ImageGetPageData = {
         width?: number | null;
         token?: string | null;
     };
-    url: '/api/images/{id}/{page}';
+    url: '/api/images/{id}/pages/{page}';
 };
 
 export type ImageGetPageErrors = {
@@ -1336,7 +1336,7 @@ export type ImageSetCoverData = {
         page: number;
     };
     query?: never;
-    url: '/api/images/{id}/{page}/cover';
+    url: '/api/images/{id}/pages/{page}/cover';
 };
 
 export type ImageSetCoverErrors = {

@@ -192,7 +192,7 @@ export class ComicpageService {
                     type: 'http'
                 }
             ],
-            url: '/api/comics/{id}/{page}',
+            url: '/api/comics/{id}/pages/{page}',
             ...options
         });
     }
@@ -228,7 +228,7 @@ export class ComicpageService {
                     type: 'http'
                 }
             ],
-            url: '/api/comics/{id}/{page}/like',
+            url: '/api/comics/{id}/pages/{page}/like',
             ...options
         });
     }
@@ -244,7 +244,7 @@ export class ComicpageService {
                     type: 'http'
                 }
             ],
-            url: '/api/comics/{id}/{page}/cover',
+            url: '/api/comics/{id}/pages/{page}/cover',
             ...options
         });
     }
@@ -378,7 +378,7 @@ export class ImagesService {
                     type: 'http'
                 }
             ],
-            url: '/api/images/{id}/{page}',
+            url: '/api/images/{id}/pages/{page}',
             ...options
         });
     }
@@ -482,7 +482,7 @@ export class ImagesService {
                     type: 'http'
                 }
             ],
-            url: '/api/images/{id}/{page}/cover',
+            url: '/api/images/{id}/pages/{page}/cover',
             ...options
         });
     }

@@ -74,27 +74,27 @@ class TestMediaAuth:
 
     def test_blocked_without_token(self, client, session, monkeypatch):
         self._setup(client, session, monkeypatch)
-        r = client.get("/api/comics/1/1")
+        r = client.get("/api/comics/1/pages/1")
         assert r.status_code == 401
 
     def test_blocked_with_wrong_query_token(self, client, session, monkeypatch):
         self._setup(client, session, monkeypatch)
-        r = client.get("/api/comics/1/1?token=badtoken")
+        r = client.get("/api/comics/1/pages/1?token=badtoken")
         assert r.status_code == 401
 
     def test_accessible_with_query_token(self, client, session, monkeypatch):
         token = self._setup(client, session, monkeypatch)
         with patch("comicfile.create_open", return_value=MockComicfile(pages=3)):
-            r = client.get(f"/api/comics/1/1?token={token}")
+            r = client.get(f"/api/comics/1/pages/1?token={token}")
         assert r.status_code == 200
 
     def test_accessible_with_bearer_header(self, client, session, monkeypatch):
         token = self._setup(client, session, monkeypatch)
         with patch("comicfile.create_open", return_value=MockComicfile(pages=3)):
-            r = client.get("/api/comics/1/1", headers={"Authorization": f"Bearer {token}"})
+            r = client.get("/api/comics/1/pages/1", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200
 
     def test_wrong_bearer_with_no_query_token_blocked(self, client, session, monkeypatch):
         self._setup(client, session, monkeypatch)
-        r = client.get("/api/comics/1/1", headers={"Authorization": "Bearer badtoken"})
+        r = client.get("/api/comics/1/pages/1", headers={"Authorization": "Bearer badtoken"})
         assert r.status_code == 401

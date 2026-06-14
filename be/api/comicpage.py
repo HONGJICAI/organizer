@@ -58,7 +58,7 @@ class ComicPageCBV:
             abort(404, "Comic not found")
         return comic
 
-    @router.get("/api/comics/{id}/{page}", tags=["comicpage"])
+    @router.get("/api/comics/{id}/pages/{page}", tags=["comicpage"])
     def get(
         self,
         id: int,
@@ -105,7 +105,7 @@ class ComicPageCBV:
             position=comic.lastViewedPosition, lastViewedTime=comic.lastViewedTime
         )
 
-    @router.post("/api/comics/{id}/{page}/like", tags=["comicpage"])
+    @router.post("/api/comics/{id}/pages/{page}/like", tags=["comicpage"])
     def like(self, id: int, page: int, _: None = Depends(require_auth)):
         if page < 1:
             abort(404, "Page not found")
@@ -126,7 +126,7 @@ class ComicPageCBV:
         img.save(path, "JPEG")
         return APIMessage(detail="OK")
 
-    @router.post("/api/comics/{id}/{page}/cover", tags=["comicpage"])
+    @router.post("/api/comics/{id}/pages/{page}/cover", tags=["comicpage"])
     def set_cover(self, id: int, page: int, _: None = Depends(require_auth)):
         comic = self.__get(id)
         cf = comicfile.create_open(comic.path)

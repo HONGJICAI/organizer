@@ -124,7 +124,7 @@ class TestGetPage:
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         (d / "002.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=2))
-        r = client.get("/api/images/1/1")
+        r = client.get("/api/images/1/pages/1")
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("image/")
 
@@ -133,7 +133,7 @@ class TestGetPage:
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=1))
-        assert client.get("/api/images/1/99").status_code == 404
+        assert client.get("/api/images/1/pages/99").status_code == 404
 
     def test_negative_page_returns_404(self, client, tmp_path):
         d = tmp_path / "album"
@@ -141,14 +141,14 @@ class TestGetPage:
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         (d / "002.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=2))
-        assert client.get("/api/images/1/-1").status_code == 404
+        assert client.get("/api/images/1/pages/-1").status_code == 404
 
     def test_get_does_not_record_progress(self, client, tmp_path):
         d = tmp_path / "album"
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=1))
-        client.get("/api/images/1/1")
+        client.get("/api/images/1/pages/1")
         assert img_api._store[1].lastViewedPosition == 0
         assert img_api._store[1].lastViewedTime is None
 
@@ -157,9 +157,9 @@ class TestGetPage:
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())
         set_store(make_entity(id=1, path=str(d), page=1))
-        r1 = client.get("/api/images/1/1")
+        r1 = client.get("/api/images/1/pages/1")
         etag = r1.headers["etag"]
-        r2 = client.get("/api/images/1/1", headers={"if-none-match": etag})
+        r2 = client.get("/api/images/1/pages/1", headers={"if-none-match": etag})
         assert r2.status_code == 304
 
     def test_width_downscales_image(self, client, tmp_path):
@@ -169,13 +169,13 @@ class TestGetPage:
         d.mkdir()
         (d / "001.jpg").write_bytes(make_jpeg_bytes())  # 10x10
         set_store(make_entity(id=1, path=str(d), page=1))
-        r = client.get("/api/images/1/1?width=5")
+        r = client.get("/api/images/1/pages/1?width=5")
         assert r.status_code == 200
         img = Image.open(io.BytesIO(r.content))
         assert img.width == 5
 
     def test_missing_image_returns_404(self, client):
-        assert client.get("/api/images/999/1").status_code == 404
+        assert client.get("/api/images/999/pages/1").status_code == 404
 
 
 class TestUpdateProgress:
@@ -378,9 +378,9 @@ class TestSetCover:
         (d / "002.jpg").write_bytes(make_jpeg_bytes())
         monkeypatch.setattr(global_data.Config, "nginx_image_path", str(tmp_path))
         set_store(make_entity(id=1, path=str(d), page=2))
-        r = client.post("/api/images/1/2/cover")
+        r = client.post("/api/images/1/pages/2/cover")
         assert r.status_code == 200
         assert img_api._store[1].coverPosition == 2
 
     def test_missing_returns_404(self, client):
-        assert client.post("/api/images/999/1/cover").status_code == 404
+        assert client.post("/api/images/999/pages/1/cover").status_code == 404
