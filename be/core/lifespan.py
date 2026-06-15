@@ -1,10 +1,10 @@
 """Application lifespan management"""
 import asyncio
-import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from tasks.backup import backup_database_loop
+from tasks.scan import daily_scan_loop
 
 
 @asynccontextmanager
@@ -20,15 +20,16 @@ async def lifespan(app: FastAPI):
     # than deleted, so an unmounted external drive never loses its records.
     # The image bootstrap runs here too — it stats every folder, so doing it
     # synchronously would block startup on large/remote libraries.
-    from api.system import _run_scan
-    threading.Thread(target=_run_scan, args=("all",), daemon=True).start()
+    # After this startup scan, the daily_scan_loop task re-runs it at 2:00 AM
+    # local time so the in-memory image store and comic/video tables stay fresh.
+    from api.system import start_scan
+    start_scan("all")
     print("Background scan started", flush=True)
-    
+
     # Start background tasks and store them in app state
     tasks = []
-    task1 = asyncio.create_task(backup_database_loop())
-
-    tasks.append(task1)
+    tasks.append(asyncio.create_task(backup_database_loop()))
+    tasks.append(asyncio.create_task(daily_scan_loop()))
     
     # Store tasks in app state to prevent garbage collection
     app.state.background_tasks = tasks

@@ -1,3 +1,5 @@
+import asyncio
+import datetime
 import time
 from unittest.mock import patch
 
@@ -94,6 +96,73 @@ class TestScan:
         r = client.get("/api/system/scan")
         assert r.json()["last_result"]["status"] == "error"
         assert "disk error" in r.json()["last_result"]["message"]
+
+
+class TestSecondsUntil:
+    def test_later_today(self):
+        from tasks.scan import _seconds_until
+        now = datetime.datetime(2026, 6, 15, 1, 0, 0)  # 01:00, target 02:00
+        assert _seconds_until(2, now) == 3600
+
+    def test_wraps_to_tomorrow(self):
+        from tasks.scan import _seconds_until
+        now = datetime.datetime(2026, 6, 15, 3, 0, 0)  # past 02:00 → next day
+        assert _seconds_until(2, now) == 23 * 3600
+
+    def test_exactly_on_hour_wraps(self):
+        from tasks.scan import _seconds_until
+        now = datetime.datetime(2026, 6, 15, 2, 0, 0)  # exactly 02:00 → next day
+        assert _seconds_until(2, now) == 24 * 3600
+
+    def test_defaults_to_now(self):
+        from tasks.scan import _seconds_until
+        assert 0 < _seconds_until(2) <= 24 * 3600
+
+
+class TestDailyScanLoop:
+    def _reset(self):
+        import api.system as m
+        m._scan_status["running"] = False
+        m._scan_status["last_result"] = None
+
+    def test_triggers_scan_then_cancels(self):
+        self._reset()
+        from tasks import scan
+
+        started = []
+        with patch("api.system.start_scan", side_effect=lambda mt: started.append(mt) or True), \
+             patch("tasks.scan._seconds_until", return_value=0):
+            async def run():
+                task = asyncio.create_task(scan.daily_scan_loop())
+                await asyncio.sleep(0.05)
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+            asyncio.run(run())
+
+        assert started and started[0] == "all"
+
+    def test_skips_when_already_running(self):
+        self._reset()
+        from tasks import scan
+
+        with patch("api.system.start_scan", return_value=False) as mock_start, \
+             patch("tasks.scan._seconds_until", return_value=0):
+            async def run():
+                task = asyncio.create_task(scan.daily_scan_loop())
+                await asyncio.sleep(0.05)
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+            asyncio.run(run())
+
+        assert mock_start.called
 
 
 class TestBackupNow:

@@ -42,6 +42,22 @@ def _run_scan(media_type: str):
         _scan_status["running"] = False
 
 
+def start_scan(media_type: str) -> bool:
+    """Launch a background scan unless one is already running.
+
+    Returns True if a scan was started, False if one was already in progress.
+    Shared by the HTTP endpoint, the startup scan, and the daily scheduled scan
+    so they all go through the same lock and never run concurrently.
+    """
+    with _scan_lock:
+        if _scan_status["running"]:
+            return False
+        _scan_status["running"] = True
+
+    threading.Thread(target=_run_scan, args=(media_type,), daemon=True).start()
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -78,13 +94,8 @@ def trigger_scan(
     media_type: Literal["comics", "videos", "images", "all"] = "all",
 ) -> ScanResponse:
     """Start a background scan to import new media files into the database."""
-    with _scan_lock:
-        if _scan_status["running"]:
-            return ScanResponse(status="already_running", message="A scan is already in progress")
-        _scan_status["running"] = True
-
-    thread = threading.Thread(target=_run_scan, args=(media_type,), daemon=True)
-    thread.start()
+    if not start_scan(media_type):
+        return ScanResponse(status="already_running", message="A scan is already in progress")
     return ScanResponse(status="started", message=f"Scan started for: {media_type}")
 
 
