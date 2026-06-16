@@ -1052,3 +1052,126 @@ class TestMain7z:
         rc = da.main([str(tmp_path), "-p", "x", "--7z"])
         assert rc == 0
         assert captured["sevenzip"] == "/usr/bin/7z"
+
+
+# --------------------------------------------------------------------------- #
+# --to-zip (repack into a single unencrypted zip)
+# --------------------------------------------------------------------------- #
+@requires_zip
+class TestToZipReal:
+    def test_replaces_encrypted_zip_in_place(self, tmp_path):
+        z = tmp_path / "comic.zip"
+        make_encrypted_zip(z, "pw", {"01.jpg": "A", "02.jpg": "B"})
+        res = da.process_archive(z, ["pw"], to_zip=True)
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert res.extracted_to == z  # same name, replaced in place
+        assert res.deleted is True
+        with zipfile.ZipFile(z) as zf:
+            assert not any(zi.flag_bits & 0x1 for zi in zf.infolist())  # now plain
+            assert zf.read("01.jpg") == b"A"
+            assert zf.read("02.jpg") == b"B"
+        assert [p.name for p in tmp_path.iterdir()] == ["comic.zip"]  # no leftovers
+
+    def test_preserves_subdirs(self, tmp_path):
+        z = tmp_path / "c.zip"
+        src = tmp_path / "s"
+        (src / "sub").mkdir(parents=True)
+        (src / "01.jpg").write_text("a")
+        (src / "sub" / "02.jpg").write_text("b")
+        subprocess.run(["zip", "-q", "-r", "-P", "pw", str(z), "."], cwd=src, check=True)
+        shutil.rmtree(src)
+        res = da.process_archive(z, ["pw"], to_zip=True)
+        assert res.outcome is da.Outcome.EXTRACTED
+        with zipfile.ZipFile(z) as zf:
+            assert set(zf.namelist()) == {"01.jpg", "sub/02.jpg"}
+
+    def test_main_to_zip_flag(self, tmp_path):
+        make_encrypted_zip(tmp_path / "e.zip", "secret", {"a.txt": "data"})
+        rc = da.main([str(tmp_path), "-p", "secret", "--to-zip"])
+        assert rc == 0
+        with zipfile.ZipFile(tmp_path / "e.zip") as zf:
+            assert not any(zi.flag_bits & 0x1 for zi in zf.infolist())
+            assert zf.read("a.txt") == b"data"
+
+
+class TestToZipFake:
+    def test_renames_non_zip_source(self, tmp_path):
+        p = tmp_path / "comic.cbr"
+        p.write_text("placeholder")
+        res = da.process_archive(
+            p, ["pw"], to_zip=True, handler_factory=factory(files={"01.jpg": "X"})
+        )
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert res.extracted_to == tmp_path / "comic.zip"
+        assert res.deleted is True
+        assert not p.exists()
+        with zipfile.ZipFile(tmp_path / "comic.zip") as zf:
+            assert zf.read("01.jpg") == b"X"
+        assert [x.name for x in tmp_path.iterdir()] == ["comic.zip"]
+
+    def test_conflict_keeps_source(self, tmp_path):
+        p = tmp_path / "comic.cbr"
+        p.write_text("placeholder")
+        (tmp_path / "comic.zip").write_text("existing")
+        res = da.process_archive(p, ["pw"], to_zip=True, handler_factory=factory())
+        assert res.outcome is da.Outcome.ERROR
+        assert "already exists" in res.detail
+        assert p.exists()
+        assert (tmp_path / "comic.zip").read_text() == "existing"  # not clobbered
+
+    def test_dry_run(self, tmp_path):
+        p = tmp_path / "comic.cbr"
+        p.write_text("placeholder")
+        res = da.process_archive(
+            p, ["pw"], to_zip=True, dry_run=True, handler_factory=factory()
+        )
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert res.extracted_to == tmp_path / "comic.zip"
+        assert res.deleted is False
+        assert p.exists()
+        assert not (tmp_path / "comic.zip").exists()
+
+    def test_keep_source(self, tmp_path):
+        p = tmp_path / "comic.cbr"
+        p.write_text("placeholder")
+        res = da.process_archive(
+            p,
+            ["pw"],
+            to_zip=True,
+            keep_source=True,
+            handler_factory=factory(files={"a.txt": "1"}),
+        )
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert res.deleted is False
+        assert p.exists()
+        assert (tmp_path / "comic.zip").exists()
+
+    def test_extract_failure_keeps_source_no_leftovers(self, tmp_path):
+        p = tmp_path / "comic.cbr"
+        p.write_text("placeholder")
+        res = da.process_archive(
+            p, ["pw"], to_zip=True, handler_factory=factory(raise_on_extract=True)
+        )
+        assert res.outcome is da.Outcome.ERROR
+        assert p.exists()
+        assert not (tmp_path / "comic.zip").exists()
+        assert [x.name for x in tmp_path.iterdir()] == ["comic.cbr"]  # temp cleaned up
+
+    def test_delete_source_failure(self, tmp_path, monkeypatch):
+        p = tmp_path / "comic.cbr"
+        p.write_text("placeholder")
+        real_unlink = pathlib.Path.unlink
+
+        def selective(self, **kw):
+            if self == p:
+                raise OSError("read-only filesystem")
+            return real_unlink(self, **kw)
+
+        monkeypatch.setattr(pathlib.Path, "unlink", selective)
+        res = da.process_archive(
+            p, ["pw"], to_zip=True, handler_factory=factory(files={"a.txt": "1"})
+        )
+        assert res.outcome is da.Outcome.ERROR
+        assert "could not delete source" in res.detail
+        assert p.exists()
+        assert not (tmp_path / "comic.zip").exists()  # not placed when source kept

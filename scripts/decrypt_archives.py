@@ -44,6 +44,11 @@ Usage::
     python decrypt_archives.py /path/to/library -f pw.txt --dry-run --keep
     python decrypt_archives.py /path/to/library -f pw.txt --filename-encoding gbk
     python decrypt_archives.py D:\manga -f pw.txt --7z "C:\Program Files\7-Zip\7z.exe"
+    python decrypt_archives.py D:\manga -f pw.txt --7z 7z.exe --to-zip
+
+By default each archive is extracted into a sibling folder. With ``--to-zip``
+the decrypted contents are repacked into a single unencrypted ``.zip`` next to
+the source (named after it) and no loose folder is left behind.
 
 Exit code is non-zero if any archive ended in an error or could not be
 decrypted with the supplied passwords.
@@ -57,6 +62,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from enum import Enum
@@ -466,15 +472,24 @@ def _unique_dest(path: Path) -> Path:
     return path.with_suffix("")
 
 
+def _repack_to_zip(src_dir: Path, out_zip: Path) -> None:
+    """Pack every file under ``src_dir`` into an unencrypted, deflated zip."""
+    files = sorted(p for p in src_dir.rglob("*") if p.is_file())
+    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            zf.write(f, arcname=f.relative_to(src_dir).as_posix())
+
+
 def process_archive(
     path: Path,
     passwords: Sequence[str],
     *,
     dry_run: bool = False,
     keep_source: bool = False,
+    to_zip: bool = False,
     handler_factory: Callable[[Path], ArchiveHandler | None] = make_handler,
 ) -> ArchiveResult:
-    """Decrypt, extract and (optionally) delete a single archive."""
+    """Decrypt, then either extract to a folder or repack into a single zip."""
     handler = handler_factory(path)
     if handler is None:
         return ArchiveResult(path, Outcome.UNSUPPORTED, detail="no handler for format")
@@ -507,6 +522,14 @@ def process_archive(
             path, Outcome.NO_PASSWORD, detail="no candidate password worked"
         )
 
+    if to_zip:
+        return _materialize_zip(path, handler, match, dry_run, keep_source)
+    return _materialize_dir(path, handler, match, dry_run, keep_source)
+
+
+def _materialize_dir(
+    path: Path, handler: ArchiveHandler, match: str, dry_run: bool, keep_source: bool
+) -> ArchiveResult:
     dest = _unique_dest(path)
     if dry_run:
         return ArchiveResult(
@@ -550,12 +573,69 @@ def process_archive(
     )
 
 
+def _materialize_zip(
+    path: Path, handler: ArchiveHandler, match: str, dry_run: bool, keep_source: bool
+) -> ArchiveResult:
+    out_zip = path.with_suffix(".zip")
+    # If the source is itself a .zip the output name collides with it; in that
+    # case we replace it in place (the new zip is unencrypted), so --keep can't
+    # apply. Otherwise refuse to clobber an unrelated existing file.
+    replacing_source = out_zip == path
+    if dry_run:
+        return ArchiveResult(
+            path, Outcome.EXTRACTED, password=match, extracted_to=out_zip, deleted=False
+        )
+    if out_zip.exists() and not replacing_source:
+        return ArchiveResult(
+            path,
+            Outcome.ERROR,
+            password=match,
+            detail=f"destination already exists: {out_zip}",
+        )
+
+    tmp_dir = Path(tempfile.mkdtemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp"))
+    tmp_zip = Path(f"{tmp_dir}.zip.part")  # unique sibling of the temp dir
+    try:
+        handler.extract_all(tmp_dir, match)
+        _repack_to_zip(tmp_dir, tmp_zip)
+    except Exception as ex:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        tmp_zip.unlink(missing_ok=True)
+        return ArchiveResult(
+            path, Outcome.ERROR, password=match, detail=f"extraction/repack failed: {ex}"
+        )
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    deleted = False
+    if not replacing_source and not keep_source:
+        try:
+            path.unlink()
+            deleted = True
+        except OSError as ex:
+            tmp_zip.unlink(missing_ok=True)
+            return ArchiveResult(
+                path,
+                Outcome.ERROR,
+                password=match,
+                detail=f"repacked but could not delete source: {ex}",
+            )
+    # os.replace is atomic and overwrites the source when names collide.
+    os.replace(tmp_zip, out_zip)
+    if replacing_source:
+        deleted = True
+
+    return ArchiveResult(
+        path, Outcome.EXTRACTED, password=match, extracted_to=out_zip, deleted=deleted
+    )
+
+
 def run(
     root: Path,
     passwords: Sequence[str],
     *,
     dry_run: bool = False,
     keep_source: bool = False,
+    to_zip: bool = False,
     filename_encoding: str | None = None,
     sevenzip: str | None = None,
     log: Callable[[str], None] = print,
@@ -575,6 +655,7 @@ def run(
             passwords,
             dry_run=dry_run,
             keep_source=keep_source,
+            to_zip=to_zip,
             handler_factory=handler_factory,
         )
         _log_result(result, dry_run, log)
@@ -638,6 +719,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="extract but do not delete the source archive",
     )
     parser.add_argument(
+        "--to-zip",
+        action="store_true",
+        dest="to_zip",
+        help=(
+            "after decrypting, repack into a single unencrypted .zip next to the "
+            "source (named after it) instead of extracting to a folder"
+        ),
+    )
+    parser.add_argument(
         "--filename-encoding",
         help=(
             "code page for legacy (non-UTF-8) ZIP entry names, e.g. gbk, big5, "
@@ -689,6 +779,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         passwords,
         dry_run=args.dry_run,
         keep_source=args.keep_source,
+        to_zip=args.to_zip,
         filename_encoding=args.filename_encoding,
         sevenzip=sevenzip,
     )
