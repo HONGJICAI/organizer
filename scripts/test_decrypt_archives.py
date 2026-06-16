@@ -214,6 +214,32 @@ class TestLoadPasswords:
         pf.write_text("a\nb\n")
         assert da.load_passwords(["a"], str(pf)) == ["a", "b"]
 
+    def test_gbk_encoded_file(self, tmp_path):
+        # password file saved in the Windows Simplified Chinese code page
+        pf = tmp_path / "pw.txt"
+        pf.write_bytes("测试\n密码\n".encode("gbk"))
+        assert da.load_passwords([], str(pf)) == ["测试", "密码"]
+
+    def test_utf8_bom_file(self, tmp_path):
+        pf = tmp_path / "pw.txt"
+        pf.write_bytes("﻿secret\n".encode("utf-8"))
+        # BOM must be stripped, not glued onto the first password
+        assert da.load_passwords([], str(pf)) == ["secret"]
+
+    def test_preferred_encoding_is_tried(self, tmp_path, monkeypatch):
+        # a Shift-JIS file decodes correctly when cp932 is the OS code page
+        # (as on a Japanese Windows machine), tried right after UTF-8
+        monkeypatch.setattr(da.locale, "getpreferredencoding", lambda *a: "cp932")
+        pf = tmp_path / "pw.txt"
+        pf.write_bytes("パスワード\n".encode("shift_jis"))
+        assert da.load_passwords([], str(pf)) == ["パスワード"]
+
+    def test_latin1_fallback_for_undecodable_bytes(self, tmp_path):
+        pf = tmp_path / "pw.txt"
+        # 0xff is invalid in utf-8/gbk/big5/shift_jis -> latin-1 fallback
+        pf.write_bytes(b"\xffpw\n")
+        assert da.load_passwords([], str(pf)) == ["\xffpw"]
+
 
 # --------------------------------------------------------------------------- #
 # password_byte_variants

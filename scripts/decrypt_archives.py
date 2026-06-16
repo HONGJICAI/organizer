@@ -52,6 +52,7 @@ decrypted with the supplied passwords.
 from __future__ import annotations
 
 import argparse
+import locale
 import os
 import shutil
 import subprocess
@@ -385,6 +386,25 @@ def make_handler(
 # --------------------------------------------------------------------------- #
 # Core logic
 # --------------------------------------------------------------------------- #
+def _read_password_file(path: str) -> List[str]:
+    """Read a password file, tolerating non-UTF-8 encodings.
+
+    Password files are often saved in the local Windows code page (GBK/cp936
+    for Simplified Chinese, cp932 for Japanese), not UTF-8. We decode the whole
+    file with the first encoding that succeeds: UTF-8 (BOM-aware), then the OS
+    preferred code page (where the file was most likely created), then common
+    CJK code pages, falling back to Latin-1 which can decode any byte.
+    """
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    for enc in ("utf-8-sig", locale.getpreferredencoding(False), "gbk", "big5", "shift_jis"):
+        try:
+            return raw.decode(enc).splitlines()
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("latin-1").splitlines()
+
+
 def load_passwords(values: Sequence[str], password_file: str | None) -> List[str]:
     """Combine ``--password`` values with lines from ``--password-file``.
 
@@ -393,11 +413,10 @@ def load_passwords(values: Sequence[str], password_file: str | None) -> List[str
     """
     passwords: List[str] = list(values)
     if password_file:
-        with open(password_file, "r", encoding="utf-8") as fh:
-            for line in fh:
-                pw = line.rstrip("\r\n")
-                if pw:
-                    passwords.append(pw)
+        for line in _read_password_file(password_file):
+            pw = line.rstrip("\r\n")
+            if pw:
+                passwords.append(pw)
     seen: set[str] = set()
     unique: List[str] = []
     for pw in passwords:
