@@ -418,6 +418,33 @@ class TestZipExtraction:
         assert (dest / "ok.txt").read_text() == "good"
         assert not (dest / "..").exists() or not (dest.parent / "evil").exists()
 
+    def test_extract_all_rejects_colliding_entries(self, tmp_path):
+        # "x.txt" and "./x.txt" both resolve to dest/x.txt -> refuse the archive
+        z = tmp_path / "dup.zip"
+        with zipfile.ZipFile(z, "w") as zf:
+            zf.writestr("x.txt", "first")
+            zf.writestr("./x.txt", "second")
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with pytest.raises(RuntimeError, match="same path"):
+            da.ZipHandler(z).extract_all(dest, None)
+        # nothing is written when a collision is detected
+        assert list(dest.iterdir()) == []
+
+    def test_collision_via_process_archive_keeps_source(self, tmp_path, monkeypatch):
+        z = tmp_path / "dup.zip"
+        with zipfile.ZipFile(z, "w") as zf:
+            zf.writestr("x.txt", "first")
+            zf.writestr("./x.txt", "second")
+        # force the encrypted path so process_archive proceeds to extraction
+        monkeypatch.setattr(da.ZipHandler, "is_encrypted", lambda self: True)
+        monkeypatch.setattr(da.ZipHandler, "test_password", lambda self, pw: True)
+        res = da.process_archive(z, ["pw"])
+        assert res.outcome is da.Outcome.ERROR
+        assert "same path" in res.detail
+        assert z.exists()  # source kept
+        assert not (tmp_path / "dup").exists()  # partial dest cleaned up
+
 
 # --------------------------------------------------------------------------- #
 # process_archive: end to end with real encrypted ZIPs

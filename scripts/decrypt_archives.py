@@ -210,15 +210,30 @@ class ZipHandler(ArchiveHandler):
         with zipfile.ZipFile(self.path) as zf:
             if pwd:
                 zf.setpassword(pwd)
+            # Resolve every entry's destination first and refuse the whole
+            # archive if two file entries collapse to the same path (e.g. after
+            # Zip-Slip stripping or filename re-encoding) -- otherwise the later
+            # one would silently overwrite the earlier. Nothing is written until
+            # the plan is known to be collision-free.
+            plan: list[tuple[zipfile.ZipInfo, Path, bool]] = []
+            seen: dict[Path, str] = {}
             for info in zf.infolist():
                 name = self._decode_name(info)
-                if info.is_dir() or name.endswith("/"):
-                    target = self._safe_target(dest, name)
-                    if target is not None:
-                        target.mkdir(parents=True, exist_ok=True)
-                    continue
                 target = self._safe_target(dest, name)
                 if target is None:
+                    continue
+                is_dir = info.is_dir() or name.endswith("/")
+                if not is_dir:
+                    if target in seen:
+                        raise RuntimeError(
+                            f"two entries resolve to the same path "
+                            f"({seen[target]!r} and {name!r})"
+                        )
+                    seen[target] = name
+                plan.append((info, target, is_dir))
+            for info, target, is_dir in plan:
+                if is_dir:
+                    target.mkdir(parents=True, exist_ok=True)
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(info) as src, open(target, "wb") as out:
