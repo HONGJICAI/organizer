@@ -1175,3 +1175,65 @@ class TestToZipFake:
         assert "could not delete source" in res.detail
         assert p.exists()
         assert not (tmp_path / "comic.zip").exists()  # not placed when source kept
+
+
+# --------------------------------------------------------------------------- #
+# stripping a redundant same-named top-level wrapper folder
+# --------------------------------------------------------------------------- #
+def make_encrypted_zip_tree(path, password, files):
+    """Encrypted zip whose entries may include subdirectories."""
+    src = path.parent / f"_t_{path.stem}"
+    src.mkdir()
+    for rel, content in files.items():
+        f = src / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(content)
+    subprocess.run(["zip", "-q", "-r", "-P", password, str(path), "."], cwd=src, check=True)
+    shutil.rmtree(src)
+
+
+@requires_zip
+class TestStripWrapper:
+    def test_folder_mode_strips_same_name_wrapper(self, tmp_path):
+        z = tmp_path / "comic.zip"
+        make_encrypted_zip_tree(z, "pw", {"comic/01.jpg": "A", "comic/02.jpg": "B"})
+        res = da.process_archive(z, ["pw"])
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert "stripped" in res.detail
+        dest = tmp_path / "comic"
+        assert (dest / "01.jpg").read_text() == "A"
+        assert (dest / "02.jpg").read_text() == "B"
+        assert not (dest / "comic").exists()  # no double nesting
+
+    def test_folder_mode_keeps_differently_named_wrapper(self, tmp_path):
+        z = tmp_path / "comic.zip"
+        make_encrypted_zip_tree(z, "pw", {"inner/01.jpg": "A"})
+        res = da.process_archive(z, ["pw"])
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert res.detail == ""  # name differs -> not stripped
+        assert (tmp_path / "comic" / "inner" / "01.jpg").read_text() == "A"
+
+    def test_folder_mode_keeps_when_extra_toplevel_entry(self, tmp_path):
+        z = tmp_path / "comic.zip"
+        make_encrypted_zip_tree(z, "pw", {"comic/01.jpg": "A", "readme.txt": "R"})
+        res = da.process_archive(z, ["pw"])
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert res.detail == ""  # extra entry at top -> nothing stripped
+        assert (tmp_path / "comic" / "comic" / "01.jpg").read_text() == "A"
+        assert (tmp_path / "comic" / "readme.txt").read_text() == "R"
+
+    def test_to_zip_strips_same_name_wrapper(self, tmp_path):
+        z = tmp_path / "comic.zip"
+        make_encrypted_zip_tree(z, "pw", {"comic/01.jpg": "A", "comic/02.jpg": "B"})
+        res = da.process_archive(z, ["pw"], to_zip=True)
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert "stripped" in res.detail
+        with zipfile.ZipFile(z) as zf:
+            assert set(zf.namelist()) == {"01.jpg", "02.jpg"}
+
+    def test_run_logs_strip_note(self, tmp_path):
+        z = tmp_path / "comic.zip"
+        make_encrypted_zip_tree(z, "pw", {"comic/01.jpg": "A"})
+        logs: list[str] = []
+        da.run(tmp_path, ["pw"], log=logs.append)
+        assert any("stripped redundant" in line for line in logs)

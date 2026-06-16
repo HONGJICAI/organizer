@@ -50,6 +50,11 @@ By default each archive is extracted into a sibling folder. With ``--to-zip``
 the decrypted contents are repacked into a single unencrypted ``.zip`` next to
 the source (named after it) and no loose folder is left behind.
 
+If an archive wraps everything in a single top-level folder named exactly like
+the archive (``comic.zip`` -> ``comic/...``), that redundant level is stripped
+so the output isn't doubly nested. This only triggers when that folder is the
+sole top-level entry, so no file is ever shadowed or lost.
+
 Exit code is non-zero if any archive ended in an error or could not be
 decrypted with the supplied passwords.
 """
@@ -480,6 +485,21 @@ def _repack_to_zip(src_dir: Path, out_zip: Path) -> None:
             zf.write(f, arcname=f.relative_to(src_dir).as_posix())
 
 
+def _content_root(extract_dir: Path, stem: str) -> Path:
+    """Strip a single redundant top-level wrapper folder.
+
+    Returns the lone child directory when the archive wrapped everything in one
+    folder named exactly like the archive (``comic.zip`` -> ``comic/``);
+    otherwise returns ``extract_dir`` unchanged. Conservative on purpose: if
+    there is any other top-level entry, nothing is stripped, so no file can be
+    shadowed or merged away.
+    """
+    entries = list(extract_dir.iterdir())
+    if len(entries) == 1 and entries[0].is_dir() and entries[0].name == stem:
+        return entries[0]
+    return extract_dir
+
+
 def process_archive(
     path: Path,
     passwords: Sequence[str],
@@ -544,15 +564,23 @@ def _materialize_dir(
             detail=f"destination already exists: {dest}",
         )
 
-    # Extract. On any failure remove the partial output and keep the source.
+    # Extract to a temp dir so we can strip a redundant wrapper folder before
+    # committing to `dest`. On any failure remove partial output, keep source.
+    tmp_dir = Path(tempfile.mkdtemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp"))
     try:
-        dest.mkdir(parents=True)
-        handler.extract_all(dest, match)
+        handler.extract_all(tmp_dir, match)
+        root = _content_root(tmp_dir, path.stem)
+        os.replace(root, dest)
     except Exception as ex:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         shutil.rmtree(dest, ignore_errors=True)
         return ArchiveResult(
             path, Outcome.ERROR, password=match, detail=f"extraction failed: {ex}"
         )
+    stripped = root != tmp_dir
+    if stripped:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    detail = f"stripped redundant '{path.stem}/' wrapper" if stripped else ""
 
     deleted = False
     if not keep_source:
@@ -569,7 +597,8 @@ def _materialize_dir(
             )
 
     return ArchiveResult(
-        path, Outcome.EXTRACTED, password=match, extracted_to=dest, deleted=deleted
+        path, Outcome.EXTRACTED, password=match, extracted_to=dest, deleted=deleted,
+        detail=detail,
     )
 
 
@@ -597,13 +626,15 @@ def _materialize_zip(
     tmp_zip = Path(f"{tmp_dir}.zip.part")  # unique sibling of the temp dir
     try:
         handler.extract_all(tmp_dir, match)
-        _repack_to_zip(tmp_dir, tmp_zip)
+        root = _content_root(tmp_dir, path.stem)
+        _repack_to_zip(root, tmp_zip)
     except Exception as ex:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         tmp_zip.unlink(missing_ok=True)
         return ArchiveResult(
             path, Outcome.ERROR, password=match, detail=f"extraction/repack failed: {ex}"
         )
+    stripped = root != tmp_dir
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
     deleted = False
@@ -624,8 +655,10 @@ def _materialize_zip(
     if replacing_source:
         deleted = True
 
+    detail = f"stripped redundant '{path.stem}/' wrapper" if stripped else ""
     return ArchiveResult(
-        path, Outcome.EXTRACTED, password=match, extracted_to=out_zip, deleted=deleted
+        path, Outcome.EXTRACTED, password=match, extracted_to=out_zip, deleted=deleted,
+        detail=detail,
     )
 
 
@@ -670,7 +703,8 @@ def _log_result(result: ArchiveResult, dry_run: bool, log: Callable[[str], None]
             log(f"[would extract] {result.path} (password: {result.password!r})")
         else:
             tail = " (source deleted)" if result.deleted else " (source kept)"
-            log(f"[extracted] {result.path} -> {result.extracted_to}{tail}")
+            note = f" [{result.detail}]" if result.detail else ""
+            log(f"[extracted] {result.path} -> {result.extracted_to}{tail}{note}")
     elif result.outcome is Outcome.NOT_ENCRYPTED:
         log(f"[skip] {result.path} (not encrypted)")
     elif result.outcome is Outcome.NO_PASSWORD:
