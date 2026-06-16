@@ -722,3 +722,216 @@ class TestRunLogBranches:
         joined = "\n".join(logs)
         assert "[unsupported]" in joined
         assert "[error]" in joined
+
+
+# --------------------------------------------------------------------------- #
+# SevenZipHandler (via an injected fake 7z runner)
+# --------------------------------------------------------------------------- #
+class Fake7z:
+    """Mimic the subset of `7z` CLI behaviour the handler relies on."""
+
+    def __init__(
+        self,
+        *,
+        encrypted=True,
+        good_password="pw",
+        header_encrypted=False,
+        list_corrupt=False,
+        files=None,
+    ):
+        self.encrypted = encrypted
+        self.good_password = good_password
+        self.header_encrypted = header_encrypted
+        self.list_corrupt = list_corrupt
+        self.files = files if files is not None else ["a.txt"]
+        self.calls: list[list[str]] = []
+
+    @staticmethod
+    def _password(args):
+        for a in args:
+            if a.startswith("-p"):
+                return a[2:]
+        return None
+
+    def __call__(self, args):
+        self.calls.append(args)
+        cmd = args[0]
+        pw = self._password(args)
+        if cmd == "l":
+            if self.header_encrypted and not pw:
+                return 2, "", "ERROR: Wrong password : archive"
+            if self.list_corrupt:
+                return 2, "", "ERROR: Cannot open the file as an archive"
+            flag = "+" if self.encrypted else "-"
+            body = "\n".join(
+                f"Path = {name}\nEncrypted = {flag}\n" for name in self.files
+            )
+            return 0, body, ""
+        if cmd == "t":
+            if pw == self.good_password:
+                return 0, "Everything is Ok\n", ""
+            return 2, "", "ERROR: Wrong password?"
+        if cmd == "x":
+            if pw != self.good_password:
+                return 2, "", "ERROR: Wrong password?"
+            dest = next((a[2:] for a in args if a.startswith("-o")), None)
+            if dest:
+                for name in self.files:
+                    target = pathlib.Path(dest) / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text("payload")
+            return 0, "Everything is Ok\n", ""
+        return 7, "", "ERROR: bad command line"
+
+
+def sevenzip_handler(path, **kwargs):
+    return da.SevenZipHandler(path, "7z", runner=Fake7z(**kwargs))
+
+
+class TestSevenZipHandler:
+    def test_detects_encrypted_content(self, tmp_path):
+        h = sevenzip_handler(tmp_path / "x.zip", encrypted=True)
+        assert h.is_encrypted() is True
+
+    def test_detects_plain(self, tmp_path):
+        h = sevenzip_handler(tmp_path / "x.zip", encrypted=False)
+        assert h.is_encrypted() is False
+
+    def test_header_encrypted_detected(self, tmp_path):
+        h = sevenzip_handler(tmp_path / "x.7z", header_encrypted=True)
+        assert h.is_encrypted() is True
+
+    def test_corrupt_listing_raises(self, tmp_path):
+        h = sevenzip_handler(tmp_path / "x.7z", list_corrupt=True)
+        with pytest.raises(RuntimeError):
+            h.is_encrypted()
+
+    def test_password_right_and_wrong(self, tmp_path):
+        h = sevenzip_handler(tmp_path / "x.rar", good_password="secret")
+        assert h.test_password("secret") is True
+        assert h.test_password("nope") is False
+
+    def test_extract_writes_files(self, tmp_path):
+        runner = Fake7z(good_password="secret", files=["sub/01.jpg", "02.jpg"])
+        h = da.SevenZipHandler(tmp_path / "x.rar", "7z", runner=runner)
+        dest = tmp_path / "out"
+        dest.mkdir()
+        h.extract_all(dest, "secret")
+        assert (dest / "sub" / "01.jpg").read_text() == "payload"
+        assert (dest / "02.jpg").read_text() == "payload"
+
+    def test_extract_wrong_password_raises(self, tmp_path):
+        h = sevenzip_handler(tmp_path / "x.rar", good_password="secret")
+        with pytest.raises(RuntimeError):
+            h.extract_all(tmp_path / "out", "wrong")
+
+    def test_end_to_end_via_process_archive(self, tmp_path):
+        p = tmp_path / "comic.cbr"
+        p.write_text("placeholder")
+        runner = Fake7z(good_password="secret", files=["01.jpg"])
+        res = da.process_archive(
+            p,
+            ["wrong", "secret"],
+            handler_factory=lambda path: da.SevenZipHandler(path, "7z", runner=runner),
+        )
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert res.password == "secret"
+        assert not p.exists()
+        assert (tmp_path / "comic" / "01.jpg").read_text() == "payload"
+
+    def test_bad_command_treated_as_wrong_password_false(self, tmp_path):
+        # an unexpected command yields a non-OK code -> test_password returns False
+        h = da.SevenZipHandler(tmp_path / "x.zip", "7z", runner=lambda a: (7, "", "bad"))
+        assert h.test_password("pw") is False
+
+    def test_run_invokes_real_subprocess(self, tmp_path):
+        # with no injected runner, _run shells out for real; use the Python
+        # interpreter as a stand-in executable to exercise that path portably.
+        h = da.SevenZipHandler(tmp_path / "x.zip", sys.executable)
+        code, out, err = h._run(["-c", "print('hello-7z')"])
+        assert code == 0
+        assert "hello-7z" in out
+
+
+@pytest.mark.skipif(shutil.which("7z") is None, reason="real 7z not installed")
+class TestSevenZipReal:
+    def test_real_7z_roundtrip(self, tmp_path):
+        z = tmp_path / "e.zip"
+        make_encrypted_zip(z, "secret", {"a.txt": "data"})
+        res = da.process_archive(
+            z, ["secret"], handler_factory=lambda p: da.make_handler(p, None, "7z")
+        )
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert (tmp_path / "e" / "a.txt").read_text() == "data"
+
+
+# --------------------------------------------------------------------------- #
+# find_7z + make_handler routing
+# --------------------------------------------------------------------------- #
+class TestFind7z:
+    def test_found(self, monkeypatch):
+        monkeypatch.setattr(da.shutil, "which", lambda n: "/usr/bin/7z" if n == "7z" else None)
+        assert da.find_7z() == "/usr/bin/7z"
+
+    def test_not_found(self, monkeypatch):
+        monkeypatch.setattr(da.shutil, "which", lambda n: None)
+        assert da.find_7z() is None
+
+
+class TestMakeHandlerRouting:
+    def test_sevenzip_handles_rar_without_rarfile(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(da, "rarfile", None)
+        h = da.make_handler(tmp_path / "x.rar", sevenzip="7z")
+        assert isinstance(h, da.SevenZipHandler)
+
+    def test_sevenzip_handles_7z(self, tmp_path):
+        assert isinstance(da.make_handler(tmp_path / "x.7z", sevenzip="7z"), da.SevenZipHandler)
+
+    def test_7z_unsupported_without_sevenzip(self, tmp_path):
+        assert da.make_handler(tmp_path / "x.7z") is None
+
+    def test_cbz_routes_to_zip(self, tmp_path):
+        assert isinstance(da.make_handler(tmp_path / "x.cbz"), da.ZipHandler)
+
+    def test_cbr_routes_to_rar(self, monkeypatch, tmp_path):
+        self_install = make_fake_rarfile({"good": "p", "infos": []})
+        monkeypatch.setattr(da, "rarfile", self_install)
+        assert isinstance(da.make_handler(tmp_path / "x.cbr"), da.RarHandler)
+
+
+# --------------------------------------------------------------------------- #
+# main() 7z option plumbing
+# --------------------------------------------------------------------------- #
+class TestMain7z:
+    def test_auto_detect_not_found(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(da, "find_7z", lambda: None)
+        rc = da.main([str(tmp_path), "-p", "x", "--7z"])
+        assert rc == 2
+        assert "no 7-Zip executable" in capsys.readouterr().err
+
+    def test_explicit_path_missing(self, tmp_path, capsys):
+        rc = da.main([str(tmp_path), "-p", "x", "--7z", str(tmp_path / "nope.exe")])
+        assert rc == 2
+        assert "not found" in capsys.readouterr().err
+
+    def test_explicit_path_passed_through(self, tmp_path, monkeypatch):
+        exe = tmp_path / "7z"
+        exe.write_text("#!/bin/sh\n")
+        captured = {}
+
+        def fake_run(root, passwords, **kwargs):
+            captured.update(kwargs)
+            return []
+
+        monkeypatch.setattr(da, "run", fake_run)
+        rc = da.main([str(tmp_path), "-p", "x", "--7z", str(exe)])
+        assert rc == 0
+        assert captured["sevenzip"] == str(exe)
+
+    def test_auto_detect_passed_through(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(da, "find_7z", lambda: "/usr/bin/7z")
+        captured = {}
+        monkeypatch.setattr(da, "run", lambda root, pw, **kw: captured.update(kw) or [])
+        rc = da.main([str(tmp_path), "-p", "x", "--7z"])
+        assert rc == 0
+        assert captured["sevenzip"] == "/usr/bin/7z"
