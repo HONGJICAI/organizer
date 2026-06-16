@@ -117,6 +117,10 @@ class ArchiveResult:
 # --------------------------------------------------------------------------- #
 # Archive handlers
 # --------------------------------------------------------------------------- #
+class UnsupportedEncryption(Exception):
+    """Archive uses encryption the backend can't handle (e.g. WinZip AES)."""
+
+
 class ArchiveHandler:
     """Minimal uniform interface over the supported archive formats."""
 
@@ -136,6 +140,11 @@ class ArchiveHandler:
         raise NotImplementedError
 
 
+# WinZip AES uses compression method 99; stdlib zipfile can read the metadata
+# but cannot decrypt it. Such archives need the 7-Zip backend.
+WINZIP_AES_METHOD = 99
+
+
 class ZipHandler(ArchiveHandler):
     def __init__(self, path: Path, filename_encoding: str | None = None):
         super().__init__(path, filename_encoding)
@@ -144,9 +153,11 @@ class ZipHandler(ArchiveHandler):
         self._pwd_bytes: bytes | None = None
 
     @staticmethod
-    def _first_file(zf: zipfile.ZipFile) -> zipfile.ZipInfo | None:
+    def _first_encrypted_file(zf: zipfile.ZipFile) -> zipfile.ZipInfo | None:
+        # Test against an actually-encrypted entry: a zip may mix encrypted and
+        # plain files, and an unencrypted entry would accept any password.
         for zi in zf.infolist():
-            if not zi.is_dir():
+            if not zi.is_dir() and zi.flag_bits & 0x1:
                 return zi
         return None
 
@@ -173,10 +184,15 @@ class ZipHandler(ArchiveHandler):
     def test_password(self, password: str) -> bool:
         try:
             with zipfile.ZipFile(self.path) as zf:
-                zi = self._first_file(zf)
+                zi = self._first_encrypted_file(zf)
                 if zi is None:
-                    self._pwd_bytes = b""  # empty archive: nothing to decrypt
+                    self._pwd_bytes = b""  # no encrypted entry: nothing to unlock
                     return True
+                if zi.compress_type == WINZIP_AES_METHOD:
+                    raise UnsupportedEncryption(
+                        f"{self.path.name}: WinZip AES encryption can't be decrypted "
+                        f"by the built-in backend; re-run with --7z"
+                    )
                 for pwd in password_byte_variants(password):
                     try:
                         # Read the whole entry so a wrong password that slips
@@ -186,6 +202,13 @@ class ZipHandler(ArchiveHandler):
                                 pass
                         self._pwd_bytes = pwd
                         return True
+                    # NotImplementedError (a RuntimeError subclass) means an
+                    # unsupported method, e.g. AES -- must be checked first.
+                    except NotImplementedError as ex:
+                        raise UnsupportedEncryption(
+                            f"{self.path.name}: unsupported compression/encryption "
+                            f"({ex}); re-run with --7z"
+                        ) from ex
                     except (RuntimeError, zipfile.BadZipFile, OSError):
                         continue
         except (zipfile.BadZipFile, OSError):
@@ -471,6 +494,10 @@ def process_archive(
             if handler.test_password(pw):
                 match = pw
                 break
+        except UnsupportedEncryption as ex:
+            # The format is encrypted but this backend can't decrypt it -- no
+            # point trying more passwords; surface a clear, actionable error.
+            return ArchiveResult(path, Outcome.ERROR, detail=str(ex))
         except Exception:
             # A handler should swallow its own decryption errors, but never let
             # an unexpected one abort the whole run.

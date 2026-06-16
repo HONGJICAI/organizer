@@ -353,6 +353,70 @@ class TestZipHandler:
         z.write_text("not a zip at all")
         assert da.ZipHandler(z).test_password("pw") is False
 
+    def _mixed_zip(self, path):
+        # first entry unencrypted, second entry encrypted with "pw"
+        src = path.parent / f"_m_{path.stem}"
+        src.mkdir()
+        (src / "a.txt").write_text("plain")
+        (src / "b.txt").write_text("secret")
+        subprocess.run(["zip", "-q", str(path), "a.txt"], cwd=src, check=True)
+        subprocess.run(["zip", "-q", "-P", "pw", str(path), "b.txt"], cwd=src, check=True)
+        shutil.rmtree(src)
+
+    def test_first_encrypted_file_skips_plain_entry(self, tmp_path):
+        z = tmp_path / "m.zip"
+        self._mixed_zip(z)
+        with zipfile.ZipFile(z) as zf:
+            zi = da.ZipHandler._first_encrypted_file(zf)
+        assert zi is not None and zi.filename == "b.txt"
+
+    def test_mixed_zip_finds_correct_password(self, tmp_path):
+        # the plain first entry must not make a wrong password look valid
+        z = tmp_path / "m.zip"
+        self._mixed_zip(z)
+        h = da.ZipHandler(z)
+        assert h.test_password("wrong") is False
+        assert h.test_password("pw") is True
+
+    def test_mixed_zip_end_to_end(self, tmp_path):
+        z = tmp_path / "m.zip"
+        self._mixed_zip(z)
+        res = da.process_archive(z, ["wrong", "pw"])
+        assert res.outcome is da.Outcome.EXTRACTED
+        assert res.password == "pw"
+        assert (tmp_path / "m" / "a.txt").read_text() == "plain"
+        assert (tmp_path / "m" / "b.txt").read_text() == "secret"
+
+    def test_aes_zip_raises_unsupported(self, tmp_path, monkeypatch):
+        z = tmp_path / "aes.zip"
+        make_encrypted_zip(z, "pw", {"a.txt": "data"})  # plain archive openable
+        fake = types.SimpleNamespace(compress_type=da.WINZIP_AES_METHOD)
+        monkeypatch.setattr(da.ZipHandler, "_first_encrypted_file", staticmethod(lambda zf: fake))
+        with pytest.raises(da.UnsupportedEncryption, match="--7z"):
+            da.ZipHandler(z).test_password("pw")
+
+    def test_aes_zip_reported_as_error_via_process(self, tmp_path, monkeypatch):
+        z = tmp_path / "aes.zip"
+        make_encrypted_zip(z, "pw", {"a.txt": "data"})
+        fake = types.SimpleNamespace(compress_type=da.WINZIP_AES_METHOD)
+        monkeypatch.setattr(da.ZipHandler, "is_encrypted", lambda self: True)
+        monkeypatch.setattr(da.ZipHandler, "_first_encrypted_file", staticmethod(lambda zf: fake))
+        res = da.process_archive(z, ["pw"])
+        assert res.outcome is da.Outcome.ERROR
+        assert "--7z" in res.detail
+        assert z.exists()  # source kept
+
+    def test_unsupported_method_notimplemented(self, tmp_path, monkeypatch):
+        z = tmp_path / "x.zip"
+        make_encrypted_zip(z, "pw", {"a.txt": "data"})
+
+        def boom(self, *a, **k):
+            raise NotImplementedError("compression type 99")
+
+        monkeypatch.setattr(zipfile.ZipFile, "open", boom)
+        with pytest.raises(da.UnsupportedEncryption):
+            da.ZipHandler(z).test_password("pw")
+
 
 class TestZipNameRecovery:
     def _info(self, name, flag=0):
