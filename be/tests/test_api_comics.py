@@ -6,6 +6,7 @@ import comicfile
 from conftest import MockComicfile, insert_comic, make_zip_comic
 from loader import ComicLoader
 from model import ComicEntity
+from util import PathState
 
 
 # ---------------------------------------------------------------------------
@@ -278,3 +279,69 @@ class TestDelete:
         r = client.delete("/api/comics/1?permanent=true")
         assert r.status_code == 200
         assert not d.exists()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/comics/check
+# ---------------------------------------------------------------------------
+
+class TestCheck:
+    def test_empty_ids_is_400(self, client):
+        r = client.post("/api/comics/check", json={"ids": []})
+        assert r.status_code == 400
+
+    def test_present_clears_missing(self, client, session, tmp_path):
+        # File is back on disk -> the stale missing flag should be cleared.
+        f = tmp_path / "back.zip"
+        make_zip_comic(str(f), pages=1)
+        insert_comic(session, 1, path=str(f), missing=True)
+        r = client.post("/api/comics/check", json={"ids": [1]})
+        assert r.status_code == 200
+        assert r.json()["results"] == [{"id": 1, "status": "present"}]
+        session.expire_all()
+        assert not session.get(ComicEntity, 1).missing
+
+    def test_absent_sets_missing(self, client, session, tmp_path):
+        # Parent dir exists but the file is gone -> a confirmed deletion.
+        insert_comic(session, 1, path=str(tmp_path / "gone.zip"), missing=False)
+        r = client.post("/api/comics/check", json={"ids": [1]})
+        assert r.status_code == 200
+        assert r.json()["results"] == [{"id": 1, "status": "absent"}]
+        session.expire_all()
+        assert session.get(ComicEntity, 1).missing
+
+    def test_unknown_leaves_flag_untouched(self, client, session):
+        # A mount blip (UNKNOWN) must never flip the stored flag either way.
+        insert_comic(session, 1, path="/lib/blip.zip", missing=True)
+        with patch("util.probe_path", return_value=PathState.UNKNOWN):
+            r = client.post("/api/comics/check", json={"ids": [1]})
+        assert r.status_code == 200
+        assert r.json()["results"] == [{"id": 1, "status": "unknown"}]
+        session.expire_all()
+        assert session.get(ComicEntity, 1).missing
+
+    def test_notfound_for_unknown_id(self, client):
+        r = client.post("/api/comics/check", json={"ids": [999]})
+        assert r.status_code == 200
+        assert r.json()["results"] == [{"id": 999, "status": "notfound"}]
+
+    def test_mixed_batch(self, client, session, tmp_path):
+        f = tmp_path / "here.zip"
+        make_zip_comic(str(f), pages=1)
+        insert_comic(session, 1, path=str(f), missing=True)
+        insert_comic(session, 2, path=str(tmp_path / "gone.zip"), missing=True)
+        r = client.post("/api/comics/check", json={"ids": [1, 2, 999]})
+        assert r.status_code == 200
+        statuses = {row["id"]: row["status"] for row in r.json()["results"]}
+        assert statuses == {1: "present", 2: "absent", 999: "notfound"}
+        session.expire_all()
+        assert not session.get(ComicEntity, 1).missing
+        assert session.get(ComicEntity, 2).missing
+
+    def test_duplicate_ids_probed_once(self, client, session, tmp_path):
+        f = tmp_path / "dup.zip"
+        make_zip_comic(str(f), pages=1)
+        insert_comic(session, 1, path=str(f), missing=True)
+        r = client.post("/api/comics/check", json={"ids": [1, 1]})
+        assert r.status_code == 200
+        assert r.json()["results"] == [{"id": 1, "status": "present"}]

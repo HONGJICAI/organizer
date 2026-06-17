@@ -79,6 +79,26 @@ export async function setupMock(authRequired: boolean) {
 			const top = params.get('top');
 			return HttpResponse.json(top ? filtered.slice(0, Number(top)) : filtered);
 		}),
+		http.post('/api/comics/check', async ({ request }) => {
+			await delay(600);
+			const body = (await request.json()) as { ids: number[] };
+			// Mirror the backend tri-state: a recovered file clears `missing`, a
+			// confirmed-gone file sets it, and a flaky-mount blip (unknown) leaves
+			// the flag untouched. Demo: ~70% recover, ~15% unknown, rest stay gone.
+			const results = body.ids.map((id) => {
+				const comic = comics.find((c) => c.id === id);
+				if (!comic) return { id, status: 'notfound' };
+				const roll = faker.number.float();
+				if (roll < 0.7) {
+					comic.missing = false;
+					return { id, status: 'present' };
+				}
+				if (roll < 0.85) return { id, status: 'unknown' };
+				comic.missing = true;
+				return { id, status: 'absent' };
+			});
+			return HttpResponse.json({ results });
+		}),
 		http.get('/api/comics/:id', async ({ params }) => {
 			await delay(300);
 			const comic = findComic(params.id);
