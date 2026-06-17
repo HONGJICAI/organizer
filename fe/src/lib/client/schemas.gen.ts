@@ -25,6 +25,34 @@ export const AuthStatusResponseSchema = {
     title: 'AuthStatusResponse'
 } as const;
 
+export const BackupInfoSchema = {
+    properties: {
+        last_backup: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Backup'
+        },
+        backup_count: {
+            type: 'integer',
+            title: 'Backup Count',
+            default: 0
+        },
+        cadence_hours: {
+            type: 'integer',
+            title: 'Cadence Hours',
+            default: 24
+        }
+    },
+    type: 'object',
+    title: 'BackupInfo'
+} as const;
+
 export const CheckRequestSchema = {
     properties: {
         ids: {
@@ -210,6 +238,22 @@ export const ComicRenameResponseSchema = {
     required: ['name'],
     title: 'ComicRenameResponse',
     description: 'Response for comic rename operation'
+} as const;
+
+export const DailyScanInfoSchema = {
+    properties: {
+        scan_hour: {
+            type: 'integer',
+            title: 'Scan Hour'
+        },
+        next_run: {
+            type: 'string',
+            title: 'Next Run'
+        }
+    },
+    type: 'object',
+    required: ['scan_hour', 'next_run'],
+    title: 'DailyScanInfo'
 } as const;
 
 export const FavorResponseSchema = {
@@ -461,6 +505,79 @@ export const ScanStatusResponseSchema = {
             type: 'boolean',
             title: 'Running'
         },
+        media_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Media Type'
+        },
+        phase: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Phase'
+        },
+        total: {
+            type: 'integer',
+            title: 'Total',
+            default: 0
+        },
+        processed: {
+            type: 'integer',
+            title: 'Processed',
+            default: 0
+        },
+        reconciled: {
+            type: 'integer',
+            title: 'Reconciled',
+            default: 0
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        finished_at: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Finished At'
+        },
+        duration_seconds: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Duration Seconds'
+        },
+        timing: {
+            '$ref': '#/components/schemas/ScanTiming'
+        },
         last_result: {
             anyOf: [
                 {
@@ -474,8 +591,65 @@ export const ScanStatusResponseSchema = {
         }
     },
     type: 'object',
-    required: ['running'],
+    required: ['running', 'timing'],
     title: 'ScanStatusResponse'
+} as const;
+
+export const ScanTimingSchema = {
+    properties: {
+        count: {
+            type: 'integer',
+            title: 'Count'
+        },
+        avg_ms: {
+            type: 'number',
+            title: 'Avg Ms'
+        },
+        p95_ms: {
+            type: 'number',
+            title: 'P95 Ms'
+        },
+        slowest: {
+            items: {
+                '$ref': '#/components/schemas/SlowFile'
+            },
+            type: 'array',
+            title: 'Slowest'
+        }
+    },
+    type: 'object',
+    required: ['count', 'avg_ms', 'p95_ms', 'slowest'],
+    title: 'ScanTiming'
+} as const;
+
+export const SlowFileSchema = {
+    properties: {
+        path: {
+            type: 'string',
+            title: 'Path'
+        },
+        ms: {
+            type: 'number',
+            title: 'Ms'
+        }
+    },
+    type: 'object',
+    required: ['path', 'ms'],
+    title: 'SlowFile'
+} as const;
+
+export const TasksResponseSchema = {
+    properties: {
+        daily_scan: {
+            '$ref': '#/components/schemas/DailyScanInfo'
+        },
+        backup: {
+            '$ref': '#/components/schemas/BackupInfo'
+        }
+    },
+    type: 'object',
+    required: ['daily_scan', 'backup'],
+    title: 'TasksResponse'
 } as const;
 
 export const ValidationErrorSchema = {

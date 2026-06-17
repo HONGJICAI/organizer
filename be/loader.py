@@ -4,6 +4,7 @@ from multiprocessing.pool import ThreadPool
 import os
 import pathlib
 import subprocess
+import time
 from typing import List
 import threading
 
@@ -15,6 +16,7 @@ from PIL import Image
 from comicfile import Comicfile
 import comicfile
 import global_data
+from core.scan_progress import progress
 from model import ComicEntity, FileEntity, VideoEntity
 import db
 import util
@@ -26,6 +28,8 @@ class Loader:
     # Subclasses set this to their SQLModel table class so the shared reconcile
     # can flag/clear the ``missing`` column generically.
     entity_cls = None
+    # Human-readable phase label surfaced in the scan progress/metrics.
+    phase = None
 
     def __init__(self):
         self._starting_id = 0
@@ -41,12 +45,13 @@ class Loader:
         pass
 
     def work(self):
+        progress.set_phase(self.phase, 0)
         old_pathes = set(self._load_old())
         all_pathes = set(self._load_all())
         print(f"old: {len(old_pathes)}, all: {len(all_pathes)}")
         # Reconcile the missing flag first: a file can disappear without any new
         # file appearing, so this must run even when the early-returns below fire.
-        self._reconcile_missing(all_pathes)
+        progress.add_reconciled(self._reconcile_missing(all_pathes))
         if len(all_pathes) == 0:
             print("not work due to no file, perhaps specify wrong pathes?")
             return
@@ -55,13 +60,20 @@ class Loader:
             print("not work due to no new file.")
             return
 
+        progress.set_phase(self.phase, len(new_pathes))
         new_entities = []
-        with Progress() as progress:
-            task = progress.add_task("[green]Processing...", total=len(new_pathes))
+        with Progress() as bar:
+            task = bar.add_task("[green]Processing...", total=len(new_pathes))
 
-            def do(p: str):
-                progress.update(task, advance=1)
-                return self._to_entity(p)
+            def do(path: str):
+                # Time the per-file work: on a network mount the open/parse is
+                # the dominant cost and the metric worth surfacing.
+                started = time.perf_counter()
+                try:
+                    return self._to_entity(path)
+                finally:
+                    bar.update(task, advance=1)
+                    progress.advance(path, (time.perf_counter() - started) * 1000)
 
             entities = p.map(do, [e for e in new_pathes])
             new_entities = [e for e in entities if e is not None]
@@ -78,9 +90,11 @@ class Loader:
         path, and flagging the whole library missing in that case is exactly
         the data-loss footgun we're trying to avoid. The next successful scan
         self-heals the flag once files reappear.
+
+        Returns the number of rows whose flag changed (for progress/metrics).
         """
         if self.entity_cls is None or not present_pathes:
-            return
+            return 0
         with Session(db.engine) as session:
             entities = session.exec(
                 select(self.entity_cls).where(self.entity_cls.archived == False)  # noqa: E712
@@ -95,6 +109,7 @@ class Loader:
             if changed:
                 session.commit()
                 print(f"reconcile: updated missing flag on {changed} entit(y/ies)")
+            return changed
 
     @abstractmethod
     def _load_old(self) -> List[str]:
@@ -142,6 +157,7 @@ def scan(exts: List[str], pathes: List[str]):
 class ComicLoader(Loader):
     comic_ext = [".zip", ".rar", ""]
     entity_cls = ComicEntity
+    phase = "comics"
 
     def __init__(self):
         super().__init__()
@@ -232,6 +248,7 @@ class VideoLoader(Loader):
         ".webm",
     ]
     entity_cls = VideoEntity
+    phase = "videos"
     _starting_id: int
 
     def __init__(self):

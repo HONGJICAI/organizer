@@ -11,6 +11,12 @@ export type AuthStatusResponse = {
     required: boolean;
 };
 
+export type BackupInfo = {
+    last_backup?: string | null;
+    backup_count?: number;
+    cadence_hours?: number;
+};
+
 /**
  * Request to re-verify on disk whether the backing files still exist.
  */
@@ -84,6 +90,11 @@ export type ComicRenameRequest = {
  */
 export type ComicRenameResponse = {
     name: string;
+};
+
+export type DailyScanInfo = {
+    scan_hour: number;
+    next_run: string;
 };
 
 /**
@@ -167,9 +178,35 @@ export type ScanResponse = {
 
 export type ScanStatusResponse = {
     running: boolean;
+    media_type?: string | null;
+    phase?: string | null;
+    total?: number;
+    processed?: number;
+    reconciled?: number;
+    started_at?: string | null;
+    finished_at?: string | null;
+    duration_seconds?: number | null;
+    timing: ScanTiming;
     last_result?: {
         [key: string]: unknown;
     } | null;
+};
+
+export type ScanTiming = {
+    count: number;
+    avg_ms: number;
+    p95_ms: number;
+    slowest: Array<SlowFile>;
+};
+
+export type SlowFile = {
+    path: string;
+    ms: number;
+};
+
+export type TasksResponse = {
+    daily_scan: DailyScanInfo;
+    backup: BackupInfo;
 };
 
 export type ValidationError = {
@@ -1610,6 +1647,47 @@ export type TriggerScanResponses = {
 };
 
 export type TriggerScanResponse = TriggerScanResponses[keyof TriggerScanResponses];
+
+export type TasksStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/tasks';
+};
+
+export type TasksStatusErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type TasksStatusError = TasksStatusErrors[keyof TasksStatusErrors];
+
+export type TasksStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: TasksResponse;
+};
+
+export type TasksStatusResponse = TasksStatusResponses[keyof TasksStatusResponses];
 
 export type TriggerBackupData = {
     body?: never;

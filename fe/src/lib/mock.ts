@@ -58,7 +58,94 @@ export async function setupMock(authRequired: boolean) {
 	const findImage = (id: string | readonly string[] | undefined) =>
 		id !== undefined ? images.find((c) => c.id === Number(id)) : undefined;
 
+	// Mock scan state — `triggerScan` kicks off a short fake run that the
+	// admin page's polling watches progress through (mirrors the real
+	// running -> phases -> finished lifecycle, including open-timing metrics).
+	const scanState = {
+		running: false,
+		startedAt: null as string | null,
+		finishedAt: null as string | null,
+		processed: 0,
+		total: 0,
+		startMs: 0
+	};
+
 	const handlers = [
+		http.get('/api/system/scan', async () => {
+			if (scanState.running) {
+				scanState.processed = Math.min(scanState.total, scanState.processed + 7);
+				if (scanState.processed >= scanState.total) {
+					scanState.running = false;
+					scanState.finishedAt = new Date().toISOString();
+				}
+			}
+			const count = scanState.processed;
+			const durations = Array.from({ length: count }, () =>
+				faker.number.float({ min: 5, max: 900 })
+			);
+			const sorted = [...durations].sort((a, b) => a - b);
+			const avg = count ? durations.reduce((a, b) => a + b, 0) / count : 0;
+			const p95 = count ? sorted[Math.min(count - 1, Math.floor(count * 0.95))] : 0;
+			const slowest = [...durations]
+				.sort((a, b) => b - a)
+				.slice(0, 10)
+				.map((ms, i) => ({ path: `/data/comics/slow-${i}.zip`, ms: Math.round(ms * 10) / 10 }));
+			const duration = scanState.startMs
+				? Math.round(
+						((scanState.finishedAt ? Date.parse(scanState.finishedAt) : Date.now()) -
+							scanState.startMs) /
+							100
+					) / 10
+				: null;
+			return HttpResponse.json({
+				running: scanState.running,
+				media_type: scanState.startedAt ? 'all' : null,
+				phase: scanState.running ? 'comics' : null,
+				total: scanState.total,
+				processed: scanState.processed,
+				reconciled: scanState.startedAt ? 3 : 0,
+				started_at: scanState.startedAt,
+				finished_at: scanState.finishedAt,
+				duration_seconds: duration,
+				timing: {
+					count,
+					avg_ms: Math.round(avg * 10) / 10,
+					p95_ms: Math.round(p95 * 10) / 10,
+					slowest
+				},
+				last_result: scanState.finishedAt ? { status: 'success', comics: 'done' } : null
+			});
+		}),
+		http.post('/api/system/scan', async () => {
+			await delay(200);
+			if (scanState.running) {
+				return HttpResponse.json({
+					status: 'already_running',
+					message: 'A scan is already in progress'
+				});
+			}
+			scanState.running = true;
+			scanState.startedAt = new Date().toISOString();
+			scanState.finishedAt = null;
+			scanState.processed = 0;
+			scanState.total = 100;
+			scanState.startMs = Date.now();
+			return HttpResponse.json({ status: 'started', message: 'Scan started for: all' });
+		}),
+		http.get('/api/system/tasks', async () => {
+			await delay(200);
+			const next = new Date();
+			next.setHours(2, 0, 0, 0);
+			if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+			return HttpResponse.json({
+				daily_scan: { scan_hour: 2, next_run: next.toISOString() },
+				backup: {
+					last_backup: faker.date.recent().toISOString(),
+					backup_count: 7,
+					cadence_hours: 24
+				}
+			});
+		}),
 		http.get('/api/auth/status', async () => {
 			await delay(100);
 			return HttpResponse.json({ required: authState.required });

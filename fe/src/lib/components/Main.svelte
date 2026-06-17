@@ -80,6 +80,8 @@
 					<HeaderPanelLink href="/image">Home</HeaderPanelLink>
 					<HeaderPanelLink href="/image/folder">Folder</HeaderPanelLink>
 					<HeaderPanelLink href="/image/tag">Tag</HeaderPanelLink>
+					<HeaderPanelDivider>System</HeaderPanelDivider>
+					<HeaderPanelLink href="/admin">Admin</HeaderPanelLink>
 				</HeaderPanelLinks>
 			</HeaderAction>
 		{/if}
