@@ -12,6 +12,37 @@ export type AuthStatusResponse = {
 };
 
 /**
+ * Request to re-verify on disk whether the backing files still exist.
+ */
+export type CheckRequest = {
+    /**
+     * Entity ids to probe
+     */
+    ids: Array<number>;
+};
+
+/**
+ * Response for a batch file-existence check.
+ */
+export type CheckResponse = {
+    results: Array<CheckResult>;
+};
+
+/**
+ * Per-id result of a file-existence check.
+ *
+ * ``status`` is one of:
+ * * ``present``  — file is back on disk; the ``missing`` flag was cleared
+ * * ``absent``   — file is confirmed gone; the ``missing`` flag was set
+ * * ``unknown``  — could not be determined (mount blip); flag left untouched
+ * * ``notfound`` — no such id in the database
+ */
+export type CheckResult = {
+    id: number;
+    status: string;
+};
+
+/**
  * Response for comic details
  */
 export type ComicDetailResponse = {
@@ -292,6 +323,47 @@ export type ComicGetAllResponses = {
 };
 
 export type ComicGetAllResponse = ComicGetAllResponses[keyof ComicGetAllResponses];
+
+export type ComicCheckData = {
+    body: CheckRequest;
+    path?: never;
+    query?: never;
+    url: '/api/comics/check';
+};
+
+export type ComicCheckErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicCheckError = ComicCheckErrors[keyof ComicCheckErrors];
+
+export type ComicCheckResponses = {
+    /**
+     * Successful Response
+     */
+    200: CheckResponse;
+};
+
+export type ComicCheckResponse = ComicCheckResponses[keyof ComicCheckResponses];
 
 export type ComicDeleteData = {
     body?: never;

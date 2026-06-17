@@ -12,6 +12,7 @@ from sqlmodel import Session, select, or_
 import comicfile
 import db
 import global_data
+import util
 from core.exceptions import abort
 from loader import ComicLoader
 from model import ComicEntity
@@ -21,7 +22,8 @@ from schemas.comic import (
     ComicRenameRequest,
     ComicRenameResponse,
 )
-from schemas.common import FavorResponse
+from schemas.common import CheckRequest, CheckResponse, CheckResult, FavorResponse
+from util import PathState
 
 
 router = APIRouter()
@@ -44,6 +46,53 @@ class ComicCBV:
             statement = statement.limit(top)
         comic_entities = self.session.exec(statement).all()
         return [comic.model_dump() for comic in comic_entities]
+
+    @router.post(
+        "/api/comics/check",
+        tags=["comics"],
+        responses={
+            200: {"model": CheckResponse},
+            400: {"model": dict},
+        },
+    )
+    def check(self, req: CheckRequest) -> CheckResponse:
+        # Re-verify on disk whether specific comics still exist, without the
+        # cost of a full library scan. This is what the organize page uses to
+        # let an SMB share settle: files that came back drop off the list, while
+        # a momentary mount blip (UNKNOWN) is reported but never acted on, so we
+        # don't flip a healthy file to "missing" on jitter.
+        if not req.ids:
+            abort(400, "ids is required")
+        ids = list(dict.fromkeys(req.ids))
+        entities = {
+            e.id: e
+            for e in self.session.exec(
+                select(ComicEntity).where(ComicEntity.id.in_(ids))
+            ).all()
+        }
+        # Probe the filesystem off the DB session (pure stat, parallelizable);
+        # SMB latency is the cost we want to fan out, not serialize.
+        found = [(i, entities[i].path) for i in ids if i in entities]
+        states = util.probe_paths([path for _, path in found])
+        changed = False
+        results = []
+        for (i, _), state in zip(found, states):
+            entity = entities[i]
+            if state == PathState.PRESENT and entity.missing:
+                entity.missing = False
+                self.session.add(entity)
+                changed = True
+            elif state == PathState.ABSENT and not entity.missing:
+                entity.missing = True
+                self.session.add(entity)
+                changed = True
+            results.append(CheckResult(id=i, status=state.value))
+        for i in ids:
+            if i not in entities:
+                results.append(CheckResult(id=i, status="notfound"))
+        if changed:
+            self.session.commit()
+        return CheckResponse(results=results)
 
     def __get(self, id: int) -> ComicEntity:
         statement = select(ComicEntity).where(ComicEntity.id == id)

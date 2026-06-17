@@ -25,6 +25,62 @@ export const AuthStatusResponseSchema = {
     title: 'AuthStatusResponse'
 } as const;
 
+export const CheckRequestSchema = {
+    properties: {
+        ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            title: 'Ids',
+            description: 'Entity ids to probe'
+        }
+    },
+    type: 'object',
+    required: ['ids'],
+    title: 'CheckRequest',
+    description: 'Request to re-verify on disk whether the backing files still exist.'
+} as const;
+
+export const CheckResponseSchema = {
+    properties: {
+        results: {
+            items: {
+                '$ref': '#/components/schemas/CheckResult'
+            },
+            type: 'array',
+            title: 'Results'
+        }
+    },
+    type: 'object',
+    required: ['results'],
+    title: 'CheckResponse',
+    description: 'Response for a batch file-existence check.'
+} as const;
+
+export const CheckResultSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        }
+    },
+    type: 'object',
+    required: ['id', 'status'],
+    title: 'CheckResult',
+    description: `Per-id result of a file-existence check.
+
+\`\`status\`\` is one of:
+* \`\`present\`\`  — file is back on disk; the \`\`missing\`\` flag was cleared
+* \`\`absent\`\`   — file is confirmed gone; the \`\`missing\`\` flag was set
+* \`\`unknown\`\`  — could not be determined (mount blip); flag left untouched
+* \`\`notfound\`\` — no such id in the database`
+} as const;
+
 export const ComicDetailResponseSchema = {
     properties: {
         pageDetails: {
