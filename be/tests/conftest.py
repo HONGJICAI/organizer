@@ -103,9 +103,12 @@ class MockComicfile:
 
 @pytest.fixture(autouse=True)
 def clear_module_caches():
+    from core.scan_progress import progress
     comicfile.comic_cache.clear()
+    progress.reset()
     yield
     comicfile.comic_cache.clear()
+    progress.reset()
 
 
 @pytest.fixture
