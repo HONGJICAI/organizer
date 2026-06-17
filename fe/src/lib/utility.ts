@@ -7,7 +7,12 @@ const pairsSeparator = new Map<string, string>([
 	['《', '》']
 ]);
 export function separateFilename(filename: string): string[] {
-	const parts = filename.split('\\');
+	// Split on both separators so tags work regardless of the backend OS: a
+	// Linux backend yields `/`-joined paths, a Windows one `\`. (folderTree.ts
+	// splits the same way.) Tag sources are either a bare basename (comics) or a
+	// full path (images/videos), so a path that isn't split would otherwise
+	// collapse into one giant tag.
+	const parts = filename.split(/[/\\]+/);
 	return parts.map((part) => separateFilenameImpl(part)).flat();
 }
 function separateFilenameImpl(filename: string): string[] {
