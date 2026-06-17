@@ -4,3 +4,4 @@ nginx/logs/
 .env
 .coverage
 node_modules/
+__pycache__/
