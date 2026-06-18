@@ -72,6 +72,28 @@ def _gen_cover(entity: ImageEntity, overwrite=False, page=0) -> bool:
     return False
 
 
+def _leaf_image_dirs(scan_path: str) -> List[str]:
+    """Recursively find pure image folders under scan_path.
+
+    A folder qualifies only if it contains nothing but image files — no
+    subdirectories and no non-image files. This keeps every collected album
+    safe to delete wholesale (it matches the guard in the delete endpoint, so
+    deletion never risks touching unrelated files), and a "mixed" folder
+    (images plus subfolders) yields its pure leaves rather than itself.
+    os.walk does not follow symlinks by default, so symlinked dirs are not
+    descended into (avoids loops). Like comics/videos, the album name is the
+    folder's basename, not its relative path.
+    """
+    leaves = []
+    for root, dirs, files in os.walk(scan_path):
+        if dirs:
+            continue  # has a subfolder -> not a pure leaf
+        exts = [os.path.splitext(f)[1].lower() for f in files]
+        if files and all(ext in _IMAGE_EXTS for ext in exts):
+            leaves.append(root)
+    return sorted(leaves)
+
+
 def bootstrap():
     """Scan image folders and (re)populate the in-memory store."""
     new_store: Dict[int, ImageEntity] = {}
@@ -80,14 +102,12 @@ def bootstrap():
         if not os.path.isdir(scan_path):
             continue
         try:
-            entries = sorted(os.scandir(scan_path), key=lambda e: e.name)
+            leaves = _leaf_image_dirs(scan_path)
         except OSError as e:
             print(f"Failed to scan {scan_path}: {e}")
             continue
-        for entry in entries:
-            if not entry.is_dir(follow_symlinks=False):
-                continue
-            files = _image_files(entry.path)
+        for leaf in leaves:
+            files = _image_files(leaf)
             if not files:
                 continue
             id_counter += 1
@@ -97,9 +117,9 @@ def bootstrap():
             new_store[id_counter] = ImageEntity(
                 id=id_counter,
                 size=0,
-                name=entry.name,
-                path=entry.path,
-                updateTime=datetime.datetime.fromtimestamp(entry.stat().st_mtime),
+                name=os.path.basename(leaf),
+                path=leaf,
+                updateTime=datetime.datetime.fromtimestamp(os.stat(leaf).st_mtime),
                 page=len(files),
             )
 
