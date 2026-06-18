@@ -106,9 +106,9 @@ class TestBootstrap:
         names = sorted(e.name for e in img_api._store.values())
         assert names == ["chapter1"]
 
-    def test_folder_with_imageless_subfolder_is_leaf(self, scan_env):
-        # A subfolder that holds no images does not stop the parent from being
-        # a leaf album.
+    def test_folder_with_any_subfolder_excluded(self, scan_env):
+        # An album must be a pure image folder: any subfolder (even an
+        # imageless one) disqualifies it, so deletion can never touch it.
         album = scan_env / "album"
         album.mkdir()
         (album / "a.jpg").write_bytes(make_jpeg_bytes())
@@ -116,8 +116,16 @@ class TestBootstrap:
         junk.mkdir()
         (junk / "info.txt").write_text("notes")
         img_api.bootstrap()
-        names = sorted(e.name for e in img_api._store.values())
-        assert names == ["album"]
+        assert len(img_api._store) == 0
+
+    def test_folder_with_non_image_file_excluded(self, scan_env):
+        # A non-image file alongside the images also breaks purity.
+        album = scan_env / "album"
+        album.mkdir()
+        (album / "a.jpg").write_bytes(make_jpeg_bytes())
+        (album / "notes.txt").write_text("notes")
+        img_api.bootstrap()
+        assert len(img_api._store) == 0
 
     def test_duplicate_basenames_across_branches(self, scan_env):
         # Same leaf name under different branches yields two albums (basename
