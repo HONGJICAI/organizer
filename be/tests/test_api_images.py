@@ -74,6 +74,62 @@ class TestBootstrap:
         img_api.bootstrap()
         assert img_api._store[1].page == 3
 
+    def test_recursive_collects_nested_leaf(self, scan_env):
+        # A folder several levels deep with images is collected by basename.
+        d = scan_env / "series" / "chapter1"
+        d.mkdir(parents=True)
+        (d / "a.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        names = {e.name for e in img_api._store.values()}
+        assert names == {"chapter1"}
+
+    def test_intermediate_container_excluded(self, scan_env):
+        # "series" only holds subfolders (no direct images) -> not an album.
+        for name in ["chapter1", "chapter2"]:
+            d = scan_env / "series" / name
+            d.mkdir(parents=True)
+            (d / "a.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        names = sorted(e.name for e in img_api._store.values())
+        assert names == ["chapter1", "chapter2"]
+
+    def test_mixed_folder_excluded_only_leaves_kept(self, scan_env):
+        # "series" has direct images AND an image-bearing subfolder: it is a
+        # mixed folder, so only the leaf subfolder is collected.
+        series = scan_env / "series"
+        series.mkdir()
+        (series / "cover.jpg").write_bytes(make_jpeg_bytes())
+        chapter = series / "chapter1"
+        chapter.mkdir()
+        (chapter / "a.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        names = sorted(e.name for e in img_api._store.values())
+        assert names == ["chapter1"]
+
+    def test_folder_with_imageless_subfolder_is_leaf(self, scan_env):
+        # A subfolder that holds no images does not stop the parent from being
+        # a leaf album.
+        album = scan_env / "album"
+        album.mkdir()
+        (album / "a.jpg").write_bytes(make_jpeg_bytes())
+        junk = album / "metadata"
+        junk.mkdir()
+        (junk / "info.txt").write_text("notes")
+        img_api.bootstrap()
+        names = sorted(e.name for e in img_api._store.values())
+        assert names == ["album"]
+
+    def test_duplicate_basenames_across_branches(self, scan_env):
+        # Same leaf name under different branches yields two albums (basename
+        # naming, consistent with comics/videos).
+        for series in ["a", "b"]:
+            d = scan_env / series / "chapter1"
+            d.mkdir(parents=True)
+            (d / "x.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        names = sorted(e.name for e in img_api._store.values())
+        assert names == ["chapter1", "chapter1"]
+
 
 class TestGetAll:
     def test_empty(self, client):

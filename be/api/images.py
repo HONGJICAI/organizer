@@ -72,6 +72,36 @@ def _gen_cover(entity: ImageEntity, overwrite=False, page=0) -> bool:
     return False
 
 
+def _leaf_image_dirs(scan_path: str) -> List[str]:
+    """Recursively find leaf image folders under scan_path.
+
+    A folder qualifies only if it directly contains image files AND none of
+    its descendant folders directly contain images — i.e. a "mixed" folder
+    (images plus image-bearing subfolders) yields its leaves, not itself.
+    os.walk does not follow symlinks by default, so symlinked dirs are not
+    descended into (avoids loops). Like comics/videos, the album name is the
+    folder's basename, not its relative path.
+    """
+    # Dirs that directly contain at least one image file.
+    img_dirs = set()
+    for root, _dirs, files in os.walk(scan_path):
+        if any(os.path.splitext(f)[1].lower() in _IMAGE_EXTS for f in files):
+            img_dirs.add(root)
+    # Drop any img dir that has an img-bearing descendant: walk each dir's
+    # ancestor chain and mark those ancestors as non-leaf.
+    non_leaf = set()
+    for d in img_dirs:
+        parent = os.path.dirname(d)
+        while True:
+            if parent in img_dirs:
+                non_leaf.add(parent)
+            grandparent = os.path.dirname(parent)
+            if grandparent == parent:
+                break
+            parent = grandparent
+    return sorted(img_dirs - non_leaf)
+
+
 def bootstrap():
     """Scan image folders and (re)populate the in-memory store."""
     new_store: Dict[int, ImageEntity] = {}
@@ -80,14 +110,12 @@ def bootstrap():
         if not os.path.isdir(scan_path):
             continue
         try:
-            entries = sorted(os.scandir(scan_path), key=lambda e: e.name)
+            leaves = _leaf_image_dirs(scan_path)
         except OSError as e:
             print(f"Failed to scan {scan_path}: {e}")
             continue
-        for entry in entries:
-            if not entry.is_dir(follow_symlinks=False):
-                continue
-            files = _image_files(entry.path)
+        for leaf in leaves:
+            files = _image_files(leaf)
             if not files:
                 continue
             id_counter += 1
@@ -97,9 +125,9 @@ def bootstrap():
             new_store[id_counter] = ImageEntity(
                 id=id_counter,
                 size=0,
-                name=entry.name,
-                path=entry.path,
-                updateTime=datetime.datetime.fromtimestamp(entry.stat().st_mtime),
+                name=os.path.basename(leaf),
+                path=leaf,
+                updateTime=datetime.datetime.fromtimestamp(os.stat(leaf).st_mtime),
                 page=len(files),
             )
 
