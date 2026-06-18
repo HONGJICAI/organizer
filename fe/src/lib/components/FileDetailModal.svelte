@@ -215,6 +215,9 @@
 		if (error) {
 			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		} else if (data) {
+			// A brand-new comic was imported; drop the cached comic list so it shows
+			// up when navigating to comics instead of only after a reload.
+			refreshMediaFiles(MediaType.Comic);
 			addNotification(new SuccessNotification({ subtitle: `Converted to comic: ${data.name}` }));
 		}
 		sendingConvert = false;
