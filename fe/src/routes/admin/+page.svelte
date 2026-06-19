@@ -4,6 +4,7 @@
 	import type { ScanStatusResponse, TasksResponse } from '$lib/client';
 	import { ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
+	import { refreshMediaFiles } from '$lib/mediaStore';
 	import {
 		Breadcrumb,
 		BreadcrumbItem,
@@ -18,6 +19,7 @@
 	let tasks = $state<TasksResponse | null>(null);
 	let triggering = $state(false);
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let wasRunning = false;
 
 	function fmtTime(iso: string | null | undefined): string {
 		if (!iso) return '—';
@@ -50,6 +52,12 @@
 	// the metrics stay live without hammering the backend.
 	async function poll() {
 		const running = await loadScan();
+		if (wasRunning && !running) {
+			// A scan just finished; it may have imported or reconciled away media, so
+			// drop the cached lists to force a re-fetch on the next visit (mediaStore).
+			refreshMediaFiles();
+		}
+		wasRunning = running;
 		timer = setTimeout(poll, running ? 1000 : 5000);
 	}
 

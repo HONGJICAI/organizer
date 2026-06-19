@@ -2,6 +2,7 @@
 	import { ComicsService } from '$lib/client';
 	import { Comic, ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
+	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { page } from '$app/state';
 	import {
 		Breadcrumb,
@@ -118,6 +119,9 @@
 		selectedRowIds = [];
 		deleting = false;
 		if (failed < ids.length) {
+			// Drop the cached list so the home/folder views don't resurrect the
+			// records we just removed (see mediaStore).
+			refreshMediaFiles(mediaType);
 			addNotification(new SuccessNotification({ subtitle: 'Deleted' }));
 		}
 	}

@@ -42,6 +42,7 @@
 		type ComicDetailResponse
 	} from '$lib/client';
 	import { addNotification } from '$lib/state.svelte';
+	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { goto } from '$app/navigation';
 
 	interface Props {
@@ -86,6 +87,10 @@
 					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				} else {
 					onFileDeleted(permanent);
+					// The per-type list is cached for the session (see mediaStore); drop it
+					// so navigating away and back re-fetches instead of resurrecting the
+					// just-deleted/archived file from stale cache.
+					refreshMediaFiles(mediaType);
 					onCloseModal();
 				}
 				break;
@@ -96,6 +101,10 @@
 					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				} else {
 					onFileDeleted(permanent);
+					// The per-type list is cached for the session (see mediaStore); drop it
+					// so navigating away and back re-fetches instead of resurrecting the
+					// just-deleted/archived file from stale cache.
+					refreshMediaFiles(mediaType);
 					onCloseModal();
 				}
 				break;
@@ -106,6 +115,7 @@
 					addNotification(new ErrorNotification({ subtitle: error?.msg }));
 				} else {
 					onFileDeleted(true);
+					refreshMediaFiles(mediaType);
 					onCloseModal();
 				}
 				break;
@@ -205,6 +215,9 @@
 		if (error) {
 			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		} else if (data) {
+			// A brand-new comic was imported; drop the cached comic list so it shows
+			// up when navigating to comics instead of only after a reload.
+			refreshMediaFiles(MediaType.Comic);
 			addNotification(new SuccessNotification({ subtitle: `Converted to comic: ${data.name}` }));
 		}
 		sendingConvert = false;

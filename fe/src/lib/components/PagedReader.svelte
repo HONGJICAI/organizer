@@ -401,8 +401,16 @@
 		height: calc(100vh - 6rem);
 	}
 
+	/* Width mode (the mobile default): the page fills the viewport width and its
+	   height follows the aspect ratio. Center it in the reading area so a page
+	   shorter than the viewport isn't stranded against the top; min-height (not a
+	   fixed height) lets a taller page grow the container and scroll normally. */
 	.fit-to-width {
 		max-width: 100vw;
+		min-height: calc(100vh - 6rem);
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 	.fit-to-width img {
 		width: 100vw;
