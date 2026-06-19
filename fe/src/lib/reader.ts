@@ -39,6 +39,22 @@ export function pageApiUrl(mediaType: MediaType, id: number, pageNum: number): s
 	return qs ? `${base}?${qs}` : base;
 }
 
+// Compute the target page for a single navigation step in the paged reader.
+// Pages are 1-based (valid range 1..maxPage). `dir` is +1 (next) or -1 (prev).
+// When `loop` is true the page wraps around both ends (used by the keyboard
+// arrows and the looping PaginationNav); otherwise it clamps at the boundaries
+// and returns the *same* page when there is nowhere to go — callers rely on
+// that no-op signal to avoid kicking off a navigation that never changes the
+// page (which would otherwise leave the reader's `loading` flag stuck, since
+// it is only cleared by the <img> load/error handlers).
+export function stepPage(page: number, maxPage: number, dir: 1 | -1, loop = false): number {
+	if (maxPage <= 0) return page;
+	if (loop) {
+		return ((page - 1 + dir + maxPage) % maxPage) + 1;
+	}
+	return Math.min(maxPage, Math.max(1, page + dir));
+}
+
 // CSS class for the active view mode, shared by the comic/image readers and the
 // video player so they size their media identically.
 export function viewModeClass(mode: ViewMode): string {
