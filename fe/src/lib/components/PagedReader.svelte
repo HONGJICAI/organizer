@@ -79,6 +79,12 @@
 	onMount(() => {
 		window.scrollTo(0, 0);
 		window.addEventListener('keydown', handleKeydown);
+		// Let the overview grid jump us to a page.
+		viewerState.gotoPage = (p: number) => {
+			loading = true;
+			page = Math.min(Math.max(p, 1), maxPage);
+			window.scrollTo(0, 0);
+		};
 		return () => window.removeEventListener('keydown', handleKeydown);
 	});
 

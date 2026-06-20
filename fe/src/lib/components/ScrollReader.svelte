@@ -26,6 +26,8 @@
 		loadedCount = Math.min(5, maxPage);
 		viewerState.page = 1;
 		window.scrollTo(0, 0);
+		// Let the overview grid jump us to a page.
+		viewerState.gotoPage = (p: number) => jumpToPage(p);
 	});
 
 	// Sentinel observer — load 5 more pages when the user nears the bottom. The
