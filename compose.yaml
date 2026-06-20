@@ -10,3 +10,20 @@ services:
       - ${LIKED_PATH}:/data/liked
       - ./config:/config
     restart: unless-stopped
+    # Uncomment to let Watchtower (below) auto-update only this container.
+    # labels:
+    #   - "com.centurylinklabs.watchtower.enable=true"
+
+  # Optional: auto-pull and restart the app when a new :latest image is pushed.
+  # Disabled by default — it needs the Docker socket (host-level privilege) and
+  # updates :latest unattended, which can pull breaking changes. To enable,
+  # uncomment this service AND the watchtower label on `app` above.
+  # watchtower:
+  #   image: containrrr/watchtower:latest
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   environment:
+  #     - WATCHTOWER_CLEANUP=true          # prune old images after updating
+  #     - WATCHTOWER_LABEL_ENABLE=true     # only watch labeled containers
+  #     - WATCHTOWER_POLL_INTERVAL=86400   # check once a day (seconds)
+  #   restart: unless-stopped
