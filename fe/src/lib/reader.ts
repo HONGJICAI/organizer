@@ -26,14 +26,21 @@ export function pageWidth(): number | null {
 // Build the media URL for a single comic/image page. These are loaded by an
 // <img> element, which cannot send an Authorization header, so auth rides on
 // the `?token=` query param (backend require_media_auth) instead of the SDK.
-export function pageApiUrl(mediaType: MediaType, id: number, pageNum: number): string {
+// `widthOverride` forces a specific server-side render width (e.g. small
+// thumbnails for the overview grid), bypassing the user's page-width setting.
+export function pageApiUrl(
+	mediaType: MediaType,
+	id: number,
+	pageNum: number,
+	widthOverride?: number
+): string {
 	const base =
 		mediaType === MediaType.Image
 			? `${config.apiServer}/api/images/${id}/pages/${pageNum}`
 			: `${config.apiServer}/api/comics/${id}/pages/${pageNum}`;
 	const params = new URLSearchParams();
 	if (authState.token) params.set('token', authState.token);
-	const width = pageWidth();
+	const width = widthOverride ?? pageWidth();
 	if (width) params.set('width', String(width));
 	const qs = params.toString();
 	return qs ? `${base}?${qs}` : base;

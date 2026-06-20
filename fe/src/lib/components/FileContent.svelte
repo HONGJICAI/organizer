@@ -7,6 +7,7 @@
 	import PagedReader from './PagedReader.svelte';
 	import ScrollReader from './ScrollReader.svelte';
 	import VideoPlayer from './VideoPlayer.svelte';
+	import PageOverview from './PageOverview.svelte';
 
 	interface Props {
 		file: MediaFile;
@@ -33,12 +34,16 @@
 		if (viewerState.maxPage >= 1) reporter.schedule(viewerState.page);
 	});
 
+	// Only paged/scroll media (comics, image albums) have a page overview.
+	const hasPages = $derived(file.type !== MediaType.Video);
+
 	onMount(() => {
 		viewerState.active = true;
 		viewerState.title = file.name;
 		viewerState.onClose = onClose;
 		return () => {
 			viewerState.active = false;
+			viewerState.overviewOpen = false;
 			reporter.flush();
 		};
 	});
@@ -50,4 +55,15 @@
 	<ScrollReader file={file as Comic | Image} />
 {:else}
 	<PagedReader file={file as Comic | Image} />
+{/if}
+
+{#if hasPages && viewerState.overviewOpen}
+	<PageOverview
+		file={file as Comic | Image}
+		onJump={(p) => {
+			viewerState.gotoPage(p);
+			viewerState.overviewOpen = false;
+		}}
+		onClose={() => (viewerState.overviewOpen = false)}
+	/>
 {/if}

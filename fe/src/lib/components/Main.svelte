@@ -44,7 +44,15 @@
 		<div class="viewer-center">
 			<span class="viewer-title">{viewerState.title}</span>
 			{#if viewerState.maxPage > 0}
-				<span class="viewer-page">{viewerState.page} / {viewerState.maxPage}</span>
+				<button
+					class="viewer-page"
+					class:active={viewerState.overviewOpen}
+					title="Page overview"
+					aria-label="Toggle page overview"
+					onclick={() => (viewerState.overviewOpen = !viewerState.overviewOpen)}
+				>
+					{viewerState.page} / {viewerState.maxPage}
+				</button>
 			{/if}
 		</div>
 	{/if}
@@ -142,6 +150,24 @@
 		background: var(--cds-ui-04, #8d8d8d);
 		padding: 0.125rem 0.5rem;
 		border-radius: 1rem;
+		/* Re-enable clicks: the centered container disables pointer events so it
+		   never blocks the header buttons behind it. */
+		pointer-events: auto;
+		border: none;
+		cursor: pointer;
+	}
+
+	.viewer-page.active {
+		background: var(--cds-interactive-01, #0f62fe);
+		color: var(--cds-text-04, #ffffff);
+	}
+
+	/* On narrow screens the title eats the header; drop it and keep only the
+	   page counter (which doubles as the overview entry point). */
+	@media screen and (max-width: 672px) {
+		.viewer-title {
+			display: none;
+		}
 	}
 
 	.notification-stack {
