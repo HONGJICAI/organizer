@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { PaginationNav } from 'carbon-components-svelte';
 	import { Comic, Image } from '$lib/model.svelte';
 	import { pageApiUrl } from '$lib/reader';
 	import { viewerState } from '$lib/viewerState.svelte';
@@ -15,11 +16,39 @@
 	// Server-side thumbnail width. Small enough to render hundreds of pages
 	// cheaply; the backend caps and aspect-preserves via the `width` param.
 	const THUMB_WIDTH = 200;
+	// Thumbnails rendered per overview screen. Only the current batch is mounted,
+	// so opening a huge album never fires hundreds of image requests at once.
+	const BATCH_SIZE = 60;
 
 	const maxPage = $derived(file.page ?? 0);
-	const pages = $derived(Array.from({ length: maxPage }, (_, i) => i + 1));
+	const totalBatches = $derived(Math.max(1, Math.ceil(maxPage / BATCH_SIZE)));
+
+	// Open on the batch holding the page the reader is on.
+	let batch = $state(Math.floor((Math.max(viewerState.page, 1) - 1) / BATCH_SIZE) + 1);
+	// Keep the batch valid if the page count shrinks (e.g. an album deletion).
+	$effect(() => {
+		if (batch > totalBatches) batch = totalBatches;
+	});
+
+	const start = $derived((batch - 1) * BATCH_SIZE);
+	const pages = $derived(
+		Array.from({ length: Math.min(BATCH_SIZE, maxPage - start) }, (_, i) => start + i + 1)
+	);
 
 	let grid: HTMLDivElement | null = $state(null);
+	let firstScrollDone = false;
+
+	// On open, center the current page; on later batch changes, jump back to top.
+	$effect(() => {
+		batch;
+		if (!grid) return;
+		if (firstScrollDone) {
+			grid.scrollTo({ top: 0 });
+		} else {
+			firstScrollDone = true;
+			grid.querySelector('.overview-tile.current')?.scrollIntoView({ block: 'center' });
+		}
+	});
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onClose();
@@ -27,8 +56,6 @@
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
-		// Bring the page the reader is on into view so the grid opens in context.
-		grid?.querySelector('.overview-tile.current')?.scrollIntoView({ block: 'center' });
 		return () => window.removeEventListener('keydown', handleKeydown);
 	});
 </script>
@@ -55,6 +82,11 @@
 			</button>
 		{/each}
 	</div>
+	{#if totalBatches > 1}
+		<div class="overview-pager">
+			<PaginationNav bind:page={batch} total={totalBatches} shown={5} />
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -111,10 +143,18 @@
 		overflow-y: auto;
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+		grid-auto-rows: min-content;
 		gap: 0.5rem;
 		padding: 0.75rem;
-		/* Cheap off-screen culling for very large albums. */
-		content-visibility: auto;
+	}
+
+	.overview-pager {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--cds-ui-01, #262626);
+		border-top: 1px solid var(--cds-ui-03, #3d3d3d);
 	}
 
 	.overview-tile {
