@@ -367,6 +367,81 @@ class TestDelete:
         assert client.delete("/api/images/999").status_code == 404
 
 
+class TestDeletePage:
+    def _album(self, tmp_path, monkeypatch, names=("a.jpg", "b.jpg", "c.jpg")):
+        import global_data
+        d = tmp_path / "album"
+        d.mkdir()
+        for name in names:
+            (d / name).write_bytes(make_jpeg_bytes())
+        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(tmp_path))
+        return d
+
+    def test_deletes_file_and_updates_count(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, path=str(d), page=3))
+        r = client.delete("/api/images/1/pages/2")
+        assert r.status_code == 200
+        assert r.json()["page"] == 2
+        assert not (d / "b.jpg").exists()
+        assert (d / "a.jpg").exists()
+        assert (d / "c.jpg").exists()
+        assert img_api._store[1].page == 2
+
+    def test_bumps_update_time(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path, monkeypatch)
+        old = datetime(2000, 1, 1)
+        set_store(make_entity(id=1, path=str(d), page=3))
+        img_api._store[1].updateTime = old
+        client.delete("/api/images/1/pages/1")
+        assert img_api._store[1].updateTime > old
+
+    def test_deleting_cover_source_regenerates_cover(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path, monkeypatch)
+        old = datetime(2000, 1, 1)
+        # coverPosition 2 -> source is files[1] == "b.jpg"; delete it.
+        set_store(make_entity(id=1, path=str(d), page=3, coverPosition=2, entityUpdateTime=old))
+        r = client.delete("/api/images/1/pages/2")
+        assert r.status_code == 200
+        assert img_api._store[1].coverPosition == 0
+        assert img_api._store[1].entityUpdateTime > old
+
+    def test_non_cover_deletion_keeps_cover_pointer(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path, monkeypatch)
+        old = datetime(2000, 1, 1)
+        # cover is "c.jpg" (page 3); deleting "a.jpg" shifts it to index 1 (page 2).
+        set_store(make_entity(id=1, path=str(d), page=3, coverPosition=3, entityUpdateTime=old))
+        r = client.delete("/api/images/1/pages/1")
+        assert r.status_code == 200
+        assert img_api._store[1].coverPosition == 2
+        # Cover bytes are unchanged, so the cache-bust token is left alone.
+        assert img_api._store[1].entityUpdateTime == old
+
+    def test_out_of_range_returns_404(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, path=str(d), page=3))
+        assert client.delete("/api/images/1/pages/99").status_code == 404
+
+    def test_zero_page_returns_404(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path, monkeypatch)
+        set_store(make_entity(id=1, path=str(d), page=3))
+        assert client.delete("/api/images/1/pages/0").status_code == 404
+
+    def test_missing_image_returns_404(self, client):
+        assert client.delete("/api/images/999/pages/1").status_code == 404
+
+    def test_missing_folder_returns_404(self, client):
+        set_store(make_entity(id=1, path="/nonexistent/album", page=3))
+        assert client.delete("/api/images/1/pages/1").status_code == 404
+
+    def test_delete_last_remaining_empties_album(self, client, tmp_path, monkeypatch):
+        d = self._album(tmp_path, monkeypatch, names=("only.jpg",))
+        set_store(make_entity(id=1, path=str(d), page=1))
+        r = client.delete("/api/images/1/pages/1")
+        assert r.status_code == 200
+        assert r.json()["page"] == 0
+
+
 class TestConvertToComic:
     def _album(self, tmp_path, pages=3):
         d = tmp_path / "album" / "My Album"

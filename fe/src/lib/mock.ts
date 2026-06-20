@@ -293,12 +293,34 @@ export async function setupMock(authRequired: boolean) {
 			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
 			return HttpResponse.json(image);
 		}),
+		http.get('/api/images/:id/detail', async ({ params }) => {
+			await delay(600);
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			const pageDetails = Array.from({ length: image.page }, (_, i) => ({
+				name: `image_${String(i + 1).padStart(3, '0')}.jpg`
+			}));
+			return HttpResponse.json({ pageDetails });
+		}),
 		http.delete('/api/images/:id', async ({ params }) => {
 			await delay(500);
 			const idx = images.findIndex((c) => c.id === Number(params.id));
 			if (idx === -1) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
 			images.splice(idx, 1);
 			return HttpResponse.json({ msg: 'Deleted' });
+		}),
+		http.delete('/api/images/:id/pages/:page', async ({ params }) => {
+			await delay(400);
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			const page = Number(params.page);
+			if (page < 1 || page > image.page) {
+				return HttpResponse.json({ msg: 'Page not found' }, { status: 404 });
+			}
+			// Mirror the backend: drop one image and bump the cover cache-bust token.
+			image.page = Math.max(0, image.page - 1);
+			image.entityUpdateTime = new Date().toISOString();
+			return HttpResponse.json(image);
 		}),
 		http.post('/api/images/:id/refresh', async ({ params }) => {
 			await delay(800);

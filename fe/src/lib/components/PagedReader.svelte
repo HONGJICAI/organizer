@@ -9,12 +9,19 @@
 	} from 'carbon-components-svelte';
 	import { Renew, ImageReference } from 'carbon-icons-svelte';
 	import { onMount } from 'svelte';
-	import { Comic, Image, ErrorNotification, SuccessNotification } from '$lib/model.svelte';
+	import {
+		Comic,
+		Image,
+		MediaType,
+		ErrorNotification,
+		SuccessNotification
+	} from '$lib/model.svelte';
 	import { config, ViewMode } from '$lib/config.svelte';
 	import { pageApiUrl, viewModeClass } from '$lib/reader';
 	import { viewerState } from '$lib/viewerState.svelte';
 	import { addNotification } from '$lib/state.svelte';
-	import { ComicpageService } from '$lib/client';
+	import { refreshMediaFiles } from '$lib/mediaStore';
+	import { ComicpageService, ImagesService } from '$lib/client';
 
 	interface Props {
 		file: Comic | Image;
@@ -273,6 +280,40 @@
 		}
 	}
 
+	// Single-image deletion is only meaningful for image albums (plain folders);
+	// comic pages live inside an archive and aren't individually removable.
+	const canDeletePage = $derived(file.type === MediaType.Image);
+	let deletingPage = $state(false);
+	async function onDeletePage() {
+		if (deletingPage || !canDeletePage) return;
+		deletingPage = true;
+		const { data, error } = await ImagesService.imageDeletePage({
+			path: { id: file.id, page }
+		});
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: error?.msg ?? 'Failed to delete image' }));
+		} else if (data) {
+			// Reflect the new page count/cover on the shared instance and drop the
+			// cached list so the album's page count isn't resurrected stale.
+			file.update(data);
+			refreshMediaFiles(MediaType.Image);
+			if (maxPage <= 0) {
+				// Album is now empty — nothing left to show.
+				viewerState.onClose();
+			} else {
+				// Pages after the deleted one shifted down by one, so this slot now
+				// holds the next image (or clamp to the new last page). Force the
+				// <img> to refetch since the URL is unchanged but its bytes are not.
+				page = Math.min(page, maxPage);
+				loading = true;
+				pageError = false;
+				pageRetry += 1;
+			}
+			addNotification(new SuccessNotification({ subtitle: 'Deleted image' }));
+		}
+		deletingPage = false;
+	}
+
 	async function onSetCover() {
 		const { error } = await ComicpageService.comicPageSetCover({ path: { id: file.id, page } });
 		if (error) {
@@ -339,7 +380,13 @@
 		<ContextMenuOption indented labelText="Like page" on:click={onLikePage} />
 		<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
 		<ContextMenuDivider />
-		<ContextMenuOption indented kind="danger" labelText="Delete" disabled />
+		<ContextMenuOption
+			indented
+			kind="danger"
+			labelText="Delete"
+			disabled={!canDeletePage || deletingPage}
+			on:click={onDeletePage}
+		/>
 	</ContextMenu>
 </div>
 
