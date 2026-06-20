@@ -9,6 +9,9 @@ export const viewerState = $state({
 	// eslint-disable-next-line @typescript-eslint/no-empty-function
 	onClose: () => {},
 	// Reverse channel from the chrome/overview to the active reader: jump to a
-	// 1-based page. Each reader registers its own implementation on mount.
-	gotoPage: (page: number) => void page
+	// 1-based page. Each reader registers its own implementation on mount. The
+	// explicit void return type lets a reader register an async handler.
+	gotoPage: (page: number): void => {
+		void page;
+	}
 });
