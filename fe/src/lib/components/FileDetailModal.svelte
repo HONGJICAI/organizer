@@ -35,12 +35,7 @@
 		TrashCan,
 		UpdateNow
 	} from 'carbon-icons-svelte';
-	import {
-		ComicsService,
-		ImagesService,
-		VideosService,
-		type ComicDetailResponse
-	} from '$lib/client';
+	import { ComicsService, ImagesService, VideosService } from '$lib/client';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { goto } from '$app/navigation';
@@ -224,20 +219,45 @@
 	}
 
 	let loadingDetail = $state(false);
-	let comicDetail = $state<ComicDetailResponse>();
+	// Comics and image albums share the same `{ pageDetails: [{ name }] }` shape;
+	// only the service that produces it differs.
+	let detail = $state<{ pageDetails: { name: string }[] }>();
 	async function onClickDetail() {
 		loadingDetail = true;
-		const { data, error } = await ComicsService.comicDetail({
-			path: {
-				id: file.id
-			}
-		});
+		const { data, error } =
+			mediaType === MediaType.Image
+				? await ImagesService.imageDetail({ path: { id: file.id } })
+				: await ComicsService.comicDetail({ path: { id: file.id } });
 		if (error) {
 			addNotification(new ErrorNotification({ subtitle: error?.msg }));
 		} else {
-			comicDetail = data;
+			detail = data;
 		}
 		loadingDetail = false;
+	}
+
+	// Index of the album page currently being deleted (-1 when idle), so only its
+	// row shows a spinner and double-clicks are ignored.
+	let deletingPageIdx = $state(-1);
+	async function onClickDeletePage(idx: number) {
+		if (deletingPageIdx !== -1) return;
+		deletingPageIdx = idx;
+		// The API is 1-based and deletes by position in the sorted file list, which
+		// matches this list's order, so the local row index maps straight to a page.
+		const { data, error } = await ImagesService.imageDeletePage({
+			path: { id: file.id, page: idx + 1 }
+		});
+		if (error) {
+			addNotification(new ErrorNotification({ subtitle: error?.msg }));
+		} else if (data) {
+			// Drop the row locally so the remaining rows stay aligned with the
+			// folder for any follow-up deletes, and reflect the new page count/cover
+			// on the shared file instance held by cached list views.
+			detail = { pageDetails: (detail?.pageDetails ?? []).filter((_, i) => i !== idx) };
+			file.update(data);
+			refreshMediaFiles(MediaType.Image);
+		}
+		deletingPageIdx = -1;
 	}
 </script>
 
@@ -364,13 +384,38 @@
 	{#if !file.archived}
 		<p>Details</p>
 		<DataTable
-			headers={[{ key: 'name', value: 'Name' }]}
-			rows={comicDetail?.pageDetails.map((page, idx) => ({ id: idx, name: page.name })) ?? []}
-		/>
+			headers={mediaType === MediaType.Image
+				? [
+						{ key: 'name', value: 'Name' },
+						{ key: 'actions', empty: true }
+					]
+				: [{ key: 'name', value: 'Name' }]}
+			rows={detail?.pageDetails.map((page, idx) => ({ id: idx, name: page.name })) ?? []}
+		>
+			<svelte:fragment slot="cell" let:row let:cell>
+				{#if cell.key === 'actions'}
+					{#if deletingPageIdx === row.id}
+						<InlineLoading />
+					{:else}
+						<Button
+							kind="danger-ghost"
+							size="small"
+							icon={TrashCan}
+							iconDescription="Delete image"
+							tooltipPosition="left"
+							disabled={deletingPageIdx !== -1}
+							on:click={() => onClickDeletePage(row.id)}
+						/>
+					{/if}
+				{:else}
+					{cell.value}
+				{/if}
+			</svelte:fragment>
+		</DataTable>
 		{#if loadingDetail}
 			<InlineLoading description="Loading..." />
 		{/if}
-		{#if comicDetail === undefined && !loadingDetail}
+		{#if detail === undefined && !loadingDetail}
 			<div class="center">
 				<Button
 					kind="secondary"

@@ -1178,6 +1178,50 @@ export type ImageDetailResponses = {
 
 export type ImageDetailResponse2 = ImageDetailResponses[keyof ImageDetailResponses];
 
+export type ImageDeletePageData = {
+    body?: never;
+    path: {
+        id: number;
+        page: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/pages/{page}';
+};
+
+export type ImageDeletePageErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageDeletePageError = ImageDeletePageErrors[keyof ImageDeletePageErrors];
+
+export type ImageDeletePageResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImageEntity;
+};
+
+export type ImageDeletePageResponse = ImageDeletePageResponses[keyof ImageDeletePageResponses];
+
 export type ImageGetPageData = {
     body?: never;
     path: {

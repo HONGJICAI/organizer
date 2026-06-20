@@ -247,6 +247,51 @@ class ImageCBV:
         entity.path = new_path
         return ImageRenameResponse(name=new_name)
 
+    @router.delete("/api/images/{id}/pages/{page}", tags=["images"])
+    def delete_page(self, id: int, page: int, _: None = Depends(require_auth)) -> ImageEntity:
+        """Delete a single image file from an album.
+
+        `page` is 1-based (page 1 == the album's first file), matching get_page.
+        Unlike comics (whose pages live inside an archive), image albums are
+        plain folders, so an individual file can be removed in place. The page
+        count and updateTime are refreshed; bumping updateTime invalidates the
+        page etags, since every page after the deleted one now maps to a
+        different file. The cover is only regenerated when the deleted page was
+        its source image, so a custom-set cover survives unrelated deletions.
+        """
+        if page < 1:
+            abort(404, "Page not found")
+        entity = _get(id)
+        if not os.path.isdir(entity.path):
+            abort(404, "Image folder not found in filesystem")
+        files = _image_files(entity.path)
+        idx = page - 1
+        if idx >= len(files):
+            abort(404, "Page not found")
+        # Remember which file backs the cover so it is only regenerated when the
+        # deleted page is that source (coverPosition is 1-based, 0 == first page).
+        cover_idx = (entity.coverPosition - 1) if entity.coverPosition > 0 else 0
+        cover_name = files[cover_idx] if cover_idx < len(files) else None
+        target = files[idx]
+        try:
+            os.remove(os.path.join(entity.path, target))
+        except OSError as e:
+            abort(500, f"Cannot delete image: {e}")
+        remaining = _image_files(entity.path)
+        entity.page = len(remaining)
+        entity.updateTime = datetime.datetime.now()
+        if target == cover_name or cover_name not in remaining:
+            # The cover's source image is gone (or unknown): rebuild from the
+            # first remaining page and reset the cover pointer.
+            entity.coverPosition = 0
+            _gen_cover(entity, overwrite=True, page=0)
+            entity.entityUpdateTime = datetime.datetime.now()
+        elif entity.coverPosition > 0:
+            # The cover image survives; its index may have shifted, so keep the
+            # pointer aimed at the same file (the JPEG bytes are unchanged).
+            entity.coverPosition = remaining.index(cover_name) + 1
+        return entity.model_dump()
+
     @router.delete("/api/images/{id}", tags=["images"])
     def delete(self, id: int, _: None = Depends(require_auth)) -> APIMessage:
         entity = _get(id)
