@@ -17,7 +17,7 @@
 		SuccessNotification
 	} from '$lib/model.svelte';
 	import { config, ViewMode } from '$lib/config.svelte';
-	import { pageApiUrl, viewModeClass } from '$lib/reader';
+	import { pageApiUrl, viewModeClass, stepPage } from '$lib/reader';
 	import { viewerState } from '$lib/viewerState.svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
@@ -99,23 +99,27 @@
 
 	const handleKeydown = (event: KeyboardEvent) => {
 		if (event.key === 'ArrowLeft') {
-			page = (page - 1 + maxPage) % maxPage;
+			page = stepPage(page, maxPage, -1, true);
 		} else if (event.key === 'ArrowRight') {
-			page = (page + 1) % maxPage;
+			page = stepPage(page, maxPage, 1, true);
 		}
 	};
 
 	const goNextPage = () => {
 		if (loading) return;
+		const next = stepPage(page, maxPage, 1);
+		if (next === page) return;
 		loading = true;
-		page = Math.min(page + 1, maxPage);
+		page = next;
 		window.scrollTo(0, 0);
 	};
 
 	const goPrevPage = () => {
 		if (loading) return;
+		const prev = stepPage(page, maxPage, -1);
+		if (prev === page) return;
 		loading = true;
-		page = Math.max(page - 1, 1);
+		page = prev;
 		window.scrollTo(0, 0);
 	};
 
