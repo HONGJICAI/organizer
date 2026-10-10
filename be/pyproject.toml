@@ -8,7 +8,7 @@ dependencies = [
     "pillow>=11.0.0",
     "rarfile>=4.2",
     "rich>=13.9.4",
-    "sqlmodel>=0.0.22",
+    "sqlmodel>=0.0.48",
     "typing-inspect>=0.9.0",
     "asyncio>=4.0.0",
 ]
