@@ -331,16 +331,19 @@ class ImageCBV:
         their existing filenames, so page order matches what the album shows.
         The source folder is left untouched; the new comic is added to the
         comic library and gets a cover generated like any scanned comic.
+        Output goes to COMIC_CONVERT_PATH, or "<first comic scan path>/converted".
         """
         entity = _get(id)
         files = _image_files(entity.path)
         if not files:
             abort(400, "Image folder has no images to convert")
 
-        scan_pathes = global_data.Config.Comic.scan_pathes
-        if not scan_pathes:
-            abort(500, "No comic scan path configured")
-        out_dir = scan_pathes[0]
+        out_dir = global_data.Config.Comic.convert_path
+        if not out_dir:
+            scan_pathes = global_data.Config.Comic.scan_pathes
+            if not scan_pathes:
+                abort(500, "No comic scan path configured")
+            out_dir = os.path.join(scan_pathes[0], "converted")
         try:
             os.makedirs(out_dir, exist_ok=True)
         except OSError as e:
