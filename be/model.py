@@ -1,6 +1,7 @@
 from datetime import datetime
 import pathlib
 from typing import Optional
+from pydantic import NaiveDatetime
 from sqlmodel import Field, SQLModel
 
 
@@ -19,7 +20,10 @@ class FileEntity(SQLModel):
     size: int
     name: str
     path: str
-    updateTime: datetime
+    # Timestamps are naive local time (datetime.now()/fromtimestamp()), which is
+    # what existing databases hold. sqlmodel >= 0.0.4x maps a plain `datetime`
+    # to a tz-aware column that rejects naive values, so pin naive storage.
+    updateTime: NaiveDatetime
     archived: bool = Field(default=False)
     favorited: bool = Field(default=False)
     # Set by the scan reconcile when the backing file is gone from disk; cleared
@@ -27,10 +31,10 @@ class FileEntity(SQLModel):
     # "deleted file, kept record" tombstones). The list API filters on this so a
     # temporarily-unmounted drive hides entries instead of destroying records.
     missing: bool = Field(default=False)
-    lastViewedTime: Optional[datetime] = Field(default=None)
+    lastViewedTime: Optional[NaiveDatetime] = Field(default=None)
     lastViewedPosition: int = Field(default=0)
     coverPosition: int = Field(default=0)
-    entityUpdateTime: datetime = Field(default_factory=datetime.now)
+    entityUpdateTime: NaiveDatetime = Field(default_factory=datetime.now)
 
     @staticmethod
     def from_path(path: pathlib.Path):

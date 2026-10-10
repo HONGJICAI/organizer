@@ -16,8 +16,12 @@ RUN apk add --no-cache nginx supervisor
 # ── Backend ──
 WORKDIR /app/be
 COPY be/pyproject.toml be/uv.lock ./
+# Install the exact versions from uv.lock (what CI tests), not whatever
+# pyproject's lower bounds resolve to at build time.
 RUN apk add --no-cache gcc python3-dev musl-dev linux-headers && \
-    uv pip install --system --no-cache -r pyproject.toml
+    uv export --frozen --no-dev --no-hashes --no-emit-project -o /tmp/requirements.txt && \
+    uv pip install --system --no-cache -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
 COPY be/ .
 
 # ── Frontend ──

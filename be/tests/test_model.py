@@ -53,3 +53,22 @@ def test_file_entity_from_path_dir(tmp_path):
     entity = FileEntity.from_path(tmp_path)
     assert entity.size == 15
     assert entity.name == tmp_path.name
+
+
+def test_naive_datetimes_persist(session, tmp_path):
+    # Regression: sqlmodel >= 0.0.4x stores plain `datetime` fields as tz-aware
+    # and rejects the naive local times the app writes ("Datetime values must
+    # have timezone information"), which broke image-to-comic conversion.
+    f = tmp_path / "book.zip"
+    f.write_bytes(b"x")
+    entity = ComicEntity.from_path(f, id=1)
+    entity.lastViewedTime = datetime.now()
+    session.add(entity)
+    session.commit()
+    session.expire_all()
+
+    stored = session.get(ComicEntity, 1)
+    assert stored.updateTime == entity.updateTime
+    assert stored.updateTime.tzinfo is None
+    assert stored.lastViewedTime.tzinfo is None
+    assert stored.entityUpdateTime.tzinfo is None
