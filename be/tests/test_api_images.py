@@ -455,6 +455,7 @@ class TestConvertToComic:
         comic_dir = tmp_path / "comics_src"
         comic_dir.mkdir()
         monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [str(comic_dir)])
+        monkeypatch.setattr(global_data.Config.Comic, "convert_path", None)
         return comic_dir
 
     def test_creates_comic_zip(self, client, tmp_path, monkeypatch):
@@ -469,10 +470,32 @@ class TestConvertToComic:
         assert body["name"] == "My Album.zip"
         assert body["page"] == 3
 
-        zip_path = comic_dir / "My Album.zip"
+        zip_path = comic_dir / "converted" / "My Album.zip"
         assert zip_path.exists()
+        assert body["path"] == str(zip_path)
         with zipfile.ZipFile(zip_path) as zf:
             assert sorted(zf.namelist()) == ["000.jpg", "001.jpg", "002.jpg"]
+
+    def test_convert_path_override(self, client, tmp_path, monkeypatch):
+        import global_data
+        d = self._album(tmp_path)
+        self._comic_dir(tmp_path, monkeypatch)
+        out_dir = tmp_path / "custom_out"
+        monkeypatch.setattr(global_data.Config.Comic, "convert_path", str(out_dir))
+        set_store(make_entity(id=1, name="My Album", path=str(d)))
+
+        r = client.post("/api/images/1/convert")
+        assert r.status_code == 200
+        assert r.json()["path"] == str(out_dir / "My Album.zip")
+        assert (out_dir / "My Album.zip").exists()
+
+    def test_no_scan_path_returns_500(self, client, tmp_path, monkeypatch):
+        import global_data
+        d = self._album(tmp_path)
+        monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [])
+        monkeypatch.setattr(global_data.Config.Comic, "convert_path", None)
+        set_store(make_entity(id=1, name="My Album", path=str(d)))
+        assert client.post("/api/images/1/convert").status_code == 500
 
     def test_source_folder_preserved(self, client, tmp_path, monkeypatch):
         d = self._album(tmp_path)

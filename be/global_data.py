@@ -22,6 +22,9 @@ class Config:
 
     class Comic:
         scan_pathes = [os.environ.get("COMIC_SCAN_PATH", "/data/comics")]
+        # Where image-album -> comic conversions are written. Unset means
+        # "<first scan path>/converted", so the output is still picked up by scans.
+        convert_path = os.environ.get("COMIC_CONVERT_PATH")
 
     class Video:
         scan_pathes = [os.environ.get("VIDEO_SCAN_PATH", "/data/videos")]
