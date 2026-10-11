@@ -256,6 +256,48 @@ export const DailyScanInfoSchema = {
     title: 'DailyScanInfo'
 } as const;
 
+export const DuplicateGroupSchema = {
+    properties: {
+        exact: {
+            type: 'boolean',
+            title: 'Exact',
+            description: 'All names reduce to the same title and volume; otherwise only similar'
+        },
+        keepId: {
+            type: 'integer',
+            title: 'Keepid',
+            description: 'Suggested copy to keep: favorited, then most pages, then largest'
+        },
+        items: {
+            items: {
+                '$ref': '#/components/schemas/ComicEntity'
+            },
+            type: 'array',
+            title: 'Items'
+        }
+    },
+    type: 'object',
+    required: ['exact', 'keepId', 'items'],
+    title: 'DuplicateGroup',
+    description: 'Comics that look like copies of the same work'
+} as const;
+
+export const DuplicatesResponseSchema = {
+    properties: {
+        groups: {
+            items: {
+                '$ref': '#/components/schemas/DuplicateGroup'
+            },
+            type: 'array',
+            title: 'Groups'
+        }
+    },
+    type: 'object',
+    required: ['groups'],
+    title: 'DuplicatesResponse',
+    description: 'Response for the duplicate finder'
+} as const;
+
 export const FavorResponseSchema = {
     properties: {
         favorited: {
@@ -581,6 +623,7 @@ export const ScanStatusResponseSchema = {
         last_result: {
             anyOf: [
                 {
+                    additionalProperties: true,
                     type: 'object'
                 },
                 {

@@ -80,6 +80,7 @@
 					<HeaderPanelLink href="/comic/folder">Folder</HeaderPanelLink>
 					<HeaderPanelLink href="/comic/tag">Tag</HeaderPanelLink>
 					<HeaderPanelLink href="/comic/organize">Organize</HeaderPanelLink>
+					<HeaderPanelLink href="/comic/duplicates">Duplicates</HeaderPanelLink>
 					<HeaderPanelDivider>Videos</HeaderPanelDivider>
 					<HeaderPanelLink href="/video">Home</HeaderPanelLink>
 					<HeaderPanelLink href="/video/folder">Folder</HeaderPanelLink>

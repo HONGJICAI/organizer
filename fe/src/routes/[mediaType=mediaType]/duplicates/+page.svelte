@@ -1,0 +1,332 @@
+<script lang="ts">
+	import { ComicsService } from '$lib/client';
+	import { Comic, ErrorNotification, SuccessNotification } from '$lib/model.svelte';
+	import { addNotification } from '$lib/state.svelte';
+	import { refreshMediaFiles } from '$lib/mediaStore';
+	import { page } from '$app/state';
+	import {
+		Breadcrumb,
+		BreadcrumbItem,
+		Button,
+		Checkbox,
+		InlineLoading,
+		Modal,
+		Slider,
+		Tag,
+		Tile,
+		Toggle
+	} from 'carbon-components-svelte';
+	import { Home, Renew, TrashCan } from 'carbon-icons-svelte';
+
+	interface Group {
+		exact: boolean;
+		keepId: number;
+		items: Comic[];
+	}
+
+	let mediaType = $derived(page.params.mediaType);
+	let loading = $state(true);
+	let groups = $state<Group[]>([]);
+	// Similarity threshold in percent; the API takes 0.5–1.0.
+	let threshold = $state(85);
+	let permanent = $state(false);
+	let selected = $state<Set<number>>(new Set());
+	let confirmOpen = $state(false);
+	let deleting = $state(false);
+
+	let selectedCount = $derived(selected.size);
+	let duplicateCount = $derived(groups.reduce((n, g) => n + g.items.length - 1, 0));
+
+	async function load() {
+		loading = true;
+		const { data, error } = await ComicsService.comicFindDuplicates({
+			query: { threshold: threshold / 100 }
+		});
+		if (error || !data) {
+			addNotification(new ErrorNotification({ subtitle: 'Failed to find duplicates' }));
+			groups = [];
+		} else {
+			groups = data.groups.map((g) => ({
+				exact: g.exact,
+				keepId: g.keepId,
+				items: g.items.map((c) => new Comic(c))
+			}));
+		}
+		// Pre-select every copy except the suggested keeper. Favorited comics
+		// are refused by the delete endpoint, so never select those.
+		selected = new Set(
+			groups.flatMap((g) =>
+				g.items.filter((c) => c.id !== g.keepId && !c.favorited).map((c) => c.id)
+			)
+		);
+		loading = false;
+	}
+
+	function toggle(id: number, checked: boolean) {
+		const next = new Set(selected);
+		if (checked) next.add(id);
+		else next.delete(id);
+		selected = next;
+	}
+
+	// Deleting every copy of a work is almost certainly a mistake, so flag
+	// groups where nothing would be left.
+	let wipedGroups = $derived(groups.filter((g) => g.items.every((c) => selected.has(c.id))).length);
+
+	function folderOf(path: string) {
+		const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+		return i > 0 ? path.slice(0, i) : '';
+	}
+
+	async function deleteSelected() {
+		confirmOpen = false;
+		deleting = true;
+		let failed = 0;
+		const deleted = new Set<number>();
+		for (const id of selected) {
+			const { error } = await ComicsService.comicDelete({ path: { id }, query: { permanent } });
+			if (error) {
+				failed++;
+				addNotification(new ErrorNotification({ subtitle: `${id}: ${error?.msg}` }));
+			} else {
+				deleted.add(id);
+			}
+		}
+		groups = groups
+			.map((g) => ({ ...g, items: g.items.filter((c) => !deleted.has(c.id)) }))
+			.filter((g) => g.items.length > 1);
+		selected = new Set([...selected].filter((id) => !deleted.has(id)));
+		deleting = false;
+		if (deleted.size > 0) {
+			refreshMediaFiles(mediaType);
+			addNotification(
+				new SuccessNotification({
+					subtitle: `Deleted ${deleted.size}${failed ? `, ${failed} failed` : ''}`
+				})
+			);
+		}
+	}
+
+	load();
+</script>
+
+<Breadcrumb noTrailingSlash>
+	<BreadcrumbItem href="/{mediaType}">
+		<span class="crumb"><Home size={16} /><span>{mediaType}</span></span>
+	</BreadcrumbItem>
+	<BreadcrumbItem isCurrentPage>Duplicates</BreadcrumbItem>
+</Breadcrumb>
+<h1>Duplicates</h1>
+<p class="hint">
+	Comics are grouped by title after stripping tags like <code>[汉化组]</code>,
+	<code>(C99)</code>, <code>【DL版】</code>, the extension and width/case differences. Different
+	volume numbers (<code>01</code> / <code>Vol.2</code> / <code>第三卷</code> / <code>上・下</code>)
+	are never grouped. <em>Exact</em> groups reduce to the same title; <em>Similar</em> ones only pass
+	the similarity threshold — check those carefully. Everything except the suggested
+	<strong>Keep</strong> copy (favorited, then most pages, then largest) is pre-selected.
+</p>
+
+<div class="controls">
+	<div class="slider">
+		<Slider
+			labelText="Similarity threshold (%)"
+			min={50}
+			max={100}
+			step={5}
+			bind:value={threshold}
+			on:change={load}
+		/>
+	</div>
+	<Toggle
+		labelText="Delete mode"
+		labelA="Archive record"
+		labelB="Remove record"
+		bind:toggled={permanent}
+	/>
+	<Button kind="ghost" icon={Renew} disabled={loading} on:click={load}>Refresh</Button>
+	<Button
+		kind="danger"
+		icon={TrashCan}
+		disabled={loading || deleting || selectedCount === 0}
+		on:click={() => (confirmOpen = true)}>Delete selected ({selectedCount})</Button
+	>
+</div>
+
+{#if loading}
+	<InlineLoading description="Scanning names…" />
+{:else if groups.length === 0}
+	<p class="empty">No duplicates found. 🎉</p>
+{:else}
+	<p class="summary">{groups.length} groups, {duplicateCount} extra copies</p>
+	{#if deleting}
+		<InlineLoading description="Deleting…" />
+	{/if}
+	{#each groups as group, gi (group.items[0].id)}
+		<Tile class="group">
+			<div class="group-header">
+				<span>#{gi + 1}</span>
+				{#if group.exact}
+					<Tag type="green" size="sm">Exact</Tag>
+				{:else}
+					<Tag type="warm-gray" size="sm">Similar</Tag>
+				{/if}
+			</div>
+			<div class="items">
+				{#each group.items as comic (comic.id)}
+					<div class="item" class:marked={selected.has(comic.id)}>
+						<a class="cover-cell" href="/{mediaType}/{comic.id}">
+							<img
+								class="cover"
+								src={comic.coverUrl}
+								alt={comic.name}
+								loading="lazy"
+								onerror={(e) => {
+									(e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+								}}
+							/>
+						</a>
+						<div class="meta">
+							<Checkbox
+								labelText={comic.name}
+								title={comic.name}
+								disabled={comic.favorited || deleting}
+								checked={selected.has(comic.id)}
+								on:change={(e) => toggle(comic.id, (e.target as HTMLInputElement).checked)}
+							/>
+							<div class="tags">
+								{#if comic.id === group.keepId}
+									<Tag type="blue" size="sm">Keep</Tag>
+								{/if}
+								{#if comic.favorited}
+									<Tag type="magenta" size="sm">Favorited</Tag>
+								{/if}
+							</div>
+							<div class="detail">{comic.page} pages · {comic.size} MB</div>
+							<div class="detail path" title={comic.path}>{folderOf(comic.path)}</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</Tile>
+	{/each}
+{/if}
+
+<Modal
+	danger
+	bind:open={confirmOpen}
+	modalHeading="Delete {selectedCount} comics?"
+	primaryButtonText="Delete"
+	secondaryButtonText="Cancel"
+	on:click:button--secondary={() => (confirmOpen = false)}
+	on:submit={deleteSelected}
+>
+	<p>
+		The files will be deleted from disk. {permanent
+			? 'Their records are removed too.'
+			: 'Their records are kept as archived.'}
+	</p>
+	{#if wipedGroups > 0}
+		<p class="warning">
+			⚠ {wipedGroups} group(s) have every copy selected — nothing of those works will be left.
+		</p>
+	{/if}
+</Modal>
+
+<style>
+	.crumb {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.hint {
+		max-width: 60rem;
+		margin: 0.5rem 0 1rem;
+		color: var(--cds-text-02, #c6c6c6);
+		font-size: 0.875rem;
+	}
+
+	.controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.slider {
+		min-width: 16rem;
+	}
+
+	.summary,
+	.empty {
+		margin: 1rem 0;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+
+	:global(.bx--tile.group) {
+		margin-bottom: 1rem;
+	}
+
+	.group-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.items {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+		gap: 0.75rem;
+	}
+
+	.item {
+		display: flex;
+		gap: 0.75rem;
+		padding: 0.5rem;
+		border: 1px solid transparent;
+		min-width: 0;
+	}
+
+	.item.marked {
+		border-color: var(--cds-support-01, #fa4d56);
+	}
+
+	.cover-cell {
+		flex: none;
+		width: 72px;
+		height: 108px;
+		background: var(--cds-ui-03, #393939);
+	}
+
+	.cover {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.meta {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		word-break: break-all;
+	}
+
+	.detail {
+		font-size: 0.75rem;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+
+	.path {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.warning {
+		margin-top: 1rem;
+		color: var(--cds-support-01, #fa4d56);
+	}
+</style>

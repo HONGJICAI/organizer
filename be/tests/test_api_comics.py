@@ -345,3 +345,52 @@ class TestCheck:
         r = client.post("/api/comics/check", json={"ids": [1, 1]})
         assert r.status_code == 200
         assert r.json()["results"] == [{"id": 1, "status": "present"}]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/comics/duplicates
+# ---------------------------------------------------------------------------
+
+class TestDuplicates:
+    def test_empty(self, client):
+        r = client.get("/api/comics/duplicates")
+        assert r.status_code == 200
+        assert r.json() == {"groups": []}
+
+    def test_groups_tagged_copies(self, client, session):
+        insert_comic(session, 1, name="[GroupA] Title 01 [DL版].zip", page=20)
+        insert_comic(session, 2, name="[GroupB] Title 1.rar", page=24)
+        insert_comic(session, 3, name="Title 02.zip")
+        insert_comic(session, 4, name="Unrelated.zip")
+        r = client.get("/api/comics/duplicates")
+        assert r.status_code == 200
+        groups = r.json()["groups"]
+        assert len(groups) == 1
+        assert groups[0]["exact"] is True
+        assert sorted(c["id"] for c in groups[0]["items"]) == [1, 2]
+        assert groups[0]["keepId"] == 2
+
+    def test_keep_prefers_favorited(self, client, session):
+        insert_comic(session, 1, name="[A] Title.zip", page=50)
+        insert_comic(session, 2, name="[B] Title.zip", page=10, favorited=True)
+        groups = client.get("/api/comics/duplicates").json()["groups"]
+        assert groups[0]["keepId"] == 2
+
+    def test_similar_names_depend_on_threshold(self, client, session):
+        insert_comic(session, 1, name="Some Long English Title.zip")
+        insert_comic(session, 2, name="Some Long English Titel.zip")
+        groups = client.get("/api/comics/duplicates").json()["groups"]
+        assert len(groups) == 1
+        assert groups[0]["exact"] is False
+        r = client.get("/api/comics/duplicates", params={"threshold": 1.0})
+        assert r.json()["groups"] == []
+
+    def test_excludes_archived_and_missing(self, client, session):
+        insert_comic(session, 1, name="[A] Title.zip")
+        insert_comic(session, 2, name="[B] Title.zip", archived=True)
+        insert_comic(session, 3, name="[C] Title.zip", missing=True)
+        assert client.get("/api/comics/duplicates").json()["groups"] == []
+
+    def test_threshold_out_of_range_returns_400(self, client):
+        assert client.get("/api/comics/duplicates", params={"threshold": 0.1}).status_code == 400
+        assert client.get("/api/comics/duplicates", params={"threshold": 2}).status_code == 400
