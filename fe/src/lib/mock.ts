@@ -50,6 +50,36 @@ export async function setupMock(authRequired: boolean) {
 	authState.required = authRequired;
 
 	const comics = genMockComics(100);
+	// Seed duplicates for the duplicate finder: re-tag a few comics as other
+	// releases of the same work (different group/edition tags and archive type).
+	const releaseTags = ['[汉化组] ', '(C99) ', '【DL版】', '[Scan] '];
+	for (const original of comics.slice(0, 8)) {
+		const title = original.name.replace(/^\[[^\]]*\]\s*/, '');
+		const copies = faker.number.int({ min: 1, max: 2 });
+		for (let i = 0; i < copies; i++) {
+			const name = `${faker.helpers.arrayElement(releaseTags)}${title} [${faker.helpers.arrayElement(['DL版', '無修正', 'v2'])}].${faker.helpers.arrayElement(['zip', 'rar', 'cbz'])}`;
+			comics.push({
+				...original,
+				id: Math.max(...comics.map((c) => c.id)) + 1,
+				name,
+				path: `/data/comics/dup/${name}`,
+				size: faker.number.int({ min: 1000, max: 10000000 }),
+				page: Math.max(1, original.page + faker.number.int({ min: -2, max: 2 })),
+				archived: false,
+				missing: false,
+				favorited: false
+			});
+		}
+	}
+	// Rough stand-in for the backend's filename normalization: drop bracketed
+	// tags, extension, case and punctuation (no fuzzy matching in mock mode).
+	const duplicateKey = (name: string) =>
+		name
+			.normalize('NFKC')
+			.replace(/\.(zip|rar|cbz|cbr|7z|pdf)$/i, '')
+			.replace(/\[[^\]]*\]|\([^)]*\)|【[^】]*】|\{[^}]*\}/g, ' ')
+			.toLowerCase()
+			.replace(/[\W_]+/gu, '');
 	// The backend skips folder-size computation at scan time (size stays 0
 	// until the refresh endpoint fills it) — mirror that for image folders.
 	const images = genMockComics(24).map((i) => ({ ...i, size: 0 }));
@@ -185,6 +215,27 @@ export async function setupMock(authRequired: boolean) {
 				return { id, status: 'absent' };
 			});
 			return HttpResponse.json({ results });
+		}),
+		// Registered before /api/comics/:id so the literal path wins.
+		http.get('/api/comics/duplicates', async () => {
+			await delay(800);
+			const buckets = new Map<string, typeof comics>();
+			for (const c of comics) {
+				if (c.archived || c.missing) continue;
+				const key = duplicateKey(c.name);
+				if (!key) continue;
+				buckets.set(key, [...(buckets.get(key) ?? []), c]);
+			}
+			const groups = [...buckets.values()]
+				.filter((items) => items.length > 1)
+				.map((items) => {
+					// Same preference as the backend: favorited, most pages, largest.
+					const rank = (c: (typeof items)[number]) =>
+						Number(c.favorited) * 1e12 + c.page * 1e8 + c.size;
+					const keep = items.reduce((best, c) => (rank(c) > rank(best) ? c : best));
+					return { exact: true, keepId: keep.id, items };
+				});
+			return HttpResponse.json({ groups });
 		}),
 		http.get('/api/comics/:id', async ({ params }) => {
 			await delay(300);

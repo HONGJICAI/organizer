@@ -98,6 +98,28 @@ export type DailyScanInfo = {
 };
 
 /**
+ * Comics that look like copies of the same work
+ */
+export type DuplicateGroup = {
+    /**
+     * All names reduce to the same title and volume; otherwise only similar
+     */
+    exact: boolean;
+    /**
+     * Suggested copy to keep: favorited, then most pages, then largest
+     */
+    keepId: number;
+    items: Array<ComicEntity>;
+};
+
+/**
+ * Response for the duplicate finder
+ */
+export type DuplicatesResponse = {
+    groups: Array<DuplicateGroup>;
+};
+
+/**
  * Response for favor/unfavor operations
  */
 export type FavorResponse = {
@@ -401,6 +423,49 @@ export type ComicCheckResponses = {
 };
 
 export type ComicCheckResponse = ComicCheckResponses[keyof ComicCheckResponses];
+
+export type ComicFindDuplicatesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        threshold?: number;
+    };
+    url: '/api/comics/duplicates';
+};
+
+export type ComicFindDuplicatesErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicFindDuplicatesError = ComicFindDuplicatesErrors[keyof ComicFindDuplicatesErrors];
+
+export type ComicFindDuplicatesResponses = {
+    /**
+     * Successful Response
+     */
+    200: DuplicatesResponse;
+};
+
+export type ComicFindDuplicatesResponse = ComicFindDuplicatesResponses[keyof ComicFindDuplicatesResponses];
 
 export type ComicDeleteData = {
     body?: never;

@@ -4,13 +4,14 @@ import pathlib
 import shutil
 from datetime import datetime
 from typing import List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi_utils.api_model import APIMessage
 from fastapi_utils.cbv import cbv
 from sqlmodel import Session, select, or_
 
 import comicfile
 import db
+import duplicates
 import global_data
 import util
 from core.exceptions import abort
@@ -18,6 +19,8 @@ from loader import ComicLoader
 from model import ComicEntity
 from schemas.comic import (
     ComicDetailResponse,
+    DuplicateGroup,
+    DuplicatesResponse,
     ComicPageDetailResponse,
     ComicRenameRequest,
     ComicRenameResponse,
@@ -93,6 +96,38 @@ class ComicCBV:
         if changed:
             self.session.commit()
         return CheckResponse(results=results)
+
+    @router.get(
+        "/api/comics/duplicates",
+        tags=["comics"],
+        responses={
+            200: {"model": DuplicatesResponse},
+            400: {"model": dict},
+        },
+    )
+    def find_duplicates(
+        self, threshold: float = Query(default=0.85, ge=0.5, le=1.0)
+    ) -> DuplicatesResponse:
+        # Archived rows are tombstones and missing ones have no file to keep or
+        # delete, so only live comics take part. Declared before /{id} so the
+        # literal path isn't parsed as an id.
+        comics = self.session.exec(
+            select(ComicEntity)
+            .where(ComicEntity.archived == False)  # noqa: E712
+            .where(ComicEntity.missing == False)  # noqa: E712
+            .order_by(ComicEntity.name)
+        ).all()
+        groups = []
+        for indices, exact in duplicates.find_groups([c.name for c in comics], threshold):
+            items = [comics[i] for i in indices]
+            groups.append(
+                DuplicateGroup(
+                    exact=exact,
+                    keepId=duplicates.pick_keep(items),
+                    items=[c.model_dump() for c in items],
+                )
+            )
+        return DuplicatesResponse(groups=groups)
 
     def __get(self, id: int) -> ComicEntity:
         statement = select(ComicEntity).where(ComicEntity.id == id)
