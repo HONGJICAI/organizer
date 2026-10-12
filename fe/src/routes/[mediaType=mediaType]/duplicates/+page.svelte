@@ -222,7 +222,14 @@
 									checked={selected.has(comic.id)}
 									on:change={(e) => toggle(comic.id, (e.target as HTMLInputElement).checked)}
 								/>
-								<span class="name">{comic.name}</span>
+								<span class="name"
+									>{comic.name}<button
+										class="copy"
+										title="Copy name"
+										aria-label="Copy name"
+										onclick={() => copyName(comic.name)}><Copy size={16} /></button
+									></span
+								>
 							</div>
 							<div class="tags">
 								{#if comic.id === group.keepId}
@@ -243,14 +250,6 @@
 									target="_blank"
 									rel="noopener">Pages</Button
 								>
-								<Button
-									kind="ghost"
-									size="small"
-									icon={Copy}
-									iconDescription="Copy name"
-									tooltipPosition="bottom"
-									on:click={() => copyName(comic.name)}
-								/>
 								<Button
 									kind="ghost"
 									size="small"
@@ -385,6 +384,24 @@
 	.name {
 		font-size: 0.875rem;
 		user-select: text;
+	}
+
+	/* Inline after the last word so it follows wrapped names. */
+	.copy {
+		display: inline-flex;
+		vertical-align: text-bottom;
+		margin-left: 0.25rem;
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--cds-icon-02, #8d8d8d);
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.copy:hover,
+	.copy:focus-visible {
+		color: var(--cds-icon-01, #f4f4f4);
 	}
 
 	.actions {
