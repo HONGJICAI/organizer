@@ -30,6 +30,7 @@
 			<img
 				src={file.coverUrl}
 				alt={`${file.id}`}
+				loading="lazy"
 				id={file.coverId}
 				onerror={(e) => {
 					const t = e.currentTarget as HTMLImageElement;
