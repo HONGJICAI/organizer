@@ -82,7 +82,13 @@ export async function setupMock(authRequired: boolean) {
 			.replace(/[\W_]+/gu, '');
 	// The backend skips folder-size computation at scan time (size stays 0
 	// until the refresh endpoint fills it) — mirror that for image folders.
-	const images = genMockComics(24).map((i) => ({ ...i, size: 0 }));
+	// Albums have no favorites or custom covers (the cover is always page 1).
+	const images = genMockComics(24).map((i) => ({
+		...i,
+		size: 0,
+		favorited: false,
+		coverPosition: 0
+	}));
 	const findComic = (id: string | readonly string[] | undefined) =>
 		id !== undefined ? comics.find((c) => c.id === Number(id)) : undefined;
 	const findImage = (id: string | readonly string[] | undefined) =>

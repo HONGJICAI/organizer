@@ -289,6 +289,8 @@
 	// Single-image deletion is only meaningful for image albums (plain folders);
 	// comic pages live inside an archive and aren't individually removable.
 	const canDeletePage = $derived(file.type === MediaType.Image);
+	// Custom covers exist only for comics; an album's cover is always its first page.
+	const canSetCover = $derived(file.type === MediaType.Comic);
 	let deletingPage = $state(false);
 	async function onDeletePage() {
 		if (deletingPage || !canDeletePage) return;
@@ -384,7 +386,9 @@
 	{/if}
 	<ContextMenu target={targets}>
 		<ContextMenuOption indented labelText="Like page" on:click={onLikePage} />
-		<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
+		{#if canSetCover}
+			<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
+		{/if}
 		<ContextMenuDivider />
 		<ContextMenuOption
 			indented

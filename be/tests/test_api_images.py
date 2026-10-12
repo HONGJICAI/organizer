@@ -49,8 +49,27 @@ class TestBootstrap:
         d.mkdir()
         (d / "a.jpg").write_bytes(make_jpeg_bytes())
         img_api.bootstrap()
-        assert list(img_api._store.keys()) == [1]
-        assert isinstance(img_api._store[1].id, int)
+        [id] = img_api._store.keys()
+        assert isinstance(id, int)
+        assert img_api._store[id].id == id
+        # Must survive a round-trip through a JavaScript number.
+        assert 0 < id < 2**53
+
+    def test_ids_stable_across_scans(self, scan_env):
+        for name in ["b", "c"]:
+            d = scan_env / name
+            d.mkdir()
+            (d / "a.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        before = {e.path: id for id, e in img_api._store.items()}
+        # A new folder sorting first must not shift the others' ids.
+        d = scan_env / "a"
+        d.mkdir()
+        (d / "a.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        after = {e.path: id for id, e in img_api._store.items()}
+        assert all(after[p] == id for p, id in before.items())
+        assert len(after) == 3
 
     def test_empty_folders_excluded(self, scan_env):
         (scan_env / "empty").mkdir()
@@ -72,7 +91,8 @@ class TestBootstrap:
         for i in range(3):
             (d / f"{i}.jpg").write_bytes(make_jpeg_bytes())
         img_api.bootstrap()
-        assert img_api._store[1].page == 3
+        [entity] = img_api._store.values()
+        assert entity.page == 3
 
     def test_recursive_collects_nested_leaf(self, scan_env):
         # A folder several levels deep with images is collected by basename.
@@ -277,25 +297,6 @@ class TestDetail:
         assert client.get("/api/images/999/detail").status_code == 404
 
 
-class TestFavor:
-    def test_favor(self, client):
-        set_store(make_entity(id=1))
-        r = client.post("/api/images/1/favor")
-        assert r.status_code == 200
-        assert r.json()["favorited"] is True
-        assert img_api._store[1].favorited is True
-
-    def test_unfavor(self, client):
-        set_store(make_entity(id=1, favorited=True))
-        r = client.request("DELETE", "/api/images/1/favor")
-        assert r.status_code == 200
-        assert r.json()["favorited"] is False
-        assert img_api._store[1].favorited is False
-
-    def test_missing_returns_404(self, client):
-        assert client.post("/api/images/999/favor").status_code == 404
-
-
 class TestRefresh:
     def test_updates_page_count(self, client, tmp_path):
         d = tmp_path / "album"
@@ -359,10 +360,6 @@ class TestDelete:
         set_store(make_entity(id=1, path=str(d)))
         assert client.delete("/api/images/1").status_code == 400
 
-    def test_favorited_returns_400(self, client):
-        set_store(make_entity(id=1, favorited=True))
-        assert client.delete("/api/images/1").status_code == 400
-
     def test_missing_returns_404(self, client):
         assert client.delete("/api/images/999").status_code == 404
 
@@ -396,26 +393,13 @@ class TestDeletePage:
         client.delete("/api/images/1/pages/1")
         assert img_api._store[1].updateTime > old
 
-    def test_deleting_cover_source_regenerates_cover(self, client, tmp_path, monkeypatch):
+    def test_bumps_cover_version(self, client, tmp_path, monkeypatch):
+        # The cover is page 0 served live; deleting page 1 changes it.
         d = self._album(tmp_path, monkeypatch)
         old = datetime(2000, 1, 1)
-        # coverPosition 2 -> source is files[1] == "b.jpg"; delete it.
-        set_store(make_entity(id=1, path=str(d), page=3, coverPosition=2, entityUpdateTime=old))
-        r = client.delete("/api/images/1/pages/2")
-        assert r.status_code == 200
-        assert img_api._store[1].coverPosition == 0
+        set_store(make_entity(id=1, path=str(d), page=3, entityUpdateTime=old))
+        client.delete("/api/images/1/pages/1")
         assert img_api._store[1].entityUpdateTime > old
-
-    def test_non_cover_deletion_keeps_cover_pointer(self, client, tmp_path, monkeypatch):
-        d = self._album(tmp_path, monkeypatch)
-        old = datetime(2000, 1, 1)
-        # cover is "c.jpg" (page 3); deleting "a.jpg" shifts it to index 1 (page 2).
-        set_store(make_entity(id=1, path=str(d), page=3, coverPosition=3, entityUpdateTime=old))
-        r = client.delete("/api/images/1/pages/1")
-        assert r.status_code == 200
-        assert img_api._store[1].coverPosition == 2
-        # Cover bytes are unchanged, so the cache-bust token is left alone.
-        assert img_api._store[1].entityUpdateTime == old
 
     def test_out_of_range_returns_404(self, client, tmp_path, monkeypatch):
         d = self._album(tmp_path, monkeypatch)
@@ -531,21 +515,144 @@ class TestConvertToComic:
         assert client.post("/api/images/999/convert").status_code == 404
 
 
-class TestSetCover:
-    def test_updates_cover_position(self, client, tmp_path, monkeypatch):
+class TestAlbumId:
+    def test_deterministic(self):
+        assert img_api._album_id("/a/b", {}) == img_api._album_id("/a/b", {})
+        assert img_api._album_id("/a/b", {}) != img_api._album_id("/a/c", {})
+
+    def test_collision_probes_next_free(self):
+        id = img_api._album_id("/a/b", {})
+        taken = {id: make_entity(id=id), id + 1: make_entity(id=id + 1)}
+        assert img_api._album_id("/a/b", taken) == id + 2
+
+
+def _album(root, name, pages=1):
+    d = root / name
+    d.mkdir()
+    for i in range(pages):
+        (d / f"{i}.jpg").write_bytes(make_jpeg_bytes())
+    return d
+
+
+class TestRescanCarryOver:
+    def test_keeps_progress(self, scan_env):
+        _album(scan_env, "album")
+        img_api.bootstrap()
+        [entity] = img_api._store.values()
+        entity.lastViewedPosition = 1
+        entity.lastViewedTime = datetime(2020, 1, 1)
+        img_api.bootstrap()
+        [entity] = img_api._store.values()
+        assert entity.lastViewedPosition == 1
+        assert entity.lastViewedTime == datetime(2020, 1, 1)
+
+    def test_keeps_size_while_unchanged(self, scan_env):
+        _album(scan_env, "album")
+        img_api.bootstrap()
+        [entity] = img_api._store.values()
+        entity.size = 1234
+        img_api.bootstrap()
+        [entity] = img_api._store.values()
+        assert entity.size == 1234
+
+    def test_drops_size_when_folder_changed(self, scan_env):
+        d = _album(scan_env, "album")
+        img_api.bootstrap()
+        [entity] = img_api._store.values()
+        entity.size = 1234
+        (d / "extra.jpg").write_bytes(make_jpeg_bytes())
+        img_api.bootstrap()
+        [entity] = img_api._store.values()
+        assert entity.page == 2
+        assert entity.size == 0
+
+
+class TestSnapshot:
+    def test_bootstrap_writes_snapshot(self, scan_env, image_snapshot_path):
+        import json
+        _album(scan_env, "album", pages=2)
+        img_api.bootstrap()
+        with open(image_snapshot_path, encoding="utf-8") as f:
+            rows = json.load(f)
+        assert len(rows) == 1
+        assert rows[0]["name"] == "album"
+        assert rows[0]["page"] == 2
+        # Only scan-derived fields are persisted.
+        assert set(rows[0]) == img_api._SNAPSHOT_FIELDS
+
+    def test_round_trip(self, scan_env):
+        _album(scan_env, "album", pages=2)
+        img_api.bootstrap()
+        before = {id: e.model_dump() for id, e in img_api._store.items()}
+        img_api._store.clear()
+        assert img_api.load_snapshot() == 1
+        assert {id: e.model_dump() for id, e in img_api._store.items()} == before
+
+    def test_progress_not_persisted(self, scan_env):
+        _album(scan_env, "album")
+        img_api.bootstrap()
+        [entity] = img_api._store.values()
+        entity.lastViewedPosition = 1
+        img_api.save_snapshot()
+        img_api._store.clear()
+        img_api.load_snapshot()
+        [entity] = img_api._store.values()
+        assert entity.lastViewedPosition == 0
+
+    def test_missing_snapshot_loads_nothing(self):
+        assert img_api.load_snapshot() == 0
+        assert img_api._store == {}
+
+    def test_corrupt_snapshot_ignored(self, image_snapshot_path):
+        with open(image_snapshot_path, "w", encoding="utf-8") as f:
+            f.write("{not json")
+        assert img_api.load_snapshot() == 0
+        assert img_api._store == {}
+
+    def test_invalid_rows_ignored(self, image_snapshot_path):
+        import json
+        with open(image_snapshot_path, "w", encoding="utf-8") as f:
+            json.dump([{"id": "x"}], f)
+        assert img_api.load_snapshot() == 0
+        assert img_api._store == {}
+
+    def test_does_not_overwrite_scanned_store(self, scan_env):
+        _album(scan_env, "album")
+        img_api.bootstrap()
+        set_store(make_entity(id=7))
+        assert img_api.load_snapshot() == 0
+        assert list(img_api._store) == [7]
+
+    def test_write_failure_is_swallowed(self, tmp_path, monkeypatch):
         import global_data
+        monkeypatch.setattr(
+            global_data.Config, "image_snapshot_path", str(tmp_path / "no" / "such" / "dir.json")
+        )
+        set_store(make_entity(id=1))
+        img_api.save_snapshot()  # must not raise
+
+    def test_mutations_update_snapshot(self, client, tmp_path):
         d = tmp_path / "album"
         d.mkdir()
-        (d / "001.jpg").write_bytes(make_jpeg_bytes())
-        (d / "002.jpg").write_bytes(make_jpeg_bytes())
-        monkeypatch.setattr(global_data.Config, "nginx_image_path", str(tmp_path))
-        old = datetime(2000, 1, 1)
-        set_store(make_entity(id=1, path=str(d), page=2, entityUpdateTime=old))
-        r = client.post("/api/images/1/pages/2/cover")
-        assert r.status_code == 200
-        assert img_api._store[1].coverPosition == 2
-        # Cover regenerated under the same filename -> bump the cache-bust token.
-        assert img_api._store[1].entityUpdateTime > old
+        (d / "a.jpg").write_bytes(b"")
+        set_store(make_entity(id=1, path=str(d)))
+        assert client.delete("/api/images/1").status_code == 200
+        img_api._store.clear()
+        assert img_api.load_snapshot() == 0  # snapshot now holds no albums
 
-    def test_missing_returns_404(self, client):
-        assert client.post("/api/images/999/pages/1/cover").status_code == 404
+
+@pytest.fixture
+def written_snapshot(image_snapshot_path):
+    import json
+    row = make_entity(id=42, name="from-snapshot").model_dump(
+        mode="json", include=img_api._SNAPSHOT_FIELDS
+    )
+    with open(image_snapshot_path, "w", encoding="utf-8") as f:
+        json.dump([row], f)
+
+
+def test_startup_serves_snapshot(written_snapshot, client):
+    # The lifespan loads the snapshot before the (suppressed) boot scan runs.
+    r = client.get("/api/images")
+    assert r.status_code == 200
+    assert [e["name"] for e in r.json()] == ["from-snapshot"]

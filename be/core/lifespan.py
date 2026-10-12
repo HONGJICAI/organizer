@@ -22,6 +22,11 @@ async def lifespan(app: FastAPI):
     # synchronously would block startup on large/remote libraries.
     # After this startup scan, the daily_scan_loop task re-runs it at 2:00 AM
     # local time so the in-memory image store and comic/video tables stay fresh.
+    # Image albums live only in memory; serve the last scan's snapshot until
+    # the rescan below replaces it, so the list is not empty after a restart.
+    from api.images import load_snapshot
+    load_snapshot()
+
     from api.system import start_scan
     start_scan("all")
     print("Background scan started", flush=True)

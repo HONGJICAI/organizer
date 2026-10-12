@@ -339,14 +339,18 @@
 			iconDescription="Delete"
 			disabled={sendingDelete}
 		/>
-		<span class="fav-wrap" class:favorited={file.favorited}>
-			<Button
-				icon={file.favorited ? FavoriteFilled : Favorite}
-				iconDescription="Favorite"
-				on:click={() => onClickFavorite()}
-				disabled={sendingFavorite || file.archived}
-			/>
-		</span>
+		<!-- Only comics can be favorited: image albums are kept lightweight
+		     (convert one to a comic to keep it) and videos have no favor API. -->
+		{#if mediaType === MediaType.Comic}
+			<span class="fav-wrap" class:favorited={file.favorited}>
+				<Button
+					icon={file.favorited ? FavoriteFilled : Favorite}
+					iconDescription="Favorite"
+					on:click={() => onClickFavorite()}
+					disabled={sendingFavorite || file.archived}
+				/>
+			</span>
+		{/if}
 		<Button
 			icon={UpdateNow}
 			iconDescription="Refresh"

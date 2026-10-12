@@ -102,6 +102,14 @@ class MockComicfile:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
+def image_snapshot_path(tmp_path, monkeypatch):
+    # Keep image snapshots (written by every bootstrap) out of the real cache.
+    path = str(tmp_path / "image-store.json")
+    monkeypatch.setattr(global_data.Config, "image_snapshot_path", path)
+    return path
+
+
+@pytest.fixture(autouse=True)
 def clear_module_caches():
     from core.scan_progress import progress
     comicfile.comic_cache.clear()
