@@ -19,6 +19,9 @@ class Config:
     nginx_video_path = os.path.join(_cache_base, "videos")
     nginx_comic_path = os.path.join(_cache_base, "comics")
     nginx_image_path = os.path.join(_cache_base, "images")
+    # Last image scan result, loaded at startup (see api.images.load_snapshot).
+    # Kept outside nginx_image_path so nginx never serves it.
+    image_snapshot_path = os.path.join(_cache_base, "image-store.json")
 
     class Comic:
         scan_pathes = [os.environ.get("COMIC_SCAN_PATH", "/data/comics")]

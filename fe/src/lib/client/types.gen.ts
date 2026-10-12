@@ -1375,92 +1375,6 @@ export type ImageUpdateProgressResponses = {
 
 export type ImageUpdateProgressResponse = ImageUpdateProgressResponses[keyof ImageUpdateProgressResponses];
 
-export type ImageUnfavorData = {
-    body?: never;
-    path: {
-        id: number;
-    };
-    query?: never;
-    url: '/api/images/{id}/favor';
-};
-
-export type ImageUnfavorErrors = {
-    /**
-     * Bad Request
-     */
-    400: MessageResponse;
-    /**
-     * Unauthorized
-     */
-    401: MessageResponse;
-    /**
-     * Not Found
-     */
-    404: MessageResponse;
-    /**
-     * Validation Error
-     */
-    422: MessageResponse;
-    /**
-     * Internal Server Error
-     */
-    500: MessageResponse;
-};
-
-export type ImageUnfavorError = ImageUnfavorErrors[keyof ImageUnfavorErrors];
-
-export type ImageUnfavorResponses = {
-    /**
-     * Successful Response
-     */
-    200: FavorResponse;
-};
-
-export type ImageUnfavorResponse = ImageUnfavorResponses[keyof ImageUnfavorResponses];
-
-export type ImageFavorData = {
-    body?: never;
-    path: {
-        id: number;
-    };
-    query?: never;
-    url: '/api/images/{id}/favor';
-};
-
-export type ImageFavorErrors = {
-    /**
-     * Bad Request
-     */
-    400: MessageResponse;
-    /**
-     * Unauthorized
-     */
-    401: MessageResponse;
-    /**
-     * Not Found
-     */
-    404: MessageResponse;
-    /**
-     * Validation Error
-     */
-    422: MessageResponse;
-    /**
-     * Internal Server Error
-     */
-    500: MessageResponse;
-};
-
-export type ImageFavorError = ImageFavorErrors[keyof ImageFavorErrors];
-
-export type ImageFavorResponses = {
-    /**
-     * Successful Response
-     */
-    200: FavorResponse;
-};
-
-export type ImageFavorResponse = ImageFavorResponses[keyof ImageFavorResponses];
-
 export type ImageRefreshData = {
     body?: never;
     path: {
@@ -1547,17 +1461,17 @@ export type ImageRenameResponses = {
 
 export type ImageRenameResponse2 = ImageRenameResponses[keyof ImageRenameResponses];
 
-export type ImageSetCoverData = {
+export type ImageLikeData = {
     body?: never;
     path: {
         id: number;
         page: number;
     };
     query?: never;
-    url: '/api/images/{id}/pages/{page}/cover';
+    url: '/api/images/{id}/pages/{page}/like';
 };
 
-export type ImageSetCoverErrors = {
+export type ImageLikeErrors = {
     /**
      * Bad Request
      */
@@ -1580,14 +1494,16 @@ export type ImageSetCoverErrors = {
     500: MessageResponse;
 };
 
-export type ImageSetCoverError = ImageSetCoverErrors[keyof ImageSetCoverErrors];
+export type ImageLikeError = ImageLikeErrors[keyof ImageLikeErrors];
 
-export type ImageSetCoverResponses = {
+export type ImageLikeResponses = {
     /**
      * Successful Response
      */
-    200: unknown;
+    200: ApiMessage;
 };
+
+export type ImageLikeResponse = ImageLikeResponses[keyof ImageLikeResponses];
 
 export type ImageConvertData = {
     body?: never;

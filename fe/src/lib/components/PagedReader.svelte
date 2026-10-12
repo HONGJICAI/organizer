@@ -278,7 +278,11 @@
 	}
 
 	async function onLikePage() {
-		const { error } = await ComicpageService.comicPageLike({ path: { id: file.id, page } });
+		// Each type has its own like endpoint; ids of comics and albums overlap.
+		const { error } =
+			file.type === MediaType.Image
+				? await ImagesService.imageLike({ path: { id: file.id, page } })
+				: await ComicpageService.comicPageLike({ path: { id: file.id, page } });
 		if (error) {
 			addNotification(new ErrorNotification({ subtitle: 'Failed to like page' }));
 		} else {
@@ -289,6 +293,8 @@
 	// Single-image deletion is only meaningful for image albums (plain folders);
 	// comic pages live inside an archive and aren't individually removable.
 	const canDeletePage = $derived(file.type === MediaType.Image);
+	// Custom covers exist only for comics; an album's cover is always its first page.
+	const canSetCover = $derived(file.type === MediaType.Comic);
 	let deletingPage = $state(false);
 	async function onDeletePage() {
 		if (deletingPage || !canDeletePage) return;
@@ -384,7 +390,9 @@
 	{/if}
 	<ContextMenu target={targets}>
 		<ContextMenuOption indented labelText="Like page" on:click={onLikePage} />
-		<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
+		{#if canSetCover}
+			<ContextMenuOption indented labelText="Set as Cover" on:click={onSetCover} />
+		{/if}
 		<ContextMenuDivider />
 		<ContextMenuOption
 			indented

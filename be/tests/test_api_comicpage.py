@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime
 from unittest.mock import patch
 
@@ -191,16 +192,48 @@ class TestLike:
         assert r.json()["detail"] == "OK"
         assert (liked_dir / "hero.zip_2.jpg").exists()
 
+    @pytest.mark.parametrize("ext", [".png", ".gif", ".webp"])
+    def test_keeps_original_bytes_and_extension(self, client, session, tmp_path, monkeypatch, ext):
+        # Stored verbatim: no JPEG re-encode (keeps GIF frames, PNG alpha).
+        liked_dir = tmp_path / "liked"
+        monkeypatch.setattr(global_data.Config.Image, "liked_path", str(liked_dir))
+        insert_comic(session, 1, name="hero.zip", page=2)
+        payload = b"original-page-bytes"
+        mock_cf = MockComicfile(pages=2, names=[f"a{ext}", f"b{ext}"])
+        mock_cf.read = lambda idx: (True, payload)
+        with patch("comicfile.create_open", return_value=mock_cf):
+            r = client.post("/api/comics/1/pages/2/like")
+        assert r.status_code == 200
+        assert (liked_dir / f"hero.zip_2{ext}").read_bytes() == payload
+        assert not (liked_dir / "hero.zip_2.jpg").exists()
+
     def test_already_liked_returns_ok(self, client, session, tmp_path, monkeypatch):
         liked_dir = tmp_path / "liked"
         liked_dir.mkdir()
         monkeypatch.setattr(global_data.Config.Image, "liked_path", str(liked_dir))
         insert_comic(session, 1, name="hero.zip", page=3)
-        existing = liked_dir / "hero.zip_1.jpg"
-        existing.write_bytes(make_jpeg_bytes())
-        r = client.post("/api/comics/1/pages/1/like")
+        existing = liked_dir / "hero.zip_1.png"
+        existing.write_bytes(b"first")
+        mock_cf = MockComicfile(pages=3, names=["a.png", "b.png", "c.png"])
+        mock_cf.read = lambda idx: (True, b"second")
+        with patch("comicfile.create_open", return_value=mock_cf):
+            r = client.post("/api/comics/1/pages/1/like")
         assert r.status_code == 200
         assert r.json()["detail"] == "OK"
+        assert existing.read_bytes() == b"first"
+
+    def test_legacy_jpg_counts_as_liked(self, client, session, tmp_path, monkeypatch):
+        # Pages liked before likes kept their format were saved as .jpg.
+        liked_dir = tmp_path / "liked"
+        liked_dir.mkdir()
+        monkeypatch.setattr(global_data.Config.Image, "liked_path", str(liked_dir))
+        insert_comic(session, 1, name="hero.zip", page=3)
+        (liked_dir / "hero.zip_1.jpg").write_bytes(make_jpeg_bytes())
+        mock_cf = MockComicfile(pages=3, names=["a.png", "b.png", "c.png"])
+        with patch("comicfile.create_open", return_value=mock_cf):
+            r = client.post("/api/comics/1/pages/1/like")
+        assert r.status_code == 200
+        assert not (liked_dir / "hero.zip_1.png").exists()
 
 
 # ---------------------------------------------------------------------------

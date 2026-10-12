@@ -1,5 +1,15 @@
-"""Image API endpoints — in-memory store, populated at bootstrap"""
+"""Image API endpoints — in-memory store, populated at bootstrap.
+
+Image albums are deliberately lightweight: a view over plain folders with no
+database rows. Anything worth keeping (favorites, custom covers) belongs to
+comics — convert an album to keep it. The store is rebuilt by every scan; a
+JSON snapshot of the last scan result only makes the list available right
+after a restart instead of empty until the rescan finishes. Reading progress
+is in-memory only and is lost on restart.
+"""
 import datetime
+import hashlib
+import json
 import os
 import pathlib
 import shutil
@@ -12,7 +22,6 @@ from fastapi.security import HTTPAuthorizationCredentials
 from core.auth import _bearer, require_auth, require_media_auth
 from fastapi_utils.api_model import APIMessage
 from fastapi_utils.cbv import cbv
-from PIL import Image as PILImage
 from sqlmodel import Session, select
 
 import db
@@ -22,7 +31,7 @@ from comicfile import allowImgs, mediaTypes
 from core.exceptions import abort
 from loader import ComicLoader
 from model import ComicEntity, ImageEntity
-from schemas.common import FavorResponse, ProgressRequest, ProgressResponse
+from schemas.common import ProgressRequest, ProgressResponse
 from schemas.image import (
     ImageDetailResponse,
     ImagePageDetailResponse,
@@ -54,22 +63,67 @@ def _image_files(folder_path: str) -> List[str]:
     return sorted(names)
 
 
-def _gen_cover(entity: ImageEntity, overwrite=False, page=0) -> bool:
-    name = f"{entity.id}_0.jpg"
-    cover_path = os.path.join(global_data.Config.nginx_image_path, name)
-    if overwrite or not os.path.exists(cover_path):
-        files = _image_files(entity.path)
-        if not files or page >= len(files):
-            return False
-        try:
-            img = PILImage.open(os.path.join(entity.path, files[page]))
-            img.thumbnail((300, 300))
-            img = img.convert("RGB")
-            img.save(cover_path, "JPEG")
-            return True
-        except Exception as ex:
-            print("gen image cover fail:", entity.path, ex)
-    return False
+def _album_id(path: str, taken: Dict[int, ImageEntity]) -> int:
+    """Stable id derived from the folder path.
+
+    The same folder gets the same id across scans and restarts, so ids in the
+    snapshot, open reader tabs and cover URLs stay valid after a rescan. 48 bits
+    keep it within JavaScript's safe-integer range; a (practically impossible)
+    collision probes to the next free id.
+    """
+    digest = hashlib.sha1(path.encode("utf-8", "surrogateescape")).digest()
+    id = int.from_bytes(digest[:6], "big") or 1
+    while id in taken:
+        id += 1
+    return id
+
+
+# Fields persisted in the snapshot: only what a scan (or refresh, for size)
+# derives from disk. Per-user state such as reading progress is not saved.
+_SNAPSHOT_FIELDS = {"id", "name", "path", "page", "size", "updateTime", "entityUpdateTime"}
+
+
+def save_snapshot():
+    """Write the current store to the snapshot file (atomically).
+
+    Called after a scan and after endpoints that change albums on disk. Failure
+    only costs the fast start next time, so it is logged and swallowed.
+    """
+    path = global_data.Config.image_snapshot_path
+    with _store_lock:
+        rows = [e.model_dump(mode="json", include=_SNAPSHOT_FIELDS) for e in _store.values()]
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"[Images] Failed to write snapshot: {e}")
+
+
+def load_snapshot() -> int:
+    """Fill the store from the last snapshot; returns the number loaded.
+
+    Runs at startup before the background scan so the list is not empty while
+    it runs. A missing or unreadable snapshot is ignored (the scan fills the
+    store as before), and a store the scan already filled is never overwritten.
+    """
+    path = global_data.Config.image_snapshot_path
+    try:
+        with open(path, encoding="utf-8") as f:
+            rows = json.load(f)
+        entities = [ImageEntity.model_validate(r) for r in rows]
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError, TypeError) as e:
+        print(f"[Images] Ignoring unreadable snapshot: {e}")
+        return 0
+    with _store_lock:
+        if _store:
+            return 0
+        _store.update({e.id: e for e in entities})
+    print(f"[Images] Loaded {len(entities)} image folder(s) from snapshot")
+    return len(entities)
 
 
 def _leaf_image_dirs(scan_path: str) -> List[str]:
@@ -97,7 +151,6 @@ def _leaf_image_dirs(scan_path: str) -> List[str]:
 def bootstrap():
     """Scan image folders and (re)populate the in-memory store."""
     new_store: Dict[int, ImageEntity] = {}
-    id_counter = 0
     for scan_path in global_data.Config.Image.scan_pathes:
         if not os.path.isdir(scan_path):
             continue
@@ -110,24 +163,58 @@ def bootstrap():
             files = _image_files(leaf)
             if not files:
                 continue
-            id_counter += 1
-            # size is left at 0 here: computing it means a recursive stat() of
-            # every file (see get_dir_size), which makes bootstrap minutes-slow
-            # on large/remote folders. The refresh endpoint fills it on demand.
-            new_store[id_counter] = ImageEntity(
-                id=id_counter,
+            id = _album_id(leaf, new_store)
+            mtime = datetime.datetime.fromtimestamp(os.stat(leaf).st_mtime)
+            # size is not computed here: that means a recursive stat() of every
+            # file (see get_dir_size), which makes bootstrap minutes-slow on
+            # large/remote folders. The refresh endpoint fills it on demand, and
+            # it is carried over below while the folder stays unchanged.
+            new_store[id] = ImageEntity(
+                id=id,
                 size=0,
                 name=os.path.basename(leaf),
                 path=leaf,
-                updateTime=datetime.datetime.fromtimestamp(os.stat(leaf).st_mtime),
+                updateTime=mtime,
+                # Cover cache-bust token: tie it to the folder, not the scan,
+                # so a rescan doesn't make browsers refetch every cover.
+                entityUpdateTime=mtime,
                 page=len(files),
             )
 
     with _store_lock:
+        # Keep what the scan cannot cheaply recompute: reading progress, and a
+        # refreshed size as long as the folder has not changed since.
+        for id, entity in new_store.items():
+            old = _store.get(id)
+            if old is None or old.path != entity.path:
+                continue
+            entity.lastViewedPosition = old.lastViewedPosition
+            entity.lastViewedTime = old.lastViewedTime
+            if old.updateTime == entity.updateTime and old.page == entity.page:
+                entity.size = old.size
         _store.clear()
         _store.update(new_store)
 
     print(f"[Images] Loaded {len(new_store)} image folder(s) into memory")
+    save_snapshot()
+
+
+def _refresh_album(path: str):
+    """Update the page count of the album at `path`, if it is in the store.
+
+    Used after a like adds a file to the liked album, so its count is right
+    before the next scan. An album not in the store yet (e.g. the liked folder
+    was empty at scan time) shows up with the next scan.
+    """
+    real = os.path.realpath(path)
+    with _store_lock:
+        album = next((e for e in _store.values() if os.path.realpath(e.path) == real), None)
+        if album is None:
+            return
+        album.page = len(_image_files(album.path))
+        album.updateTime = datetime.datetime.fromtimestamp(os.stat(album.path).st_mtime)
+        album.entityUpdateTime = album.updateTime
+    save_snapshot()
 
 
 def _get(id: int) -> ImageEntity:
@@ -208,18 +295,6 @@ class ImageCBV:
             position=entity.lastViewedPosition, lastViewedTime=entity.lastViewedTime
         )
 
-    @router.post("/api/images/{id}/favor", tags=["images"])
-    def favor(self, id: int, _: None = Depends(require_auth)) -> FavorResponse:
-        entity = _get(id)
-        entity.favorited = True
-        return FavorResponse(favorited=True)
-
-    @router.delete("/api/images/{id}/favor", tags=["images"])
-    def unfavor(self, id: int, _: None = Depends(require_auth)) -> FavorResponse:
-        entity = _get(id)
-        entity.favorited = False
-        return FavorResponse(favorited=False)
-
     @router.post("/api/images/{id}/refresh", tags=["images"])
     def refresh(self, id: int, _: None = Depends(require_auth)) -> ImageEntity:
         entity = _get(id)
@@ -227,6 +302,7 @@ class ImageCBV:
         entity.page = len(_image_files(entity.path))
         entity.updateTime = refreshed.updateTime
         entity.size = refreshed.size
+        save_snapshot()
         return entity.model_dump()
 
     @router.post("/api/images/{id}/rename", tags=["images"])
@@ -243,8 +319,10 @@ class ImageCBV:
         if any(e.name == new_name for e in _store.values() if e.id != id):
             abort(400, "Image folder with same name already exists")
         os.rename(entity.path, new_path)
+        # The id stays as is until the next scan re-derives it from the new path.
         entity.name = new_name
         entity.path = new_path
+        save_snapshot()
         return ImageRenameResponse(name=new_name)
 
     @router.delete("/api/images/{id}/pages/{page}", tags=["images"])
@@ -255,9 +333,8 @@ class ImageCBV:
         Unlike comics (whose pages live inside an archive), image albums are
         plain folders, so an individual file can be removed in place. The page
         count and updateTime are refreshed; bumping updateTime invalidates the
-        page etags, since every page after the deleted one now maps to a
-        different file. The cover is only regenerated when the deleted page was
-        its source image, so a custom-set cover survives unrelated deletions.
+        page etags (including the page-0 cover), since every page after the
+        deleted one now maps to a different file.
         """
         if page < 1:
             abort(404, "Page not found")
@@ -268,35 +345,52 @@ class ImageCBV:
         idx = page - 1
         if idx >= len(files):
             abort(404, "Page not found")
-        # Remember which file backs the cover so it is only regenerated when the
-        # deleted page is that source (coverPosition is 1-based, 0 == first page).
-        cover_idx = (entity.coverPosition - 1) if entity.coverPosition > 0 else 0
-        cover_name = files[cover_idx] if cover_idx < len(files) else None
         target = files[idx]
         try:
             os.remove(os.path.join(entity.path, target))
         except OSError as e:
             abort(500, f"Cannot delete image: {e}")
-        remaining = _image_files(entity.path)
-        entity.page = len(remaining)
+        entity.page = len(_image_files(entity.path))
         entity.updateTime = datetime.datetime.now()
-        if target == cover_name or cover_name not in remaining:
-            # The cover's source image is gone (or unknown): rebuild from the
-            # first remaining page and reset the cover pointer.
-            entity.coverPosition = 0
-            _gen_cover(entity, overwrite=True, page=0)
-            entity.entityUpdateTime = datetime.datetime.now()
-        elif entity.coverPosition > 0:
-            # The cover image survives; its index may have shifted, so keep the
-            # pointer aimed at the same file (the JPEG bytes are unchanged).
-            entity.coverPosition = remaining.index(cover_name) + 1
+        # The cover is page 0 served live, so bump the cover cache-bust token
+        # in case the first page is the one that went.
+        entity.entityUpdateTime = entity.updateTime
+        save_snapshot()
         return entity.model_dump()
+
+    @router.post("/api/images/{id}/pages/{page}/like", tags=["images"])
+    def like(self, id: int, page: int, _: None = Depends(require_auth)) -> APIMessage:
+        """Copy one page into the liked folder (itself scanned as an album).
+
+        `page` is 1-based. The file is copied byte-for-byte under its own
+        extension, like comic page likes, so GIFs stay animated. Liking a page
+        of the liked album itself is a no-op.
+        """
+        if page < 1:
+            abort(404, "Page not found")
+        entity = _get(id)
+        files = _image_files(entity.path)
+        if page > len(files):
+            abort(404, "Page not found")
+        liked_dir = global_data.Config.Image.liked_path
+        if os.path.realpath(entity.path) == os.path.realpath(liked_dir):
+            return APIMessage(detail="OK")
+        src = files[page - 1]
+        ext = os.path.splitext(src)[1].lower()
+        target = os.path.join(liked_dir, f"{entity.name}_{page}{ext}")
+        if os.path.exists(target):
+            return APIMessage(detail="OK")
+        try:
+            os.makedirs(liked_dir, exist_ok=True)
+            shutil.copyfile(os.path.join(entity.path, src), target)
+        except OSError as e:
+            abort(500, f"Cannot like image: {e}")
+        _refresh_album(liked_dir)
+        return APIMessage(detail="OK")
 
     @router.delete("/api/images/{id}", tags=["images"])
     def delete(self, id: int, _: None = Depends(require_auth)) -> APIMessage:
         entity = _get(id)
-        if entity.favorited:
-            abort(400, "Cannot delete favorited image folder")
         try:
             entries = list(os.scandir(entity.path))
         except OSError as e:
@@ -310,18 +404,8 @@ class ImageCBV:
         shutil.rmtree(entity.path)
         with _store_lock:
             _store.pop(entity.id, None)
+        save_snapshot()
         return APIMessage(detail="Deleted")
-
-    @router.post("/api/images/{id}/pages/{page}/cover", tags=["images"])
-    def set_cover(self, id: int, page: int, _: None = Depends(require_auth)) -> Response:
-        entity = _get(id)
-        cover_page = (page - 1) if page > 0 else 0
-        if _gen_cover(entity, overwrite=True, page=cover_page):
-            entity.coverPosition = page
-            # Bump the cover version so the frontend's cache-busting URL changes.
-            entity.entityUpdateTime = datetime.datetime.now()
-            return Response(status_code=200)
-        abort(500)
 
     @router.post("/api/images/{id}/convert", tags=["images"])
     def convert(self, id: int, _: None = Depends(require_auth)) -> ComicEntity:
