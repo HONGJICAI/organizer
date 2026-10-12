@@ -67,5 +67,5 @@ Fixtures in `be/tests/conftest.py`: `client` (TestClient with in-memory SQLite a
 
 - State modules use Svelte 5 runes in `*.svelte.ts` files (`config.svelte.ts`, `auth.svelte.ts`, `connection.svelte.ts`, `viewerState.svelte.ts`).
 - The app is connection-gated: `ConnectDialog` either connects to a real backend URL (persisted in localStorage) or starts MSW mock mode via URL params `?mock=1` (`&auth=1` simulates login; mock password is `mock`).
-- `routes/[mediaType=mediaType]/` serves comic/video/image lists from one route tree; media-type-specific behavior branches on `MediaType` (`lib/model.svelte.ts`).
+- `routes/[mediaType=mediaType]/` serves comic/video/image lists from one route tree. Per-type API calls and capabilities live in `lib/mediaAdapters.ts` (`adapters[file.type].likePage(...)` etc.); don't pick an API service by hand in components. An optional adapter operation is absent when the type doesn't support it, and the UI shows the matching control only when it exists.
 - The reader (`lib/components/FileContent.svelte`) is shared by comics and image albums.

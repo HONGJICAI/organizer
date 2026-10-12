@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { adapters } from '$lib/mediaAdapters';
 	import { goto } from '$app/navigation';
-	import { MediaType, type MediaFile } from '$lib/model.svelte';
+	import type { MediaFile } from '$lib/model.svelte';
 	import { separateFilename } from '$lib/utility';
 	import { NumberInput, SkeletonPlaceholder, Tag } from 'carbon-components-svelte';
 
@@ -41,10 +42,8 @@
 	// with a handful of items can't dominate a percentage chart. Adjustable.
 	let minCount = $state(5);
 
-	let mediaType = $derived(files[0]?.type);
 	// Match the main list: comics tag off their name, everything else off path.
-	const tagsOf = (f: MediaFile) =>
-		separateFilename(mediaType === MediaType.Comic ? f.name : f.path);
+	const tagsOf = (f: MediaFile) => separateFilename(adapters[f.type].tagSource(f));
 
 	let tagDetails = $derived.by(() => {
 		const tag2detail = new Map<string, TagDetail>();

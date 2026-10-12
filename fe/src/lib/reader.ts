@@ -1,6 +1,7 @@
 import { config, PageWidthMode, ViewMode } from '$lib/config.svelte';
 import { authState } from '$lib/auth.svelte';
-import { MediaType } from '$lib/model.svelte';
+import { adapters } from '$lib/mediaAdapters';
+import type { MediaType } from '$lib/model.svelte';
 
 // Server-side page width cap, keep in sync with the backend's `width` query param.
 export const MAX_PAGE_WIDTH = 4096;
@@ -34,10 +35,9 @@ export function pageApiUrl(
 	pageNum: number,
 	widthOverride?: number
 ): string {
-	const base =
-		mediaType === MediaType.Image
-			? `${config.apiServer}/api/images/${id}/pages/${pageNum}`
-			: `${config.apiServer}/api/comics/${id}/pages/${pageNum}`;
+	const pagePath = adapters[mediaType].pagePath;
+	if (!pagePath) throw new Error(`${mediaType} has no pages`);
+	const base = `${config.apiServer}${pagePath(id, pageNum)}`;
 	const params = new URLSearchParams();
 	if (authState.token) params.set('token', authState.token);
 	const width = widthOverride ?? pageWidth();
