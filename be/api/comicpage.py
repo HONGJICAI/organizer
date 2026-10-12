@@ -110,10 +110,26 @@ class ComicPageCBV:
         if page < 1:
             abort(404, "Page not found")
         comic = self.__get(id)
-        name = f"{comic.name}_{page}.jpg"
-        path = os.path.join(global_data.Config.Image.liked_path, name)
-        if os.path.exists(path):
+        liked_dir = global_data.Config.Image.liked_path
+        # Pages used to be re-encoded to "<name>_<page>.jpg"; a page liked back
+        # then counts as liked already.
+        if os.path.exists(os.path.join(liked_dir, f"{comic.name}_{page}.jpg")):
             return APIMessage(detail="OK")
+        cf = comicfile.create_open(comic.path)
+        if cf is None:
+            abort(404, "Comic file not found")
+        ok, buf = cf.read(page - 1)
+        if not ok:
+            abort(404, "Page not found")
+        # Store the page bytes as-is under their own extension: re-encoding to
+        # JPEG lost GIF animation and PNG transparency and degraded quality.
+        ext = os.path.splitext(cf.namelist[page - 1])[1].lower()
+        path = os.path.join(liked_dir, f"{comic.name}_{page}{ext}")
+        if not os.path.exists(path):
+            os.makedirs(liked_dir, exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(buf)
+        return APIMessage(detail="OK")
         cf = comicfile.create_open(comic.path)
         if cf is None:
             abort(404, "Comic file not found")

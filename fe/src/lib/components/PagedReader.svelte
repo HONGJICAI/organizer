@@ -278,7 +278,11 @@
 	}
 
 	async function onLikePage() {
-		const { error } = await ComicpageService.comicPageLike({ path: { id: file.id, page } });
+		// Each type has its own like endpoint; ids of comics and albums overlap.
+		const { error } =
+			file.type === MediaType.Image
+				? await ImagesService.imageLike({ path: { id: file.id, page } })
+				: await ComicpageService.comicPageLike({ path: { id: file.id, page } });
 		if (error) {
 			addNotification(new ErrorNotification({ subtitle: 'Failed to like page' }));
 		} else {

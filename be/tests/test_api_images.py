@@ -426,6 +426,77 @@ class TestDeletePage:
         assert r.json()["page"] == 0
 
 
+class TestLike:
+    @pytest.fixture
+    def liked_dir(self, tmp_path, monkeypatch):
+        import global_data
+        d = tmp_path / "liked"
+        monkeypatch.setattr(global_data.Config.Image, "liked_path", str(d))
+        return d
+
+    def _album(self, tmp_path, names=("a.jpg", "b.gif")):
+        d = tmp_path / "album"
+        d.mkdir()
+        for name in names:
+            (d / name).write_bytes(f"bytes-of-{name}".encode())
+        return d
+
+    def test_copies_page_verbatim(self, client, tmp_path, liked_dir):
+        d = self._album(tmp_path)
+        set_store(make_entity(id=1, name="album", path=str(d), page=2))
+        r = client.post("/api/images/1/pages/2/like")
+        assert r.status_code == 200
+        assert r.json()["detail"] == "OK"
+        # Original extension and bytes, so a GIF stays animated.
+        assert (liked_dir / "album_2.gif").read_bytes() == b"bytes-of-b.gif"
+        assert (d / "b.gif").exists()
+
+    def test_already_liked_keeps_existing(self, client, tmp_path, liked_dir):
+        d = self._album(tmp_path)
+        liked_dir.mkdir()
+        (liked_dir / "album_1.jpg").write_bytes(b"first")
+        set_store(make_entity(id=1, name="album", path=str(d), page=2))
+        assert client.post("/api/images/1/pages/1/like").status_code == 200
+        assert (liked_dir / "album_1.jpg").read_bytes() == b"first"
+
+    def test_liking_in_liked_album_is_noop(self, client, liked_dir):
+        liked_dir.mkdir()
+        (liked_dir / "x_1.jpg").write_bytes(b"x")
+        set_store(make_entity(id=1, name="liked", path=str(liked_dir), page=1))
+        assert client.post("/api/images/1/pages/1/like").status_code == 200
+        assert [p.name for p in liked_dir.iterdir()] == ["x_1.jpg"]
+
+    def test_updates_liked_album_page_count(self, client, tmp_path, liked_dir):
+        d = self._album(tmp_path)
+        liked_dir.mkdir()
+        (liked_dir / "x_1.jpg").write_bytes(b"x")
+        set_store(
+            make_entity(id=1, name="album", path=str(d), page=2),
+            make_entity(id=2, name="liked", path=str(liked_dir), page=1),
+        )
+        client.post("/api/images/1/pages/1/like")
+        assert img_api._store[2].page == 2
+
+    def test_copy_failure_returns_500(self, client, tmp_path, liked_dir):
+        d = self._album(tmp_path)
+        liked_dir.write_text("a file, not a folder")
+        set_store(make_entity(id=1, name="album", path=str(d), page=2))
+        assert client.post("/api/images/1/pages/1/like").status_code == 500
+
+    def test_out_of_range_returns_404(self, client, tmp_path, liked_dir):
+        d = self._album(tmp_path)
+        set_store(make_entity(id=1, path=str(d), page=2))
+        assert client.post("/api/images/1/pages/3/like").status_code == 404
+
+    def test_zero_page_returns_404(self, client, tmp_path, liked_dir):
+        d = self._album(tmp_path)
+        set_store(make_entity(id=1, path=str(d), page=2))
+        assert client.post("/api/images/1/pages/0/like").status_code == 404
+
+    def test_missing_returns_404(self, client):
+        assert client.post("/api/images/999/pages/1/like").status_code == 404
+
+
 class TestConvertToComic:
     def _album(self, tmp_path, pages=3):
         d = tmp_path / "album" / "My Album"

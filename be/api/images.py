@@ -199,6 +199,24 @@ def bootstrap():
     save_snapshot()
 
 
+def _refresh_album(path: str):
+    """Update the page count of the album at `path`, if it is in the store.
+
+    Used after a like adds a file to the liked album, so its count is right
+    before the next scan. An album not in the store yet (e.g. the liked folder
+    was empty at scan time) shows up with the next scan.
+    """
+    real = os.path.realpath(path)
+    with _store_lock:
+        album = next((e for e in _store.values() if os.path.realpath(e.path) == real), None)
+        if album is None:
+            return
+        album.page = len(_image_files(album.path))
+        album.updateTime = datetime.datetime.fromtimestamp(os.stat(album.path).st_mtime)
+        album.entityUpdateTime = album.updateTime
+    save_snapshot()
+
+
 def _get(id: int) -> ImageEntity:
     entity = _store.get(id)
     if entity is None:
@@ -339,6 +357,36 @@ class ImageCBV:
         entity.entityUpdateTime = entity.updateTime
         save_snapshot()
         return entity.model_dump()
+
+    @router.post("/api/images/{id}/pages/{page}/like", tags=["images"])
+    def like(self, id: int, page: int, _: None = Depends(require_auth)) -> APIMessage:
+        """Copy one page into the liked folder (itself scanned as an album).
+
+        `page` is 1-based. The file is copied byte-for-byte under its own
+        extension, like comic page likes, so GIFs stay animated. Liking a page
+        of the liked album itself is a no-op.
+        """
+        if page < 1:
+            abort(404, "Page not found")
+        entity = _get(id)
+        files = _image_files(entity.path)
+        if page > len(files):
+            abort(404, "Page not found")
+        liked_dir = global_data.Config.Image.liked_path
+        if os.path.realpath(entity.path) == os.path.realpath(liked_dir):
+            return APIMessage(detail="OK")
+        src = files[page - 1]
+        ext = os.path.splitext(src)[1].lower()
+        target = os.path.join(liked_dir, f"{entity.name}_{page}{ext}")
+        if os.path.exists(target):
+            return APIMessage(detail="OK")
+        try:
+            os.makedirs(liked_dir, exist_ok=True)
+            shutil.copyfile(os.path.join(entity.path, src), target)
+        except OSError as e:
+            abort(500, f"Cannot like image: {e}")
+        _refresh_album(liked_dir)
+        return APIMessage(detail="OK")
 
     @router.delete("/api/images/{id}", tags=["images"])
     def delete(self, id: int, _: None = Depends(require_auth)) -> APIMessage:

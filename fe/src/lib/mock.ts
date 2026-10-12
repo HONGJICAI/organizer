@@ -306,7 +306,7 @@ export async function setupMock(authRequired: boolean) {
 		}),
 		http.post('/api/comics/:id/pages/:page/like', async () => {
 			await delay(200);
-			return HttpResponse.json({ msg: 'Liked' });
+			return HttpResponse.json({ detail: 'OK' });
 		}),
 		http.post('/api/comics/:id/pages/:page/cover', async ({ params }) => {
 			await delay(200);
@@ -378,6 +378,16 @@ export async function setupMock(authRequired: boolean) {
 			image.page = Math.max(0, image.page - 1);
 			image.entityUpdateTime = new Date().toISOString();
 			return HttpResponse.json(image);
+		}),
+		http.post('/api/images/:id/pages/:page/like', async ({ params }) => {
+			await delay(200);
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			const page = Number(params.page);
+			if (page < 1 || page > image.page) {
+				return HttpResponse.json({ msg: 'Page not found' }, { status: 404 });
+			}
+			return HttpResponse.json({ detail: 'OK' });
 		}),
 		http.post('/api/images/:id/refresh', async ({ params }) => {
 			await delay(800);

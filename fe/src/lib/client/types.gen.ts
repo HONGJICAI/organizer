@@ -1461,6 +1461,50 @@ export type ImageRenameResponses = {
 
 export type ImageRenameResponse2 = ImageRenameResponses[keyof ImageRenameResponses];
 
+export type ImageLikeData = {
+    body?: never;
+    path: {
+        id: number;
+        page: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/pages/{page}/like';
+};
+
+export type ImageLikeErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImageLikeError = ImageLikeErrors[keyof ImageLikeErrors];
+
+export type ImageLikeResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiMessage;
+};
+
+export type ImageLikeResponse = ImageLikeResponses[keyof ImageLikeResponses];
+
 export type ImageConvertData = {
     body?: never;
     path: {
