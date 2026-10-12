@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { adapters } from '$lib/mediaAdapters';
 	import { goto, pushState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Search, SkeletonPlaceholder } from 'carbon-components-svelte';
 	import FileCard from '$lib/components/FileCard.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
-	import { MediaType, type MediaFile } from '$lib/model.svelte';
+	import type { MediaFile } from '$lib/model.svelte';
 	import { includeAllKeywords } from '$lib/utility';
 
 	let { data } = $props();
@@ -43,7 +44,7 @@
 			return [] as MediaFile[];
 		}
 		return files.filter((f) =>
-			includeAllKeywords((f.type === MediaType.Comic ? f.name : f.path).toLowerCase(), keywords)
+			includeAllKeywords(adapters[f.type].tagSource(f).toLowerCase(), keywords)
 		);
 	};
 	let comicResults = $derived(filterFiles(comics));

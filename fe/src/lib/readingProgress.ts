@@ -1,27 +1,22 @@
-import { ComicpageService, ImagesService } from '$lib/client';
-import { MediaType, type MediaFile } from '$lib/model.svelte';
+import { adapters } from '$lib/mediaAdapters';
+import type { MediaFile } from '$lib/model.svelte';
 
 // Reports comic/image reading progress to the backend. Calls are deduped (a
 // repeated position is skipped) and debounced by the caller via schedule(), so
 // flipping through pages only sends the position the reader settles on. The
 // position is also mirrored onto the in-memory file so cached list views (the
 // viewed badge, Recent, sort-by-viewed) stay consistent without a refetch.
-// Fire and forget; videos are ignored.
+// Fire and forget; types without progress tracking (videos) are ignored.
 export function createProgressReporter(file: MediaFile, debounceMs = 1000) {
 	let reported = 0;
 	let pending = 0;
 	let timer: ReturnType<typeof setTimeout> | null = null;
 
 	function send(position: number) {
-		if (position === reported || position < 1) return;
-		if (file.type !== MediaType.Comic && file.type !== MediaType.Image) return;
+		const update = adapters[file.type].updateProgress;
+		if (position === reported || position < 1 || !update) return;
 		reported = position;
-		const opts = { path: { id: file.id }, body: { position } };
-		if (file.type === MediaType.Comic) {
-			ComicpageService.comicPageUpdateProgress(opts);
-		} else {
-			ImagesService.imageUpdateProgress(opts);
-		}
+		update(file.id, position);
 		const now = new Date();
 		file.lastViewed = position;
 		file.lastViewedTime = now.toISOString();

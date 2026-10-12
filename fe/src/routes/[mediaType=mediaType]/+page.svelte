@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { adapters } from '$lib/mediaAdapters';
 	import TagStack from '$lib/components/TagStack.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
 	import { genTagMap, includeAllKeywords } from '$lib/utility';
 	import {
-		MediaType,
 		Category,
 		MediaFile,
 		type MediaFileComparisonType,
@@ -153,18 +153,14 @@
 	let searchFiles = $derived(
 		categoryFiles.filter((f) =>
 			includeAllKeywords(
-				(f.type === MediaType.Comic ? f.name : f.path).toLowerCase(),
+				adapters[f.type].tagSource(f).toLowerCase(),
 				searchStr.trim().toLowerCase().split(' ')
 			)
 		)
 	);
 	let mediaType = $derived(files[0]?.type);
-	let filteredTagMap = $derived(
-		genTagMap(categoryFiles.map((c) => (mediaType === MediaType.Comic ? c.name : c.path)))
-	);
-	let searchedTagMap = $derived(
-		genTagMap(searchFiles.map((c) => (mediaType === MediaType.Comic ? c.name : c.path)))
-	);
+	let filteredTagMap = $derived(genTagMap(categoryFiles.map((c) => adapters[c.type].tagSource(c))));
+	let searchedTagMap = $derived(genTagMap(searchFiles.map((c) => adapters[c.type].tagSource(c))));
 
 	const orderByOptions = $derived.by(() => {
 		switch (category) {

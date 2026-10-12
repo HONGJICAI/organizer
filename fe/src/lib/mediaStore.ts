@@ -1,31 +1,13 @@
-import { ComicsService, ImagesService, VideosService } from '$lib/client/sdk.gen.js';
-import { Comic, Image, Video, type MediaFile } from '$lib/model.svelte';
+import { adapterFor, type MediaAdapter } from '$lib/mediaAdapters';
+import type { MediaFile } from '$lib/model.svelte';
 
-type Loader = () => Promise<MediaFile[]>;
-
-const loaders: Record<string, Loader> = {
-	comic: async () => {
-		const { data, error } = await ComicsService.comicGetAll();
-		if (error) {
-			throw error;
-		}
-		return data.map((e) => new Comic(e));
-	},
-	video: async () => {
-		const { data, error } = await VideosService.videoGetAll();
-		if (error) {
-			throw error;
-		}
-		return data.map((e) => new Video(e));
-	},
-	image: async () => {
-		const { data, error } = await ImagesService.imageGetAll();
-		if (error) {
-			throw error;
-		}
-		return data.map((e) => new Image(e));
+async function loadAll(adapter: MediaAdapter): Promise<MediaFile[]> {
+	const result = await adapter.list();
+	if (result.error !== undefined) {
+		throw new Error(result.error);
 	}
-};
+	return result.data;
+}
 
 // Session-scoped cache of the full per-media-type list. Home / folder / tag and
 // global search all consume the same full list, so we fetch each type at most
@@ -35,15 +17,15 @@ const loaders: Record<string, Loader> = {
 const cache = new Map<string, Promise<MediaFile[]>>();
 
 export function getMediaFiles(mediaType: string): Promise<MediaFile[]> | undefined {
-	const loader = loaders[mediaType];
-	if (!loader) {
+	const adapter = adapterFor(mediaType);
+	if (!adapter) {
 		return undefined;
 	}
 	let pending = cache.get(mediaType);
 	if (!pending) {
 		// Don't poison the cache with a rejected promise: drop it on failure so the
 		// next navigation (or refresh) retries instead of replaying the error.
-		pending = loader().catch((err) => {
+		pending = loadAll(adapter).catch((err) => {
 			cache.delete(mediaType);
 			throw err;
 		});

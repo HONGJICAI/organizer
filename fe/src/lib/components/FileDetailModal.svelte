@@ -35,7 +35,7 @@
 		TrashCan,
 		UpdateNow
 	} from 'carbon-icons-svelte';
-	import { ComicsService, ImagesService, VideosService } from '$lib/client';
+	import { adapters } from '$lib/mediaAdapters';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { goto } from '$app/navigation';
@@ -60,125 +60,54 @@
 	let mediaType = $derived(file.type);
 	let comicfile = $derived(file.type === MediaType.Comic ? (file as Comic) : null);
 	let videofile = $derived(file.type === MediaType.Video ? (file as Video) : null);
-	let separateToTagsFrom = $derived(file.type === MediaType.Comic ? file.name : file.path);
+	let adapter = $derived(adapters[file.type]);
+	let separateToTagsFrom = $derived(adapter.tagSource(file));
 	let permanent = $state(false);
 	let openDeleteModal = $state(false);
 	let sendingDelete = $state(false);
 	async function onClickDelete() {
 		sendingDelete = true;
 		openDeleteModal = false;
-		const requestData = {
-			path: {
-				id: file.id
-			},
-			query: {
-				permanent
-			}
-		};
-		switch (mediaType) {
-			case MediaType.Comic: {
-				const { error } = await ComicsService.comicDelete(requestData);
-				if (error) {
-					addNotification(new ErrorNotification({ subtitle: error?.msg }));
-				} else {
-					onFileDeleted(permanent);
-					// The per-type list is cached for the session (see mediaStore); drop it
-					// so navigating away and back re-fetches instead of resurrecting the
-					// just-deleted/archived file from stale cache.
-					refreshMediaFiles(mediaType);
-					onCloseModal();
-				}
-				break;
-			}
-			case MediaType.Video: {
-				const { error } = await VideosService.videoDelete(requestData);
-				if (error) {
-					addNotification(new ErrorNotification({ subtitle: error?.msg }));
-				} else {
-					onFileDeleted(permanent);
-					// The per-type list is cached for the session (see mediaStore); drop it
-					// so navigating away and back re-fetches instead of resurrecting the
-					// just-deleted/archived file from stale cache.
-					refreshMediaFiles(mediaType);
-					onCloseModal();
-				}
-				break;
-			}
-			case MediaType.Image: {
-				const { error } = await ImagesService.imageDelete({ path: { id: file.id } });
-				if (error) {
-					addNotification(new ErrorNotification({ subtitle: error?.msg }));
-				} else {
-					onFileDeleted(true);
-					refreshMediaFiles(mediaType);
-					onCloseModal();
-				}
-				break;
-			}
-			default:
-				alert(`Unknown media type: ${mediaType}`);
-				throw new Error(`Unknown media type: ${mediaType}`);
+		const { error } = await adapter.remove(file.id, permanent);
+		if (error !== undefined) {
+			addNotification(new ErrorNotification({ subtitle: error }));
+		} else {
+			onFileDeleted(permanent || !adapter.archivable);
+			// The per-type list is cached for the session (see mediaStore); drop it
+			// so navigating away and back re-fetches instead of resurrecting the
+			// just-deleted/archived file from stale cache.
+			refreshMediaFiles(mediaType);
+			onCloseModal();
 		}
 		sendingDelete = false;
 	}
 	let sendingFavorite = $state(false);
 	const onClickFavorite = async () => {
-		if (sendingFavorite) {
+		if (sendingFavorite || !adapter.favor) {
 			return;
 		}
 		sendingFavorite = true;
-		const { data, error } = file.favorited
-			? await ComicsService.comicUnfavor({
-					path: {
-						id: file.id
-					}
-				})
-			: await ComicsService.comicFavor({
-					path: {
-						id: file.id
-					}
-				});
-		if (error) {
-			addNotification(new ErrorNotification({ subtitle: error?.msg }));
+		const result = await adapter.favor(file.id, !file.favorited);
+		if (result.error !== undefined) {
+			addNotification(new ErrorNotification({ subtitle: result.error }));
 		} else {
-			file.favorited = data.favorited;
+			file.favorited = result.data;
 		}
 		sendingFavorite = false;
 	};
 
 	let sendingRefresh = $state(false);
 	async function onClickRefresh() {
+		if (!adapter.refresh) return;
 		sendingRefresh = true;
-		const requestData = {
-			path: {
-				id: file.id
-			}
-		};
-		switch (mediaType) {
-			case MediaType.Comic: {
-				const { data, error } = await ComicsService.comicRefresh(requestData);
-				if (error) {
-					addNotification(new ErrorNotification({ subtitle: error?.msg }));
-				}
-				if (data) {
-					// update in place so the same object held by cached list views
-					// reflects the refresh, instead of replacing it with a new instance
-					file.update(data);
-					addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
-				}
-				break;
-			}
-			case MediaType.Image: {
-				const { data, error } = await ImagesService.imageRefresh(requestData);
-				if (error) {
-					addNotification(new ErrorNotification({ subtitle: error?.msg }));
-				}
-				if (data) {
-					file.update(data);
-					addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
-				}
-				break;
-			}
+		const result = await adapter.refresh(file.id);
+		if (result.error !== undefined) {
+			addNotification(new ErrorNotification({ subtitle: result.error }));
+		} else {
+			// update in place so the same object held by cached list views
+			// reflects the refresh, instead of replacing it with a new instance
+			file.update(result.data);
+			addNotification(new SuccessNotification({ subtitle: `Refreshed ${file.name}` }));
 		}
 		sendingRefresh = false;
 	}
@@ -186,15 +115,11 @@
 	let newname = $state(file.name);
 	let sendingRename = $state(false);
 	async function onClickSaveName() {
+		if (!adapter.rename) return;
 		sendingRename = true;
-		const { error } = await ComicsService.comicRename({
-			body: { name: newname },
-			path: {
-				id: file.id
-			}
-		});
-		if (error) {
-			addNotification(new ErrorNotification({ subtitle: error?.msg }));
+		const { error } = await adapter.rename(file.id, newname);
+		if (error !== undefined) {
+			addNotification(new ErrorNotification({ subtitle: error }));
 		} else {
 			editingName = false;
 			file.name = newname;
@@ -204,34 +129,30 @@
 	}
 	let sendingConvert = $state(false);
 	async function onClickConvert() {
-		if (sendingConvert) return;
+		if (sendingConvert || !adapter.convertToComic) return;
 		sendingConvert = true;
-		const { data, error } = await ImagesService.imageConvert({ path: { id: file.id } });
-		if (error) {
-			addNotification(new ErrorNotification({ subtitle: error?.msg }));
-		} else if (data) {
+		const result = await adapter.convertToComic(file.id);
+		if (result.error !== undefined) {
+			addNotification(new ErrorNotification({ subtitle: result.error }));
+		} else {
 			// A brand-new comic was imported; drop the cached comic list so it shows
 			// up when navigating to comics instead of only after a reload.
 			refreshMediaFiles(MediaType.Comic);
-			addNotification(new SuccessNotification({ subtitle: `Converted to comic: ${data.name}` }));
+			addNotification(new SuccessNotification({ subtitle: `Converted to comic: ${result.data}` }));
 		}
 		sendingConvert = false;
 	}
 
 	let loadingDetail = $state(false);
-	// Comics and image albums share the same `{ pageDetails: [{ name }] }` shape;
-	// only the service that produces it differs.
 	let detail = $state<{ pageDetails: { name: string }[] }>();
 	async function onClickDetail() {
+		if (!adapter.detail) return;
 		loadingDetail = true;
-		const { data, error } =
-			mediaType === MediaType.Image
-				? await ImagesService.imageDetail({ path: { id: file.id } })
-				: await ComicsService.comicDetail({ path: { id: file.id } });
-		if (error) {
-			addNotification(new ErrorNotification({ subtitle: error?.msg }));
+		const result = await adapter.detail(file.id);
+		if (result.error !== undefined) {
+			addNotification(new ErrorNotification({ subtitle: result.error }));
 		} else {
-			detail = data;
+			detail = result.data;
 		}
 		loadingDetail = false;
 	}
@@ -240,22 +161,20 @@
 	// row shows a spinner and double-clicks are ignored.
 	let deletingPageIdx = $state(-1);
 	async function onClickDeletePage(idx: number) {
-		if (deletingPageIdx !== -1) return;
+		if (deletingPageIdx !== -1 || !adapter.deletePage) return;
 		deletingPageIdx = idx;
 		// The API is 1-based and deletes by position in the sorted file list, which
 		// matches this list's order, so the local row index maps straight to a page.
-		const { data, error } = await ImagesService.imageDeletePage({
-			path: { id: file.id, page: idx + 1 }
-		});
-		if (error) {
-			addNotification(new ErrorNotification({ subtitle: error?.msg }));
-		} else if (data) {
+		const result = await adapter.deletePage(file.id, idx + 1);
+		if (result.error !== undefined) {
+			addNotification(new ErrorNotification({ subtitle: result.error }));
+		} else {
 			// Drop the row locally so the remaining rows stay aligned with the
 			// folder for any follow-up deletes, and reflect the new page count/cover
 			// on the shared file instance held by cached list views.
 			detail = { pageDetails: (detail?.pageDetails ?? []).filter((_, i) => i !== idx) };
-			file.update(data);
-			refreshMediaFiles(MediaType.Image);
+			file.update(result.data);
+			refreshMediaFiles(mediaType);
 		}
 		deletingPageIdx = -1;
 	}
@@ -278,7 +197,7 @@
 >
 	<div style="display: flex; align-items: center;">
 		<TextInput labelText="Name" bind:value={newname} inline readonly={!editingName} />
-		{#if editingName}
+		{#if adapter.rename && editingName}
 			<Button
 				icon={Save}
 				iconDescription="Save"
@@ -287,7 +206,7 @@
 				}}
 				disabled={sendingRename}
 			/>
-		{:else}
+		{:else if adapter.rename}
 			<Button
 				icon={Edit}
 				iconDescription="Edit"
@@ -341,7 +260,7 @@
 		/>
 		<!-- Only comics can be favorited: image albums are kept lightweight
 		     (convert one to a comic to keep it) and videos have no favor API. -->
-		{#if mediaType === MediaType.Comic}
+		{#if adapter.favor}
 			<span class="fav-wrap" class:favorited={file.favorited}>
 				<Button
 					icon={file.favorited ? FavoriteFilled : Favorite}
@@ -351,12 +270,14 @@
 				/>
 			</span>
 		{/if}
-		<Button
-			icon={UpdateNow}
-			iconDescription="Refresh"
-			on:click={() => onClickRefresh()}
-			disabled={sendingRefresh || file.archived || mediaType === MediaType.Video}
-		/>
+		{#if adapter.refresh}
+			<Button
+				icon={UpdateNow}
+				iconDescription="Refresh"
+				on:click={() => onClickRefresh()}
+				disabled={sendingRefresh || file.archived}
+			/>
+		{/if}
 		<CopyButton text={file.name} />
 		<Button
 			icon={NewTab}
@@ -372,7 +293,7 @@
 			href={`honeyview:${file.path}`}
 			disabled={file.archived}
 		/>
-		{#if mediaType === MediaType.Image}
+		{#if adapter.convertToComic}
 			<Button
 				icon={Book}
 				iconDescription="Convert to comic"
@@ -385,10 +306,10 @@
 		{/if}
 	</div>
 	<TextArea labelText="Path" value={file.path} readonly rows={3} />
-	{#if !file.archived}
+	{#if !file.archived && adapter.detail}
 		<p>Details</p>
 		<DataTable
-			headers={mediaType === MediaType.Image
+			headers={adapter.deletePage
 				? [
 						{ key: 'name', value: 'Name' },
 						{ key: 'actions', empty: true }
@@ -433,16 +354,9 @@
 </Modal>
 
 <ComposedModal bind:open={openDeleteModal} on:click:button--primary={() => onClickDelete()}>
-	<ModalHeader
-		label="Changes"
-		title="Confirm delete {mediaType === MediaType.Image
-			? 'image folder'
-			: mediaType === MediaType.Video
-				? 'video'
-				: 'comic'}"
-	/>
+	<ModalHeader label="Changes" title="Confirm delete {adapter.label}" />
 	<ModalBody hasForm>
-		{#if mediaType !== MediaType.Image}
+		{#if adapter.archivable}
 			<Checkbox labelText="permenant: including database record" bind:checked={permanent} />
 		{/if}
 		{#if sendingDelete}

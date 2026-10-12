@@ -389,6 +389,19 @@ export async function setupMock(authRequired: boolean) {
 			}
 			return HttpResponse.json({ detail: 'OK' });
 		}),
+		http.post('/api/images/:id/rename', async ({ params, request }) => {
+			await delay(400);
+			const image = findImage(params.id);
+			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			const body = (await request.json()) as { name: string };
+			if (body.name === image.name) {
+				return HttpResponse.json({ msg: 'Name is same' }, { status: 400 });
+			}
+			// Mirror the backend: the folder is renamed in place.
+			image.path = image.path.slice(0, image.path.length - image.name.length) + body.name;
+			image.name = body.name;
+			return HttpResponse.json({ name: body.name });
+		}),
 		http.post('/api/images/:id/refresh', async ({ params }) => {
 			await delay(800);
 			const image = findImage(params.id);
