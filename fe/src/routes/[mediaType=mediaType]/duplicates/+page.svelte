@@ -16,7 +16,8 @@
 		Tile,
 		Toggle
 	} from 'carbon-components-svelte';
-	import { Home, Renew, TrashCan } from 'carbon-icons-svelte';
+	import { Checkmark, Copy, Erase, Grid, Home, Renew, TrashCan } from 'carbon-icons-svelte';
+	import { clearGroup, keepOnly, suggestedSelection } from '$lib/duplicateSelection';
 
 	interface Group {
 		exact: boolean;
@@ -52,13 +53,7 @@
 				items: g.items.map((c) => new Comic(c))
 			}));
 		}
-		// Pre-select every copy except the suggested keeper. Favorited comics
-		// are refused by the delete endpoint, so never select those.
-		selected = new Set(
-			groups.flatMap((g) =>
-				g.items.filter((c) => c.id !== g.keepId && !c.favorited).map((c) => c.id)
-			)
-		);
+		selected = suggestedSelection(groups);
 		loading = false;
 	}
 
@@ -72,6 +67,15 @@
 	// Deleting every copy of a work is almost certainly a mistake, so flag
 	// groups where nothing would be left.
 	let wipedGroups = $derived(groups.filter((g) => g.items.every((c) => selected.has(c.id))).length);
+
+	async function copyName(name: string) {
+		try {
+			await navigator.clipboard.writeText(name);
+			addNotification(new SuccessNotification({ subtitle: 'Name copied' }));
+		} catch {
+			addNotification(new ErrorNotification({ subtitle: 'Copy failed' }));
+		}
+	}
 
 	function folderOf(path: string) {
 		const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
@@ -145,6 +149,18 @@
 	/>
 	<Button kind="ghost" icon={Renew} disabled={loading} on:click={load}>Refresh</Button>
 	<Button
+		kind="ghost"
+		icon={Checkmark}
+		disabled={loading || deleting}
+		on:click={() => (selected = suggestedSelection(groups))}>Select suggested</Button
+	>
+	<Button
+		kind="ghost"
+		icon={Erase}
+		disabled={loading || deleting || selectedCount === 0}
+		on:click={() => (selected = new Set())}>Clear selection</Button
+	>
+	<Button
 		kind="danger"
 		icon={TrashCan}
 		disabled={loading || deleting || selectedCount === 0}
@@ -170,11 +186,23 @@
 				{:else}
 					<Tag type="warm-gray" size="sm">Similar</Tag>
 				{/if}
+				<Button
+					kind="ghost"
+					size="small"
+					disabled={deleting || !group.items.some((c) => selected.has(c.id))}
+					on:click={() => (selected = clearGroup(selected, group))}>Keep all</Button
+				>
 			</div>
 			<div class="items">
 				{#each group.items as comic (comic.id)}
 					<div class="item" class:marked={selected.has(comic.id)}>
-						<a class="cover-cell" href="/{mediaType}/{comic.id}">
+						<a
+							class="cover-cell"
+							href="/{mediaType}/{comic.id}"
+							target="_blank"
+							rel="noopener"
+							title="Open in reader"
+						>
 							<img
 								class="cover"
 								src={comic.coverUrl}
@@ -185,24 +213,49 @@
 								}}
 							/>
 						</a>
-						<div class="meta">
+						<div class="name-row">
 							<Checkbox
-								labelText={comic.name}
-								title={comic.name}
+								hideLabel
+								labelText="Select {comic.name}"
 								disabled={comic.favorited || deleting}
 								checked={selected.has(comic.id)}
 								on:change={(e) => toggle(comic.id, (e.target as HTMLInputElement).checked)}
 							/>
-							<div class="tags">
-								{#if comic.id === group.keepId}
-									<Tag type="blue" size="sm">Keep</Tag>
-								{/if}
-								{#if comic.favorited}
-									<Tag type="magenta" size="sm">Favorited</Tag>
-								{/if}
-							</div>
-							<div class="detail">{comic.page} pages · {comic.size} MB</div>
-							<div class="detail path" title={comic.path}>{folderOf(comic.path)}</div>
+							<span class="name"
+								>{comic.name}<button
+									class="copy"
+									title="Copy name"
+									aria-label="Copy name"
+									onclick={() => copyName(comic.name)}><Copy size={16} /></button
+								></span
+							>
+						</div>
+						<div class="tags">
+							{#if comic.id === group.keepId}
+								<Tag type="blue" size="sm">Keep</Tag>
+							{/if}
+							{#if comic.favorited}
+								<Tag type="magenta" size="sm">Favorited</Tag>
+							{/if}
+						</div>
+						<div class="detail">{comic.page} pages · {comic.size} MB</div>
+						<div class="detail path" title={comic.path}>{folderOf(comic.path)}</div>
+						<div class="actions">
+							<Button
+								kind="ghost"
+								size="small"
+								icon={Grid}
+								href="/{mediaType}/{comic.id}?overview=1"
+								target="_blank"
+								rel="noopener">Pages</Button
+							>
+							<Button
+								kind="ghost"
+								size="small"
+								disabled={deleting}
+								on:click={() => (selected = keepOnly(selected, group, comic.id))}
+								>Keep only this</Button
+							>
 						</div>
 					</div>
 				{/each}
@@ -275,17 +328,31 @@
 		margin-bottom: 0.5rem;
 	}
 
+	/* Each card spans five rows of the group grid and adopts them via subgrid, so
+	   name / tags / size / path / actions line up across cards in a visual row
+	   (each row is as tall as its tallest card's content). */
 	.items {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-		gap: 0.75rem;
+		column-gap: 0.75rem;
+		row-gap: 0.75rem;
 	}
 
 	.item {
-		display: flex;
-		gap: 0.75rem;
+		display: grid;
+		grid-row: span 5;
+		grid-template-rows: subgrid;
+		grid-template-columns: 72px minmax(0, 1fr);
+		column-gap: 0.75rem;
+		row-gap: 0.25rem;
 		padding: 0.5rem;
 		border: 1px solid transparent;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+
+	.item > :not(.cover-cell) {
+		grid-column: 2;
 		min-width: 0;
 	}
 
@@ -294,7 +361,9 @@
 	}
 
 	.cover-cell {
-		flex: none;
+		grid-column: 1;
+		grid-row: 1 / -1;
+		align-self: start;
 		width: 72px;
 		height: 108px;
 		background: var(--cds-ui-03, #393939);
@@ -306,12 +375,64 @@
 		object-fit: cover;
 	}
 
-	.meta {
-		min-width: 0;
+	.tags {
 		display: flex;
-		flex-direction: column;
 		gap: 0.25rem;
-		word-break: break-all;
+	}
+
+	.name-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.25rem;
+	}
+
+	/* Carbon's checkbox wrapper reserves label space; shrink it to the box. */
+	.name-row :global(.bx--form-item.bx--checkbox-wrapper) {
+		flex: none;
+		width: auto;
+	}
+
+	.name {
+		font-size: 0.875rem;
+		line-height: 1.3;
+		user-select: text;
+	}
+
+	/* Inline after the last word so it follows wrapped names. */
+	.copy {
+		display: inline-flex;
+		vertical-align: text-bottom;
+		margin-left: 0.25rem;
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--cds-icon-02, #8d8d8d);
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.copy:hover,
+	.copy:focus-visible {
+		color: var(--cds-icon-01, #f4f4f4);
+	}
+
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-self: end;
+		margin-left: -0.5rem;
+	}
+
+	/* Carbon pads icon buttons for a trailing icon; tighten so both fit on one line. */
+	.actions :global(.bx--btn) {
+		padding-left: 0.5rem;
+		padding-right: 0.5rem;
+		gap: 0.25rem;
+	}
+
+	.actions :global(.bx--btn__icon) {
+		position: static;
+		margin-left: 0.25rem;
 	}
 
 	.detail {

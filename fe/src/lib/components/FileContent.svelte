@@ -12,8 +12,10 @@
 	interface Props {
 		file: MediaFile;
 		onClose: () => void;
+		// Open straight into the page overview (e.g. from the duplicate finder).
+		initialOverview?: boolean;
 	}
-	let { file, onClose }: Props = $props();
+	let { file, onClose, initialOverview = false }: Props = $props();
 
 	const isScroll = $derived(config.viewMode === ViewMode.Scroll);
 
@@ -41,6 +43,7 @@
 		viewerState.active = true;
 		viewerState.title = file.name;
 		viewerState.onClose = onClose;
+		if (initialOverview && hasPages) viewerState.overviewOpen = true;
 		return () => {
 			viewerState.active = false;
 			viewerState.overviewOpen = false;
