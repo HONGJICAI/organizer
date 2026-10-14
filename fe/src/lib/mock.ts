@@ -71,6 +71,23 @@ export async function setupMock(authRequired: boolean) {
 			});
 		}
 	}
+	// Similar (not exact) copies: a subtitle appended to the title. The last one
+	// has double the pages, so the page-count warning shows up too.
+	for (const [i, original] of comics.slice(8, 11).entries()) {
+		const title = original.name.replace(/^\[[^\]]*\]\s*/, '');
+		const name = `[Scan] ${title} Special Edition.zip`;
+		comics.push({
+			...original,
+			id: Math.max(...comics.map((c) => c.id)) + 1,
+			name,
+			path: `/data/comics/dup/${name}`,
+			size: faker.number.int({ min: 1000, max: 10000000 }),
+			page: i === 2 ? original.page * 2 : original.page,
+			archived: false,
+			missing: false,
+			favorited: false
+		});
+	}
 	// Rough stand-in for the backend's filename normalization: drop bracketed
 	// tags, extension, case and punctuation (no fuzzy matching in mock mode).
 	const duplicateKey = (name: string) =>
@@ -232,14 +249,33 @@ export async function setupMock(authRequired: boolean) {
 				if (!key) continue;
 				buckets.set(key, [...(buckets.get(key) ?? []), c]);
 			}
-			const groups = [...buckets.values()]
-				.filter((items) => items.length > 1)
-				.map((items) => {
+			// Stand-in for the fuzzy pass: a title that extends another title is
+			// merged into it as a similar (not exact) group.
+			const merged: { exact: boolean; items: typeof comics }[] = [];
+			const entries = [...buckets.entries()].sort(([a], [b]) => a.length - b.length);
+			const keys = entries.map(([k]) => k);
+			const owner = new Map<string, (typeof merged)[number]>();
+			for (const [key, items] of entries) {
+				const base = keys.find((k) => k !== key && k.length >= 6 && key.startsWith(k));
+				const target = base ? owner.get(base) : undefined;
+				if (target) {
+					target.items = [...target.items, ...items];
+					target.exact = false;
+					owner.set(key, target);
+				} else {
+					const group = { exact: true, items };
+					merged.push(group);
+					owner.set(key, group);
+				}
+			}
+			const groups = merged
+				.filter(({ items }) => items.length > 1)
+				.map(({ exact, items }) => {
 					// Same preference as the backend: favorited, most pages, largest.
 					const rank = (c: (typeof items)[number]) =>
 						Number(c.favorited) * 1e12 + c.page * 1e8 + c.size;
 					const keep = items.reduce((best, c) => (rank(c) > rank(best) ? c : best));
-					return { exact: true, keepId: keep.id, items };
+					return { exact, keepId: keep.id, items };
 				});
 			return HttpResponse.json({ groups });
 		}),

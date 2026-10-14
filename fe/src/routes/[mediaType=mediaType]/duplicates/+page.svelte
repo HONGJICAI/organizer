@@ -9,15 +9,27 @@
 		BreadcrumbItem,
 		Button,
 		Checkbox,
+		ContentSwitcher,
 		InlineLoading,
 		Modal,
 		Slider,
+		Switch,
 		Tag,
 		Tile,
 		Toggle
 	} from 'carbon-components-svelte';
 	import { Checkmark, Copy, Erase, Grid, Home, Renew, TrashCan } from 'carbon-icons-svelte';
-	import { clearGroup, keepOnly, suggestedSelection } from '$lib/duplicateSelection';
+	import {
+		clearGroup,
+		filterGroups,
+		keepOnly,
+		pageMismatch,
+		reclaimable,
+		selectedIn,
+		sortBySavings,
+		suggestedSelection,
+		type DupFilter
+	} from '$lib/duplicateSelection';
 
 	interface Group {
 		exact: boolean;
@@ -35,8 +47,24 @@
 	let confirmOpen = $state(false);
 	let deleting = $state(false);
 
-	let selectedCount = $derived(selected.size);
-	let duplicateCount = $derived(groups.reduce((n, g) => n + g.items.length - 1, 0));
+	const filters: DupFilter[] = ['all', 'exact', 'similar'];
+	let filterIndex = $state(0);
+	// Selections in hidden groups are kept (they come back with the filter) but
+	// never counted or deleted: every action works on what is on screen.
+	let visible = $derived(sortBySavings(filterGroups(groups, filters[filterIndex])));
+	let visibleSelected = $derived(selectedIn(selected, visible));
+	let selectedCount = $derived(visibleSelected.length);
+	let selectedSize = $derived(
+		visible.flatMap((g) => g.items).reduce((n, c) => (selected.has(c.id) ? n + c.size : n), 0)
+	);
+	let duplicateCount = $derived(visible.reduce((n, g) => n + g.items.length - 1, 0));
+	let totalReclaimable = $derived(visible.reduce((n, g) => n + reclaimable(g), 0));
+	let exactCount = $derived(groups.filter((g) => g.exact).length);
+
+	// Comic.size is MB.
+	function formatSize(mb: number) {
+		return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
+	}
 
 	async function load() {
 		loading = true;
@@ -66,7 +94,9 @@
 
 	// Deleting every copy of a work is almost certainly a mistake, so flag
 	// groups where nothing would be left.
-	let wipedGroups = $derived(groups.filter((g) => g.items.every((c) => selected.has(c.id))).length);
+	let wipedGroups = $derived(
+		visible.filter((g) => g.items.every((c) => selected.has(c.id))).length
+	);
 
 	async function copyName(name: string) {
 		try {
@@ -87,7 +117,7 @@
 		deleting = true;
 		let failed = 0;
 		const deleted = new Set<number>();
-		for (const id of selected) {
+		for (const id of visibleSelected) {
 			const { error } = await ComicsService.comicDelete({ path: { id }, query: { permanent } });
 			if (error) {
 				failed++;
@@ -127,7 +157,9 @@
 	volume numbers (<code>01</code> / <code>Vol.2</code> / <code>第三卷</code> / <code>上・下</code>)
 	are never grouped. <em>Exact</em> groups reduce to the same title; <em>Similar</em> ones only pass
 	the similarity threshold — check those carefully. Everything except the suggested
-	<strong>Keep</strong> copy (favorited, then most pages, then largest) is pre-selected.
+	<strong>Keep</strong> copy (favorited, then most pages, then largest) is pre-selected. Groups are sorted
+	by the space deleting the extra copies would free; counts and deletion only cover the groups the filter
+	shows.
 </p>
 
 <div class="controls">
@@ -152,7 +184,7 @@
 		kind="ghost"
 		icon={Checkmark}
 		disabled={loading || deleting}
-		on:click={() => (selected = suggestedSelection(groups))}>Select suggested</Button
+		on:click={() => (selected = suggestedSelection(visible))}>Select suggested</Button
 	>
 	<Button
 		kind="ghost"
@@ -173,11 +205,19 @@
 {:else if groups.length === 0}
 	<p class="empty">No duplicates found. 🎉</p>
 {:else}
-	<p class="summary">{groups.length} groups, {duplicateCount} extra copies</p>
+	<ContentSwitcher bind:selectedIndex={filterIndex} size="sm" class="filter">
+		<Switch text="All ({groups.length})" />
+		<Switch text="Exact ({exactCount})" />
+		<Switch text="Similar ({groups.length - exactCount})" />
+	</ContentSwitcher>
+	<p class="summary">
+		{visible.length} groups, {duplicateCount} extra copies · up to {formatSize(totalReclaimable)} reclaimable
+		{#if selectedCount > 0}· {formatSize(selectedSize)} selected{/if}
+	</p>
 	{#if deleting}
 		<InlineLoading description="Deleting…" />
 	{/if}
-	{#each groups as group, gi (group.items[0].id)}
+	{#each visible as group, gi (group.keepId)}
 		<Tile class="group">
 			<div class="group-header">
 				<span>#{gi + 1}</span>
@@ -186,6 +226,15 @@
 				{:else}
 					<Tag type="warm-gray" size="sm">Similar</Tag>
 				{/if}
+				{#if pageMismatch(group)}
+					<Tag
+						type="red"
+						size="sm"
+						title="Page counts differ by 1.5× or more — may be different books or an incomplete copy"
+						>⚠ Page counts differ</Tag
+					>
+				{/if}
+				<span class="saving">{formatSize(reclaimable(group))} reclaimable</span>
 				<Button
 					kind="ghost"
 					size="small"
@@ -238,7 +287,7 @@
 								<Tag type="magenta" size="sm">Favorited</Tag>
 							{/if}
 						</div>
-						<div class="detail">{comic.page} pages · {comic.size} MB</div>
+						<div class="detail">{comic.page} pages · {formatSize(comic.size)}</div>
 						<div class="detail path" title={comic.path}>{folderOf(comic.path)}</div>
 						<div class="actions">
 							<Button
@@ -309,6 +358,16 @@
 
 	.slider {
 		min-width: 16rem;
+	}
+
+	.saving {
+		margin-left: auto;
+		font-size: 0.875rem;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+
+	:global(.bx--content-switcher.filter) {
+		max-width: 24rem;
 	}
 
 	.summary,
