@@ -7,7 +7,6 @@ from fastapi_utils.cbv import cbv
 from sqlmodel import Session, select
 
 import db
-import events
 import global_data
 import util
 from core.exceptions import abort
@@ -53,7 +52,6 @@ class VideoCBV:
     @router.delete("/api/videos/{id}", tags=["videos"])
     def delete(self, id: int, permanent: bool = False) -> APIMessage:
         video_entity = self.__get(id)
-        events.record_delete(self.session, events.VIDEO, video_entity, permanent)
         if not permanent:
             video_entity.archived = True
             self.session.add(video_entity)

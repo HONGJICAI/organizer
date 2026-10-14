@@ -5,8 +5,7 @@ database rows. Anything worth keeping (favorites, custom covers) belongs to
 comics — convert an album to keep it. The store is rebuilt by every scan; a
 JSON snapshot of the last scan result only makes the list available right
 after a restart instead of empty until the rescan finishes. Reading progress
-is in-memory only and is lost on restart; reads and deletes are still logged as
-ActivityEvent rows for stats (album sizes are often 0 — not computed at scan).
+is in-memory only and is lost on restart.
 """
 import datetime
 import hashlib
@@ -26,7 +25,6 @@ from fastapi_utils.cbv import cbv
 from sqlmodel import Session, select
 
 import db
-import events
 import global_data
 from api.comicpage import PAGE_CACHE_CONTROL, page_etag, resize_to_width
 from comicfile import allowImgs, mediaTypes
@@ -293,9 +291,6 @@ class ImageCBV:
             abort(400, "Position out of range")
         entity.lastViewedPosition = req.position
         entity.lastViewedTime = datetime.datetime.now()
-        with Session(db.engine) as session:
-            events.record_read(session, events.IMAGE, entity.id, req.position)
-            session.commit()
         return ProgressResponse(
             position=entity.lastViewedPosition, lastViewedTime=entity.lastViewedTime
         )
@@ -407,9 +402,6 @@ class ImageCBV:
         if non_image:
             abort(400, f"Folder contains non-image entries: {', '.join(non_image)}")
         shutil.rmtree(entity.path)
-        with Session(db.engine) as session:
-            events.record_delete(session, events.IMAGE, entity, permanent=True)
-            session.commit()
         with _store_lock:
             _store.pop(entity.id, None)
         save_snapshot()

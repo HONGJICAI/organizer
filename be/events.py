@@ -14,9 +14,8 @@ ADD = "add"
 READ = "read"
 DELETE = "delete"
 
+# Only comics are logged for now; mediaType leaves room for videos and images.
 COMIC = "comic"
-VIDEO = "video"
-IMAGE = "image"
 
 
 def record(session: Session, kind: str, media_type: str, entity_id: int, **data) -> None:

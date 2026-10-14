@@ -1,16 +1,15 @@
-"""ActivityEvent logging: adds on scan/import, reads on progress, deletes."""
+"""ActivityEvent logging (comics only): adds on scan/import, reads on progress, deletes."""
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from sqlmodel import Session, select
 
-import api.images as img_api
 import comicfile
 import events
 import global_data
-from conftest import MockComicfile, insert_comic, insert_video, make_jpeg_bytes, make_zip_comic
-from loader import ComicLoader
-from model import ActivityEvent, ImageEntity
+from conftest import MockComicfile, insert_comic, insert_video, make_zip_comic
+from loader import ComicLoader, VideoLoader
+from model import ActivityEvent, VideoEntity
 
 
 def all_events(session: Session):
@@ -54,12 +53,10 @@ class TestComicDelete:
 
 
 class TestVideoDelete:
-    def test_logs_delete(self, client, session):
-        insert_video(session, id=3, name="v.mp4")
-        assert client.delete("/api/videos/3?permanent=true").status_code == 200
-        [e] = all_events(session)
-        assert (e.kind, e.mediaType, e.entityId) == ("delete", "video", 3)
-        assert e.data == {"name": "v.mp4", "size": 1000, "permanent": True}
+    def test_not_logged(self, client, session):
+        insert_video(session, id=3)
+        assert client.delete("/api/videos/3").status_code == 200
+        assert all_events(session) == []
 
 
 class TestComicRead:
@@ -100,36 +97,6 @@ class TestComicRead:
         assert all_events(session) == []
 
 
-class TestImage:
-    def _set(self, entity: ImageEntity):
-        img_api._store.clear()
-        img_api._store[entity.id] = entity
-
-    def test_read_logged(self, client, session):
-        self._set(ImageEntity(id=7, name="al", path="/nonexistent/al", size=0,
-                              updateTime=datetime.now(), page=5))
-        try:
-            assert client.put("/api/images/7/progress", json={"position": 2}).status_code == 200
-        finally:
-            img_api._store.clear()
-        [e] = all_events(session)
-        assert (e.kind, e.mediaType, e.entityId, e.data) == ("read", "image", 7, {"position": 2})
-
-    def test_delete_logged(self, client, session, tmp_path):
-        d = tmp_path / "al"
-        d.mkdir()
-        (d / "a.jpg").write_bytes(make_jpeg_bytes())
-        self._set(ImageEntity(id=7, name="al", path=str(d), size=0,
-                              updateTime=datetime.now(), page=1))
-        try:
-            assert client.delete("/api/images/7").status_code == 200
-        finally:
-            img_api._store.clear()
-        [e] = all_events(session)
-        assert (e.kind, e.mediaType, e.entityId) == ("delete", "image", 7)
-        assert e.data == {"name": "al", "size": 0, "permanent": True}
-
-
 class TestAdd:
     def test_scan_logs_add_per_new_comic(self, task_engine, tmp_path, monkeypatch):
         make_zip_comic(str(tmp_path / "a.zip"), pages=2)
@@ -152,6 +119,16 @@ class TestAdd:
         with Session(task_engine) as s:
             [e] = all_events(s)
         assert (e.kind, e.mediaType, e.data["name"]) == ("add", "comic", "c.zip")
+
+    def test_video_scan_not_logged(self, task_engine, tmp_path, monkeypatch):
+        (tmp_path / "v.mp4").write_bytes(b"")
+        monkeypatch.setattr(global_data.Config.Video, "scan_pathes", [str(tmp_path)])
+        with patch.object(VideoLoader, "_to_entity", lambda self, path: VideoEntity(
+                id=self._get_id(), name="v.mp4", path=path, size=0, updateTime=datetime.now())):
+            VideoLoader().work()
+        with Session(task_engine) as s:
+            assert len(s.exec(select(VideoEntity)).all()) == 1
+            assert all_events(s) == []
 
 
 def test_record_read_without_prior_position(task_session):
