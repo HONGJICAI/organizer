@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { SystemService } from '$lib/client';
-	import type { ScanStatusResponse, TasksResponse } from '$lib/client';
+	import type { CoverRegenStatus, ScanStatusResponse, TasksResponse } from '$lib/client';
 	import { ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
@@ -9,17 +9,22 @@
 		Breadcrumb,
 		BreadcrumbItem,
 		Button,
+		Modal,
 		ProgressBar,
 		Tag,
 		Tile
 	} from 'carbon-components-svelte';
-	import { Home, Renew } from 'carbon-icons-svelte';
+	import { Home, Image as ImageIcon, Renew } from 'carbon-icons-svelte';
 
 	let scan = $state<ScanStatusResponse | null>(null);
 	let tasks = $state<TasksResponse | null>(null);
 	let triggering = $state(false);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let wasRunning = false;
+	let covers = $state<CoverRegenStatus | null>(null);
+	let coversWereRunning = false;
+	let confirmCovers = $state(false);
+	let startingCovers = $state(false);
 
 	function fmtTime(iso: string | null | undefined): string {
 		if (!iso) return '—';
@@ -48,17 +53,43 @@
 		if (!error && data) tasks = data;
 	}
 
-	// Poll faster while a scan is in flight, slow to a heartbeat when idle, so
-	// the metrics stay live without hammering the backend.
+	async function loadCovers() {
+		const { data, error } = await SystemService.coverRegenStatus();
+		if (!error && data) covers = data;
+		return covers?.running ?? false;
+	}
+
+	// Poll faster while a scan or cover regeneration is in flight, slow to a
+	// heartbeat when idle, so the metrics stay live without hammering the backend.
 	async function poll() {
-		const running = await loadScan();
-		if (wasRunning && !running) {
-			// A scan just finished; it may have imported or reconciled away media, so
-			// drop the cached lists to force a re-fetch on the next visit (mediaStore).
+		const [running, coversRunning] = await Promise.all([loadScan(), loadCovers()]);
+		if ((wasRunning && !running) || (coversWereRunning && !coversRunning)) {
+			// A scan may have imported or reconciled away media, and a cover run
+			// bumps every comic's cover version; drop the cached lists so the next
+			// visit re-fetches them (mediaStore).
 			refreshMediaFiles();
 		}
 		wasRunning = running;
-		timer = setTimeout(poll, running ? 1000 : 5000);
+		coversWereRunning = coversRunning;
+		timer = setTimeout(poll, running || coversRunning ? 1000 : 5000);
+	}
+
+	async function regenerateCovers() {
+		confirmCovers = false;
+		startingCovers = true;
+		const { data, error } = await SystemService.regenerateCovers();
+		startingCovers = false;
+		if (error || !data) {
+			addNotification(new ErrorNotification({ subtitle: 'Failed to start cover regeneration' }));
+			return;
+		}
+		if (data.status === 'started') {
+			addNotification(new SuccessNotification({ subtitle: data.message }));
+		} else {
+			addNotification(new ErrorNotification({ subtitle: data.message }));
+		}
+		clearTimeout(timer);
+		poll();
 	}
 
 	async function triggerScan() {
@@ -181,6 +212,60 @@
 	</Tile>
 
 	<Tile class="card">
+		<div class="card-head">
+			<h3>Covers</h3>
+			{#if covers?.running}
+				<Tag type="blue">Running</Tag>
+			{:else if covers?.failed}
+				<Tag type="red">{covers.failed} failed</Tag>
+			{:else if covers?.finished_at}
+				<Tag type="green">Done</Tag>
+			{/if}
+		</div>
+		<p class="muted">
+			Rewrites every comic's cover from its chosen cover page (or the first page). Covers that can't
+			be generated are removed instead of left stale.
+		</p>
+		{#if covers?.running}
+			<ProgressBar
+				value={covers.processed}
+				max={covers.total || undefined}
+				labelText={`Processed ${covers.processed} / ${covers.total}`}
+			/>
+		{:else if covers?.finished_at}
+			<dl class="kv">
+				<dt>Finished</dt>
+				<dd>{fmtTime(covers.finished_at)}</dd>
+				<dt>Regenerated</dt>
+				<dd>{covers.processed - covers.failed} / {covers.total}</dd>
+				<dt>Failed</dt>
+				<dd>{covers.failed}</dd>
+			</dl>
+		{/if}
+		{#if covers?.failures.length}
+			<h4>Failed comics</h4>
+			<ul class="failures">
+				{#each covers.failures as f (f.id)}
+					<li>
+						<a href="/comic/{f.id}" title={f.name}>{f.name}</a>
+						<span class="err" title={f.reason}>{f.reason}</span>
+					</li>
+				{/each}
+			</ul>
+			{#if covers.failed > covers.failures.length}
+				<p class="muted">…and {covers.failed - covers.failures.length} more</p>
+			{/if}
+		{/if}
+		<Button
+			icon={ImageIcon}
+			disabled={startingCovers || covers?.running || scan?.running}
+			on:click={() => (confirmCovers = true)}
+		>
+			{covers?.running ? 'Regenerating…' : 'Regenerate all covers'}
+		</Button>
+	</Tile>
+
+	<Tile class="card">
 		<div class="card-head"><h3>Background tasks</h3></div>
 		<dl class="kv">
 			<dt>Next daily scan</dt>
@@ -199,6 +284,20 @@
 		</dl>
 	</Tile>
 </div>
+
+<Modal
+	bind:open={confirmCovers}
+	modalHeading="Regenerate all covers?"
+	primaryButtonText="Regenerate"
+	secondaryButtonText="Cancel"
+	on:click:button--secondary={() => (confirmCovers = false)}
+	on:submit={regenerateCovers}
+>
+	<p>
+		Every comic's cover is rebuilt from its archive, which can take a while on a large library.
+		Custom cover pages are kept.
+	</p>
+</Modal>
 
 <style>
 	.crumb {
@@ -280,6 +379,29 @@
 		display: flex;
 		gap: 0.5rem;
 		align-items: baseline;
+	}
+
+	.failures {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		font-size: 0.8125rem;
+	}
+
+	.failures li {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.failures a,
+	.failures span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.slow-ms {

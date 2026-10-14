@@ -129,7 +129,70 @@ export async function setupMock(authRequired: boolean) {
 		startMs: 0
 	};
 
+	// Mock cover regeneration — same fake-progress pattern as the scan; a
+	// couple of comics fail so the admin page's failure list has content.
+	const coverState = {
+		running: false,
+		total: 0,
+		processed: 0,
+		failures: [] as { id: number; name: string; reason: string }[],
+		startedAt: null as string | null,
+		finishedAt: null as string | null
+	};
+
 	const handlers = [
+		http.get('/api/system/covers', async () => {
+			if (coverState.running) {
+				coverState.processed = Math.min(coverState.total, coverState.processed + 9);
+				if (coverState.processed >= coverState.total) {
+					coverState.running = false;
+					coverState.finishedAt = new Date().toISOString();
+					const now = new Date().toISOString();
+					for (const c of comics) c.entityUpdateTime = now;
+				}
+			}
+			const failures = coverState.failures.filter(
+				(_, i) => coverState.processed >= ((i + 1) * coverState.total) / 3
+			);
+			return HttpResponse.json({
+				running: coverState.running,
+				total: coverState.total,
+				processed: coverState.processed,
+				failed: failures.length,
+				failures,
+				started_at: coverState.startedAt,
+				finished_at: coverState.finishedAt
+			});
+		}),
+		http.post('/api/system/covers', async () => {
+			await delay(200);
+			if (scanState.running) {
+				return HttpResponse.json({
+					status: 'scan_running',
+					message: 'Wait for the running scan to finish'
+				});
+			}
+			if (coverState.running) {
+				return HttpResponse.json({
+					status: 'already_running',
+					message: 'Covers are already being regenerated'
+				});
+			}
+			const live = comics.filter((c) => !c.archived && !c.missing);
+			Object.assign(coverState, {
+				running: true,
+				total: live.length,
+				processed: 0,
+				failures: live.slice(-2).map((c, i) => ({
+					id: c.id,
+					name: c.name,
+					reason: i === 0 ? 'No page could be rendered as a cover' : 'Bad CRC-32 for file 001.jpg'
+				})),
+				startedAt: new Date().toISOString(),
+				finishedAt: null
+			});
+			return HttpResponse.json({ status: 'started', message: 'Cover regeneration started' });
+		}),
 		http.get('/api/system/scan', async () => {
 			if (scanState.running) {
 				scanState.processed = Math.min(scanState.total, scanState.processed + 7);

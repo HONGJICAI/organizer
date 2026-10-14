@@ -183,6 +183,30 @@ export type ComicTopRead = {
     readDays: number;
 };
 
+export type CoverFailure = {
+    id: number;
+    name: string;
+    reason: string;
+};
+
+export type CoverRegenResponse = {
+    status: 'started' | 'already_running' | 'scan_running';
+    message: string;
+};
+
+export type CoverRegenStatus = {
+    running: boolean;
+    total: number;
+    processed: number;
+    failed: number;
+    /**
+     * First failures only; `failed` counts all
+     */
+    failures: Array<CoverFailure>;
+    started_at?: string | null;
+    finished_at?: string | null;
+};
+
 export type DailyScanInfo = {
     scan_hour: number;
     next_run: string;
@@ -1806,6 +1830,88 @@ export type TriggerScanResponses = {
 };
 
 export type TriggerScanResponse = TriggerScanResponses[keyof TriggerScanResponses];
+
+export type CoverRegenStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/covers';
+};
+
+export type CoverRegenStatusErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type CoverRegenStatusError = CoverRegenStatusErrors[keyof CoverRegenStatusErrors];
+
+export type CoverRegenStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: CoverRegenStatus;
+};
+
+export type CoverRegenStatusResponse = CoverRegenStatusResponses[keyof CoverRegenStatusResponses];
+
+export type RegenerateCoversData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/covers';
+};
+
+export type RegenerateCoversErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type RegenerateCoversError = RegenerateCoversErrors[keyof RegenerateCoversErrors];
+
+export type RegenerateCoversResponses = {
+    /**
+     * Successful Response
+     */
+    200: CoverRegenResponse;
+};
+
+export type RegenerateCoversResponse = RegenerateCoversResponses[keyof RegenerateCoversResponses];
 
 export type TasksStatusData = {
     body?: never;

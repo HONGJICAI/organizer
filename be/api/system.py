@@ -4,9 +4,10 @@ import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Literal, Optional
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.scan_progress import progress
+from covers import regen
 from tasks.backup import backup_database
 
 
@@ -111,6 +112,27 @@ class BackupInfo(BaseModel):
     cadence_hours: int = 24
 
 
+class CoverFailure(BaseModel):
+    id: int
+    name: str
+    reason: str
+
+
+class CoverRegenStatus(BaseModel):
+    running: bool
+    total: int
+    processed: int
+    failed: int
+    failures: List[CoverFailure] = Field(description="First failures only; `failed` counts all")
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
+class CoverRegenResponse(BaseModel):
+    status: Literal["started", "already_running", "scan_running"]
+    message: str
+
+
 class TasksResponse(BaseModel):
     daily_scan: DailyScanInfo
     backup: BackupInfo
@@ -142,6 +164,24 @@ def trigger_scan(
 def scan_status() -> ScanStatusResponse:
     """Live progress + metrics for the running scan (or the most recent one)."""
     return ScanStatusResponse(**progress.snapshot())
+
+
+@router.post("/api/system/covers", tags=["system"])
+def regenerate_covers() -> CoverRegenResponse:
+    """Regenerate every live comic's cover in the background."""
+    # A scan writes covers for the comics it imports and hands out ids that
+    # aren't committed yet; wait for it rather than race it.
+    if progress.running:
+        return CoverRegenResponse(status="scan_running", message="Wait for the running scan to finish")
+    if not regen.start():
+        return CoverRegenResponse(status="already_running", message="Covers are already being regenerated")
+    return CoverRegenResponse(status="started", message="Cover regeneration started")
+
+
+@router.get("/api/system/covers", tags=["system"])
+def cover_regen_status() -> CoverRegenStatus:
+    """Progress of the running (or most recent) cover regeneration."""
+    return CoverRegenStatus(**regen.snapshot())
 
 
 @router.get("/api/system/tasks", tags=["system"])

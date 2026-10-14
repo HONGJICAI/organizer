@@ -409,6 +409,99 @@ export const ComicTopReadSchema = {
     title: 'ComicTopRead'
 } as const;
 
+export const CoverFailureSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        reason: {
+            type: 'string',
+            title: 'Reason'
+        }
+    },
+    type: 'object',
+    required: ['id', 'name', 'reason'],
+    title: 'CoverFailure'
+} as const;
+
+export const CoverRegenResponseSchema = {
+    properties: {
+        status: {
+            type: 'string',
+            enum: ['started', 'already_running', 'scan_running'],
+            title: 'Status'
+        },
+        message: {
+            type: 'string',
+            title: 'Message'
+        }
+    },
+    type: 'object',
+    required: ['status', 'message'],
+    title: 'CoverRegenResponse'
+} as const;
+
+export const CoverRegenStatusSchema = {
+    properties: {
+        running: {
+            type: 'boolean',
+            title: 'Running'
+        },
+        total: {
+            type: 'integer',
+            title: 'Total'
+        },
+        processed: {
+            type: 'integer',
+            title: 'Processed'
+        },
+        failed: {
+            type: 'integer',
+            title: 'Failed'
+        },
+        failures: {
+            items: {
+                '$ref': '#/components/schemas/CoverFailure'
+            },
+            type: 'array',
+            title: 'Failures',
+            description: 'First failures only; `failed` counts all'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        finished_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Finished At'
+        }
+    },
+    type: 'object',
+    required: ['running', 'total', 'processed', 'failed', 'failures'],
+    title: 'CoverRegenStatus'
+} as const;
+
 export const DailyScanInfoSchema = {
     properties: {
         scan_hour: {
