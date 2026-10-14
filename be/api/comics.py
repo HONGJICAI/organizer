@@ -12,6 +12,8 @@ from sqlmodel import Session, select, or_
 import comicfile
 import db
 import duplicates
+import stats
+import events
 import global_data
 import util
 from core.exceptions import abort
@@ -24,6 +26,7 @@ from schemas.comic import (
     ComicPageDetailResponse,
     ComicRenameRequest,
     ComicRenameResponse,
+    ComicStatsResponse,
 )
 from schemas.common import CheckRequest, CheckResponse, CheckResult, FavorResponse
 from util import PathState
@@ -96,6 +99,17 @@ class ComicCBV:
         if changed:
             self.session.commit()
         return CheckResponse(results=results)
+
+    @router.get(
+        "/api/comics/stats",
+        tags=["comics"],
+        responses={400: {"model": dict}},
+    )
+    def get_stats(
+        self, months: int = Query(default=12, ge=1, le=60)
+    ) -> ComicStatsResponse:
+        # Declared before /{id} so the literal path isn't parsed as an id.
+        return stats.comic_stats(self.session, months)
 
     @router.get(
         "/api/comics/duplicates",
@@ -261,6 +275,7 @@ class ComicCBV:
             if cf is not None:
                 cf.close()
 
+        events.record_delete(self.session, events.COMIC, comic, permanent)
         if not permanent:
             comic.archived = True
             self.session.add(comic)

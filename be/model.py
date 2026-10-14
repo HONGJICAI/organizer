@@ -2,6 +2,7 @@ from datetime import datetime
 import pathlib
 from typing import Optional
 from pydantic import NaiveDatetime
+from sqlalchemy import JSON, Column, Index
 from sqlmodel import Field, SQLModel
 
 
@@ -76,3 +77,21 @@ class ImageEntity(FileEntity):
         ret = ImageEntity(**FileEntity.from_path(path).model_dump())
         ret.id = id
         return ret
+
+
+class ActivityEvent(SQLModel, table=True):
+    """Append-only log of library activity (adds, reads, deletes) for stats.
+
+    The columns that stats filter and group on are flat and indexed; anything
+    kind-specific goes in ``data`` (JSON) so new kinds need no schema change.
+    Rows outlive their entity: a permanent delete removes the comic row but its
+    delete event (with name and size) stays.
+    """
+    __table_args__ = (Index("ix_activityevent_entity", "mediaType", "entityId"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(index=True)
+    mediaType: str
+    entityId: int
+    time: NaiveDatetime = Field(default_factory=datetime.now, index=True)
+    data: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))

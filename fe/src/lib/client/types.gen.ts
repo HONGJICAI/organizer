@@ -49,6 +49,26 @@ export type CheckResult = {
 };
 
 /**
+ * Activity counted from the event log over one period
+ */
+export type ComicActivityStats = {
+    added: number;
+    /**
+     * Distinct comics read
+     */
+    read: number;
+    /**
+     * Comic-days read: one comic read on one day counts once
+     */
+    readDays: number;
+    deleted: number;
+    /**
+     * Bytes freed by deletes
+     */
+    deletedSize: number;
+};
+
+/**
  * Response for comic details
  */
 export type ComicDetailResponse = {
@@ -72,6 +92,51 @@ export type ComicEntity = {
 };
 
 /**
+ * Current state of the live library (not archived, file present)
+ */
+export type ComicLibraryStats = {
+    total: number;
+    /**
+     * Bytes
+     */
+    totalSize: number;
+    favorited: number;
+    /**
+     * Opened at least once
+     */
+    started: number;
+    /**
+     * Last position reached the last page
+     */
+    finished: number;
+    /**
+     * Deleted files whose record was kept
+     */
+    archived: number;
+};
+
+export type ComicMonthStats = {
+    added: number;
+    /**
+     * Distinct comics read
+     */
+    read: number;
+    /**
+     * Comic-days read: one comic read on one day counts once
+     */
+    readDays: number;
+    deleted: number;
+    /**
+     * Bytes freed by deletes
+     */
+    deletedSize: number;
+    /**
+     * YYYY-MM, local time
+     */
+    month: string;
+};
+
+/**
  * Response for comic page details
  */
 export type ComicPageDetailResponse = {
@@ -90,6 +155,32 @@ export type ComicRenameRequest = {
  */
 export type ComicRenameResponse = {
     name: string;
+};
+
+/**
+ * Response for the stats page
+ */
+export type ComicStatsResponse = {
+    library: ComicLibraryStats;
+    /**
+     * Time of the first logged event; null when none
+     */
+    since?: string | null;
+    total: ComicActivityStats;
+    /**
+     * Oldest first, the current month last; empty months included
+     */
+    months: Array<ComicMonthStats>;
+    /**
+     * Most read comics by distinct days, existing comics only
+     */
+    topRead: Array<ComicTopRead>;
+};
+
+export type ComicTopRead = {
+    id: number;
+    name: string;
+    readDays: number;
 };
 
 export type DailyScanInfo = {
@@ -423,6 +514,49 @@ export type ComicCheckResponses = {
 };
 
 export type ComicCheckResponse = ComicCheckResponses[keyof ComicCheckResponses];
+
+export type ComicGetStatsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        months?: number;
+    };
+    url: '/api/comics/stats';
+};
+
+export type ComicGetStatsErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicGetStatsError = ComicGetStatsErrors[keyof ComicGetStatsErrors];
+
+export type ComicGetStatsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ComicStatsResponse;
+};
+
+export type ComicGetStatsResponse = ComicGetStatsResponses[keyof ComicGetStatsResponses];
 
 export type ComicFindDuplicatesData = {
     body?: never;

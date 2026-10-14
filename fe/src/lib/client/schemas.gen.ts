@@ -109,6 +109,38 @@ export const CheckResultSchema = {
 * \`\`notfound\`\` — no such id in the database`
 } as const;
 
+export const ComicActivityStatsSchema = {
+    properties: {
+        added: {
+            type: 'integer',
+            title: 'Added'
+        },
+        read: {
+            type: 'integer',
+            title: 'Read',
+            description: 'Distinct comics read'
+        },
+        readDays: {
+            type: 'integer',
+            title: 'Readdays',
+            description: 'Comic-days read: one comic read on one day counts once'
+        },
+        deleted: {
+            type: 'integer',
+            title: 'Deleted'
+        },
+        deletedSize: {
+            type: 'integer',
+            title: 'Deletedsize',
+            description: 'Bytes freed by deletes'
+        }
+    },
+    type: 'object',
+    required: ['added', 'read', 'readDays', 'deleted', 'deletedSize'],
+    title: 'ComicActivityStats',
+    description: 'Activity counted from the event log over one period'
+} as const;
+
 export const ComicDetailResponseSchema = {
     properties: {
         pageDetails: {
@@ -201,6 +233,79 @@ export const ComicEntitySchema = {
     title: 'ComicEntity'
 } as const;
 
+export const ComicLibraryStatsSchema = {
+    properties: {
+        total: {
+            type: 'integer',
+            title: 'Total'
+        },
+        totalSize: {
+            type: 'integer',
+            title: 'Totalsize',
+            description: 'Bytes'
+        },
+        favorited: {
+            type: 'integer',
+            title: 'Favorited'
+        },
+        started: {
+            type: 'integer',
+            title: 'Started',
+            description: 'Opened at least once'
+        },
+        finished: {
+            type: 'integer',
+            title: 'Finished',
+            description: 'Last position reached the last page'
+        },
+        archived: {
+            type: 'integer',
+            title: 'Archived',
+            description: 'Deleted files whose record was kept'
+        }
+    },
+    type: 'object',
+    required: ['total', 'totalSize', 'favorited', 'started', 'finished', 'archived'],
+    title: 'ComicLibraryStats',
+    description: 'Current state of the live library (not archived, file present)'
+} as const;
+
+export const ComicMonthStatsSchema = {
+    properties: {
+        added: {
+            type: 'integer',
+            title: 'Added'
+        },
+        read: {
+            type: 'integer',
+            title: 'Read',
+            description: 'Distinct comics read'
+        },
+        readDays: {
+            type: 'integer',
+            title: 'Readdays',
+            description: 'Comic-days read: one comic read on one day counts once'
+        },
+        deleted: {
+            type: 'integer',
+            title: 'Deleted'
+        },
+        deletedSize: {
+            type: 'integer',
+            title: 'Deletedsize',
+            description: 'Bytes freed by deletes'
+        },
+        month: {
+            type: 'string',
+            title: 'Month',
+            description: 'YYYY-MM, local time'
+        }
+    },
+    type: 'object',
+    required: ['added', 'read', 'readDays', 'deleted', 'deletedSize', 'month'],
+    title: 'ComicMonthStats'
+} as const;
+
 export const ComicPageDetailResponseSchema = {
     properties: {
         name: {
@@ -238,6 +343,70 @@ export const ComicRenameResponseSchema = {
     required: ['name'],
     title: 'ComicRenameResponse',
     description: 'Response for comic rename operation'
+} as const;
+
+export const ComicStatsResponseSchema = {
+    properties: {
+        library: {
+            '$ref': '#/components/schemas/ComicLibraryStats'
+        },
+        since: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Since',
+            description: 'Time of the first logged event; null when none'
+        },
+        total: {
+            '$ref': '#/components/schemas/ComicActivityStats'
+        },
+        months: {
+            items: {
+                '$ref': '#/components/schemas/ComicMonthStats'
+            },
+            type: 'array',
+            title: 'Months',
+            description: 'Oldest first, the current month last; empty months included'
+        },
+        topRead: {
+            items: {
+                '$ref': '#/components/schemas/ComicTopRead'
+            },
+            type: 'array',
+            title: 'Topread',
+            description: 'Most read comics by distinct days, existing comics only'
+        }
+    },
+    type: 'object',
+    required: ['library', 'total', 'months', 'topRead'],
+    title: 'ComicStatsResponse',
+    description: 'Response for the stats page'
+} as const;
+
+export const ComicTopReadSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        readDays: {
+            type: 'integer',
+            title: 'Readdays'
+        }
+    },
+    type: 'object',
+    required: ['id', 'name', 'readDays'],
+    title: 'ComicTopRead'
 } as const;
 
 export const DailyScanInfoSchema = {

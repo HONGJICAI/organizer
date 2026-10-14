@@ -19,6 +19,7 @@ import global_data
 from core.scan_progress import progress
 from model import ComicEntity, FileEntity, VideoEntity
 import db
+import events
 import util
 
 p = ThreadPool(8)
@@ -30,6 +31,9 @@ class Loader:
     entity_cls = None
     # Human-readable phase label surfaced in the scan progress/metrics.
     phase = None
+    # ActivityEvent.mediaType for the add events this loader records; None
+    # records none (only comics are logged for now).
+    media_type = None
 
     def __init__(self):
         self._starting_id = 0
@@ -124,6 +128,8 @@ class Loader:
         print(f"commit {len(news)} entities to db.")
         with Session(db.engine) as session:
             session.add_all(news)
+            if self.media_type:
+                events.record_adds(session, self.media_type, news)
             session.commit()
 
     @abstractmethod
@@ -158,6 +164,7 @@ class ComicLoader(Loader):
     comic_ext = [".zip", ".rar", ""]
     entity_cls = ComicEntity
     phase = "comics"
+    media_type = events.COMIC
 
     def __init__(self):
         super().__init__()
@@ -176,6 +183,7 @@ class ComicLoader(Loader):
             entity = self._to_entity(path)
             if entity is not None:
                 session.add(entity)
+                events.record_adds(session, self.media_type, [entity])
                 session.commit()
 
     def _load_old(self) -> List[str]:

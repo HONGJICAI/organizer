@@ -58,6 +58,7 @@ npm run api          # regenerate the OpenAPI client (see below)
 - Covers are pre-generated JPEGs named `{id}_0.jpg` written to nginx-served directories (`global_data.Config.nginx_*_path`); the frontend loads them from the static server, not the API.
 - `core/exceptions.py` maps request-validation errors to **400, not 422** — write test assertions accordingly.
 - Background tasks live in `tasks/` and start from `core/lifespan.py`.
+- `ActivityEvent` (`model.py`) is an append-only log for stats, written via `events.py`. Only comics are logged so far: `add` on scan/import, `read` on progress saves (one row per item per day), `delete` on every delete including permanent ones. Filtered columns are flat; kind-specific fields go in the JSON `data` column. Record events in the same session as the change so they commit or roll back together.
 
 ## Backend test conventions
 

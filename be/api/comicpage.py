@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 import comicfile
 import db
+import events
 import global_data
 from core.exceptions import abort
 from loader import ComicLoader
@@ -100,6 +101,7 @@ class ComicPageCBV:
         comic.lastViewedPosition = req.position
         comic.lastViewedTime = datetime.datetime.now()
         self.session.add(comic)
+        events.record_read(self.session, events.COMIC, comic.id, req.position)
         self.session.commit()
         return ProgressResponse(
             position=comic.lastViewedPosition, lastViewedTime=comic.lastViewedTime
