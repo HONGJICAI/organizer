@@ -133,6 +133,7 @@ export async function setupMock(authRequired: boolean) {
 	// couple of comics fail so the admin page's failure list has content.
 	const coverState = {
 		running: false,
+		mode: null as string | null,
 		total: 0,
 		processed: 0,
 		failures: [] as { id: number; name: string; reason: string }[],
@@ -156,6 +157,7 @@ export async function setupMock(authRequired: boolean) {
 			);
 			return HttpResponse.json({
 				running: coverState.running,
+				mode: coverState.mode,
 				total: coverState.total,
 				processed: coverState.processed,
 				failed: failures.length,
@@ -164,7 +166,7 @@ export async function setupMock(authRequired: boolean) {
 				finished_at: coverState.finishedAt
 			});
 		}),
-		http.post('/api/system/covers', async () => {
+		http.post('/api/system/covers', async ({ request }) => {
 			await delay(200);
 			if (scanState.running) {
 				return HttpResponse.json({
@@ -178,9 +180,18 @@ export async function setupMock(authRequired: boolean) {
 					message: 'Covers are already being regenerated'
 				});
 			}
-			const live = comics.filter((c) => !c.archived && !c.missing);
+			const mode = new URL(request.url).searchParams.get('mode') ?? 'all';
+			if (mode !== 'all' && mode !== 'missing') {
+				return HttpResponse.json({ msg: 'Invalid mode' }, { status: 400 });
+			}
+			// Mock covers are all "present" except a handful, so missing mode
+			// processes a short run.
+			const live = comics
+				.filter((c) => !c.archived && !c.missing)
+				.slice(mode === 'missing' ? -6 : 0);
 			Object.assign(coverState, {
 				running: true,
+				mode,
 				total: live.length,
 				processed: 0,
 				failures: live.slice(-2).map((c, i) => ({
@@ -191,7 +202,11 @@ export async function setupMock(authRequired: boolean) {
 				startedAt: new Date().toISOString(),
 				finishedAt: null
 			});
-			return HttpResponse.json({ status: 'started', message: 'Cover regeneration started' });
+			return HttpResponse.json({
+				status: 'started',
+				message:
+					mode === 'missing' ? 'Missing cover generation started' : 'Cover regeneration started'
+			});
 		}),
 		http.get('/api/system/scan', async () => {
 			if (scanState.running) {

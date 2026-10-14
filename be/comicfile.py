@@ -10,6 +10,35 @@ import rarfile
 allowImgs = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"]
 allowZips = [".zip", ".rar"]
 
+
+def _is_page(name: str) -> bool:
+    """Whether an archive or folder entry is a comic page.
+
+    macOS adds AppleDouble metadata to archives it creates: ``._001.jpg``
+    files, usually under ``__MACOSX/``. They carry image extensions but aren't
+    images, and they can sort ahead of the real first page, so they're skipped
+    along with other hidden files.
+    """
+    parts = name.replace("\\", "/").split("/")
+    if parts[-1].startswith(".") or "__MACOSX" in parts:
+        return False
+    return os.path.splitext(name)[1].lower() in allowImgs
+
+
+def order_pages(names) -> List[str]:
+    """Page entries in reading order.
+
+    Sorted by name; when every file name (ignoring its folder) is a number,
+    sorted numerically within each folder instead, so ``Title/2.jpg`` comes
+    before ``Title/10.jpg``.
+    """
+    pages = [n for n in names if _is_page(n)]
+    split = [os.path.split(n.replace("\\", "/")) for n in pages]
+    if pages and all(os.path.splitext(base)[0].isdigit() for _, base in split):
+        order = sorted(range(len(pages)), key=lambda i: (split[i][0], int(os.path.splitext(split[i][1])[0])))
+        return [pages[i] for i in order]
+    return sorted(pages)
+
 mediaTypes = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -122,24 +151,7 @@ class ZipRarComicfile(Comicfile):
             return
         self._opened = True
         if not self._namelist or not self._page:
-            self._namelist = list(
-                sorted(
-                    filter(
-                        lambda x: os.path.splitext(x)[-1].lower() in allowImgs,
-                        self._archive.namelist(),
-                    )
-                )
-            )
-            # if all filename is number, sort by number
-            if all(
-                map(
-                    lambda x: x.isdigit(),
-                    map(lambda x: os.path.splitext(x)[0], self._namelist),
-                )
-            ):
-                self._namelist = list(
-                    sorted(self._namelist, key=lambda x: int(os.path.splitext(x)[0]))
-                )
+            self._namelist = order_pages(self._archive.namelist())
             self._page = len(self._namelist)
 
 
@@ -167,15 +179,7 @@ class DirectoryComicfile(Comicfile):
         if self._opened:
             return
         self._opened = True
-        self._valid_entries = filter(
-                lambda x: x.is_file() and os.path.splitext(x.name)[-1] in allowImgs,
-                list(os.scandir(self._filepath)),
-            )
-        self._namelist = list(
-            sorted(
-                map(lambda x: x.name, self._valid_entries),
-            )
-        )
+        self._namelist = order_pages(e.name for e in os.scandir(self._filepath) if e.is_file())
         self._page = len(self._namelist)
 
     def close(self):

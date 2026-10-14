@@ -120,6 +120,7 @@ class CoverFailure(BaseModel):
 
 class CoverRegenStatus(BaseModel):
     running: bool
+    mode: Optional[Literal["all", "missing"]] = None
     total: int
     processed: int
     failed: int
@@ -167,15 +168,16 @@ def scan_status() -> ScanStatusResponse:
 
 
 @router.post("/api/system/covers", tags=["system"])
-def regenerate_covers() -> CoverRegenResponse:
-    """Regenerate every live comic's cover in the background."""
+def regenerate_covers(mode: Literal["all", "missing"] = "all") -> CoverRegenResponse:
+    """Regenerate live comics' covers in the background: every one, or only those without a cover file."""
     # A scan writes covers for the comics it imports and hands out ids that
     # aren't committed yet; wait for it rather than race it.
     if progress.running:
         return CoverRegenResponse(status="scan_running", message="Wait for the running scan to finish")
-    if not regen.start():
+    if not regen.start(mode):
         return CoverRegenResponse(status="already_running", message="Covers are already being regenerated")
-    return CoverRegenResponse(status="started", message="Cover regeneration started")
+    what = "Missing cover generation" if mode == "missing" else "Cover regeneration"
+    return CoverRegenResponse(status="started", message=f"{what} started")
 
 
 @router.get("/api/system/covers", tags=["system"])

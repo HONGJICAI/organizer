@@ -52,8 +52,8 @@ def close(a, b, tol=12):
     return all(abs(x - y) <= tol for x, y in zip(a, b))
 
 
-def regenerate(client):
-    r = client.post("/api/system/covers")
+def regenerate(client, mode=None):
+    r = client.post("/api/system/covers" + (f"?mode={mode}" if mode else ""))
     assert r.status_code == 200
     return r.json(), client.get("/api/system/covers").json()
 
@@ -62,7 +62,7 @@ class TestRegenerate:
     def test_status_before_any_run(self, client):
         body = client.get("/api/system/covers").json()
         assert body == {
-            "running": False, "total": 0, "processed": 0, "failed": 0,
+            "running": False, "mode": None, "total": 0, "processed": 0, "failed": 0,
             "failures": [], "started_at": None, "finished_at": None,
         }
 
@@ -74,8 +74,9 @@ class TestRegenerate:
         write_stale_cover(1)
 
         started, status = regenerate(client)
-        assert started["status"] == "started"
+        assert started == {"status": "started", "message": "Cover regeneration started"}
         assert status["running"] is False
+        assert status["mode"] == "all"
         assert (status["total"], status["processed"], status["failed"]) == (1, 1, 0)
         assert status["started_at"] and status["finished_at"]
         assert close(cover_color(1), (0, 0, 255))
@@ -159,3 +160,33 @@ class TestRegenerate:
         progress.start("all")
         assert client.post("/api/system/covers").json()["status"] == "scan_running"
         assert covers.regen.started_at is None
+
+    def test_missing_mode_only_generates_absent_covers(self, client, session, tmp_path):
+        for id in (1, 2):
+            f = tmp_path / f"{id}.zip"
+            colored_zip(f, [(0, 0, 255)])
+            insert_comic(session, id=id, path=str(f), page=1)
+        write_stale_cover(1)
+        started, status = regenerate(client, "missing")
+        assert started["message"] == "Missing cover generation started"
+        assert (status["mode"], status["total"], status["failed"]) == ("missing", 1, 0)
+        # The existing cover is left alone; only the absent one is generated.
+        assert close(cover_color(1), (255, 0, 0))
+        assert close(cover_color(2), (0, 0, 255))
+
+    def test_refreshes_page_count(self, client, session, tmp_path):
+        f = tmp_path / "a.zip"
+        colored_zip(f, [(0, 0, 255), (0, 255, 0)])
+        insert_comic(session, id=1, path=str(f), page=7)
+        regenerate(client)
+        session.expire_all()
+        assert session.get(ComicEntity, 1).page == 2
+
+    def test_page_count_kept_when_file_unreadable(self, client, session):
+        insert_comic(session, id=1, path="/nonexistent/a.zip", page=7)
+        regenerate(client)
+        session.expire_all()
+        assert session.get(ComicEntity, 1).page == 7
+
+    def test_invalid_mode(self, client):
+        assert client.post("/api/system/covers?mode=some").status_code == 400

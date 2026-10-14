@@ -631,7 +631,7 @@ export class SystemService {
     
     /**
      * Regenerate Covers
-     * Regenerate every live comic's cover in the background.
+     * Regenerate live comics' covers in the background: every one, or only those without a cover file.
      */
     public static regenerateCovers<ThrowOnError extends boolean = false>(options?: Options<RegenerateCoversData, ThrowOnError>) {
         return (options?.client ?? _heyApiClient).post<RegenerateCoversResponse, RegenerateCoversError, ThrowOnError>({
