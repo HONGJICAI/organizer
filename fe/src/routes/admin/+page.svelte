@@ -74,10 +74,12 @@
 		timer = setTimeout(poll, running || coversRunning ? 1000 : 5000);
 	}
 
-	async function regenerateCovers() {
+	// `missing` only fills in covers whose file doesn't exist; `all` rewrites
+	// every cover (behind a confirm, since it reopens every archive).
+	async function regenerateCovers(mode: 'all' | 'missing') {
 		confirmCovers = false;
 		startingCovers = true;
-		const { data, error } = await SystemService.regenerateCovers();
+		const { data, error } = await SystemService.regenerateCovers({ query: { mode } });
 		startingCovers = false;
 		if (error || !data) {
 			addNotification(new ErrorNotification({ subtitle: 'Failed to start cover regeneration' }));
@@ -223,8 +225,9 @@
 			{/if}
 		</div>
 		<p class="muted">
-			Rewrites every comic's cover from its chosen cover page (or the first page). Covers that can't
-			be generated are removed instead of left stale.
+			Builds covers from each comic's chosen cover page (or the first page) and refreshes its page
+			count. <em>Generate missing</em> only fills in comics without a cover; <em>Regenerate all</em>
+			rewrites every one. Covers that can't be generated are removed instead of left stale.
 		</p>
 		{#if covers?.running}
 			<ProgressBar
@@ -234,9 +237,11 @@
 			/>
 		{:else if covers?.finished_at}
 			<dl class="kv">
+				<dt>Mode</dt>
+				<dd>{covers.mode === 'missing' ? 'Missing only' : 'All'}</dd>
 				<dt>Finished</dt>
 				<dd>{fmtTime(covers.finished_at)}</dd>
-				<dt>Regenerated</dt>
+				<dt>Generated</dt>
 				<dd>{covers.processed - covers.failed} / {covers.total}</dd>
 				<dt>Failed</dt>
 				<dd>{covers.failed}</dd>
@@ -256,13 +261,20 @@
 				<p class="muted">…and {covers.failed - covers.failures.length} more</p>
 			{/if}
 		{/if}
-		<Button
-			icon={ImageIcon}
-			disabled={startingCovers || covers?.running || scan?.running}
-			on:click={() => (confirmCovers = true)}
-		>
-			{covers?.running ? 'Regenerating…' : 'Regenerate all covers'}
-		</Button>
+		<div class="buttons">
+			<Button
+				icon={ImageIcon}
+				disabled={startingCovers || covers?.running || scan?.running}
+				on:click={() => regenerateCovers('missing')}
+			>
+				{covers?.running ? 'Generating…' : 'Generate missing'}
+			</Button>
+			<Button
+				kind="tertiary"
+				disabled={startingCovers || covers?.running || scan?.running}
+				on:click={() => (confirmCovers = true)}>Regenerate all</Button
+			>
+		</div>
 	</Tile>
 
 	<Tile class="card">
@@ -291,7 +303,7 @@
 	primaryButtonText="Regenerate"
 	secondaryButtonText="Cancel"
 	on:click:button--secondary={() => (confirmCovers = false)}
-	on:submit={regenerateCovers}
+	on:submit={() => regenerateCovers('all')}
 >
 	<p>
 		Every comic's cover is rebuilt from its archive, which can take a while on a large library.
@@ -379,6 +391,12 @@
 		display: flex;
 		gap: 0.5rem;
 		align-items: baseline;
+	}
+
+	.buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 	}
 
 	.failures {

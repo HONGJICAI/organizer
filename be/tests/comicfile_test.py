@@ -154,3 +154,47 @@ def test_create_open_cached(tmp_path):
     cf1 = comicfile.create_open(str(path))
     cf2 = comicfile.create_open(str(path))
     assert cf1 is cf2
+
+
+# ---------------------------------------------------------------------------
+# order_pages()
+# ---------------------------------------------------------------------------
+
+def test_order_pages_numeric_inside_folder():
+    names = ["漫画/10.jpg", "漫画/2.jpg", "漫画/1.jpg", "漫画/"]
+    assert comicfile.order_pages(names) == ["漫画/1.jpg", "漫画/2.jpg", "漫画/10.jpg"]
+
+
+def test_order_pages_numeric_per_folder():
+    names = ["v2/1.jpg", "v1/10.jpg", "v1/2.jpg", "v2/0.jpg"]
+    assert comicfile.order_pages(names) == ["v1/2.jpg", "v1/10.jpg", "v2/0.jpg", "v2/1.jpg"]
+
+
+def test_order_pages_skips_macos_metadata_and_hidden_files():
+    names = ["__MACOSX/title/._1.jpg", "title/._2.jpg", "title/.DS_Store", "title/1.jpg", "title/2.jpg"]
+    assert comicfile.order_pages(names) == ["title/1.jpg", "title/2.jpg"]
+
+
+def test_order_pages_name_sort_when_not_all_numeric():
+    assert comicfile.order_pages(["b.jpg", "a.PNG", "c.txt"]) == ["a.PNG", "b.jpg"]
+
+
+def test_comicfile_zip_nested_folder_with_macos_metadata(tmp_path):
+    path = tmp_path / "mac.zip"
+    jpeg = make_jpeg_bytes()
+    with zipfile.ZipFile(path, "w") as zf:
+        for i in (1, 2, 10):
+            zf.writestr(f"title/{i}.jpg", jpeg)
+            zf.writestr(f"__MACOSX/title/._{i}.jpg", b"\x00\x05\x16\x07")
+    with comicfile.create(str(path)) as cf:
+        assert cf.namelist == ["title/1.jpg", "title/2.jpg", "title/10.jpg"]
+        ok, buf = cf.read(0)
+        assert ok and buf == jpeg
+
+
+def test_comicfile_directory_skips_hidden_and_sorts_numerically(tmp_path):
+    jpeg = make_jpeg_bytes()
+    for name in ("1.JPG", "2.jpg", "10.jpg", "._1.JPG"):
+        (tmp_path / name).write_bytes(jpeg)
+    with comicfile.create(str(tmp_path)) as cf:
+        assert cf.namelist == ["1.JPG", "2.jpg", "10.jpg"]

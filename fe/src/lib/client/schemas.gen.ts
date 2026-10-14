@@ -452,6 +452,18 @@ export const CoverRegenStatusSchema = {
             type: 'boolean',
             title: 'Running'
         },
+        mode: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: ['all', 'missing']
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Mode'
+        },
         total: {
             type: 'integer',
             title: 'Total'

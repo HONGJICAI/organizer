@@ -196,6 +196,7 @@ export type CoverRegenResponse = {
 
 export type CoverRegenStatus = {
     running: boolean;
+    mode?: ('all' | 'missing') | null;
     total: number;
     processed: number;
     failed: number;
@@ -1875,7 +1876,9 @@ export type CoverRegenStatusResponse = CoverRegenStatusResponses[keyof CoverRege
 export type RegenerateCoversData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        mode?: 'all' | 'missing';
+    };
     url: '/api/system/covers';
 };
 

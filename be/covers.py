@@ -1,18 +1,23 @@
-"""Regenerate every comic cover in the background (Admin → Covers).
+"""Regenerate comic covers in the background (Admin → Covers).
+
+Two modes: ``all`` rewrites every live comic's cover; ``missing`` only
+generates covers whose file doesn't exist (quick, e.g. after fixing a reader
+bug that made generation fail).
 
 Covers are ``{id}_0.jpg`` files that outlive their comic: when a cover can't be
 generated, an older file under the same id keeps showing — possibly another
-comic's, after an id was reused. Regenerating rewrites each live comic's cover
+comic's, after an id was reused. Each processed comic's cover is rewritten
 from its custom cover page (``coverPosition``), falling back to the first page,
 and deletes the file when neither renders so no stale image survives. Every
 processed comic gets a new ``entityUpdateTime``, the version the frontend puts
-on cover URLs, so browsers drop their cached copies.
+on cover URLs, so browsers drop their cached copies, and its page count is
+refreshed from the file, since page detection may have changed since import.
 """
 import os
 import threading
 from datetime import datetime
 from multiprocessing.pool import ThreadPool
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from sqlmodel import Session, select
 
@@ -26,6 +31,8 @@ from model import ComicEntity
 MAX_FAILURES = 100
 _COMMIT_EVERY = 50
 
+Mode = Literal["all", "missing"]
+
 
 class CoverRegen:
     """Thread-safe progress of the running (or most recent) regeneration."""
@@ -36,6 +43,7 @@ class CoverRegen:
 
     def reset(self):
         self.running = False
+        self.mode: Optional[Mode] = None
         self.total = 0
         self.processed = 0
         self.failed = 0
@@ -43,18 +51,19 @@ class CoverRegen:
         self.started_at: Optional[datetime] = None
         self.finished_at: Optional[datetime] = None
 
-    def start(self) -> bool:
+    def start(self, mode: Mode = "all") -> bool:
         """Start a run in a background thread unless one is already running."""
         with self._lock:
             if self.running:
                 return False
             self.reset()
             self.running = True
+            self.mode = mode
             self.started_at = datetime.now()
-        _in_background(self.run)
+        _in_background(lambda: self.run(mode))
         return True
 
-    def run(self):
+    def run(self, mode: Mode = "all"):
         try:
             # Workers read comics while this thread commits; without
             # expire_on_commit=False a commit would make them lazy-reload
@@ -65,11 +74,15 @@ class CoverRegen:
                     .where(ComicEntity.archived == False)  # noqa: E712
                     .where(ComicEntity.missing == False)  # noqa: E712
                 ).all()
+                if mode == "missing":
+                    comics = [c for c in comics if not os.path.exists(_cover_path(c))]
                 with self._lock:
                     self.total = len(comics)
                 with ThreadPool(8) as pool:
-                    for i, (comic, reason) in enumerate(pool.imap_unordered(_regenerate, comics), 1):
+                    for i, (comic, reason, pages) in enumerate(pool.imap_unordered(_regenerate, comics), 1):
                         comic.entityUpdateTime = datetime.now()
+                        if pages is not None:
+                            comic.page = pages
                         session.add(comic)
                         if i % _COMMIT_EVERY == 0:
                             session.commit()
@@ -89,6 +102,7 @@ class CoverRegen:
         with self._lock:
             return {
                 "running": self.running,
+                "mode": self.mode,
                 "total": self.total,
                 "processed": self.processed,
                 "failed": self.failed,
@@ -102,25 +116,35 @@ def _in_background(target) -> None:
     threading.Thread(target=target, daemon=True).start()
 
 
+def _cover_path(comic: ComicEntity) -> str:
+    return os.path.join(global_data.Config.nginx_comic_path, f"{comic.id}_0.jpg")
+
+
 def _regenerate(comic: ComicEntity):
-    """Rewrite one cover. Returns ``(comic, None)`` or ``(comic, failure reason)``."""
+    """Rewrite one cover.
+
+    Returns ``(comic, failure reason or None, page count or None)``; the page
+    count is None when the file couldn't be opened.
+    """
     # coverPosition is the 1-based page picked as cover; 0 means the first page.
-    pages = list(dict.fromkeys([max(comic.coverPosition - 1, 0), 0]))
+    candidates = list(dict.fromkeys([max(comic.coverPosition - 1, 0), 0]))
     reason = "No page could be rendered as a cover"
+    pages = None
     try:
         cf = comicfile.create(comic.path)
         if cf is None:
             reason = "Comic file not found or unsupported"
         else:
             with cf:
-                if any(ComicLoader.gen_comic_cover(comic, cf, True, page) for page in pages):
-                    return comic, None
+                pages = cf.page
+                if any(ComicLoader.gen_comic_cover(comic, cf, True, p) for p in candidates):
+                    return comic, None, pages
     except Exception as e:
         reason = str(e) or type(e).__name__
-    cover = os.path.join(global_data.Config.nginx_comic_path, f"{comic.id}_0.jpg")
+    cover = _cover_path(comic)
     if os.path.exists(cover):
         os.remove(cover)
-    return comic, reason
+    return comic, reason, pages
 
 
 # Process-wide singleton.
