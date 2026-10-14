@@ -12,6 +12,7 @@ from sqlmodel import Session, select, or_
 import comicfile
 import db
 import duplicates
+import events
 import global_data
 import util
 from core.exceptions import abort
@@ -261,6 +262,7 @@ class ComicCBV:
             if cf is not None:
                 cf.close()
 
+        events.record_delete(self.session, events.COMIC, comic, permanent)
         if not permanent:
             comic.archived = True
             self.session.add(comic)
