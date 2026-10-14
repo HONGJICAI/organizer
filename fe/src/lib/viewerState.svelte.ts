@@ -6,6 +6,10 @@ export const viewerState = $state({
 	// Whether the full-screen page-thumbnail overview is open. Toggled from the
 	// header page counter; rendered by the reader (which holds the file).
 	overviewOpen: false,
+	// Private reading: the open file's progress isn't saved (no "viewed" mark,
+	// no read in stats). Set by the reader on open (`?private=1`, used by the
+	// duplicate finder); the header chip turns it off to start saving.
+	privateReading: false,
 	// eslint-disable-next-line @typescript-eslint/no-empty-function
 	onClose: () => {},
 	// Reverse channel from the chrome/overview to the active reader: jump to a

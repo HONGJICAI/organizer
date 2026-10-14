@@ -7,14 +7,20 @@ import type { MediaFile } from '$lib/model.svelte';
 // position is also mirrored onto the in-memory file so cached list views (the
 // viewed badge, Recent, sort-by-viewed) stay consistent without a refetch.
 // Fire and forget; types without progress tracking (videos) are ignored.
-export function createProgressReporter(file: MediaFile, debounceMs = 1000) {
+// `enabled` is checked when a report would be sent, so turning it off also
+// drops a report still waiting out the debounce.
+export function createProgressReporter(
+	file: MediaFile,
+	debounceMs = 1000,
+	enabled: () => boolean = () => true
+) {
 	let reported = 0;
 	let pending = 0;
 	let timer: ReturnType<typeof setTimeout> | null = null;
 
 	function send(position: number) {
 		const update = adapters[file.type].updateProgress;
-		if (position === reported || position < 1 || !update) return;
+		if (position === reported || position < 1 || !update || !enabled()) return;
 		reported = position;
 		update(file.id, position);
 		const now = new Date();

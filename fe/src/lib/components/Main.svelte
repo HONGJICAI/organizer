@@ -15,6 +15,7 @@
 	import Menu from 'carbon-icons-svelte/lib/Menu.svelte';
 	import Close from 'carbon-icons-svelte/lib/Close.svelte';
 	import SearchIcon from 'carbon-icons-svelte/lib/Search.svelte';
+	import ViewOff from 'carbon-icons-svelte/lib/ViewOff.svelte';
 	import { goto } from '$app/navigation';
 	import SettingsModal from './SettingsModal.svelte';
 	import { notifications } from '$lib/state.svelte';
@@ -52,6 +53,15 @@
 					onclick={() => (viewerState.overviewOpen = !viewerState.overviewOpen)}
 				>
 					{viewerState.page} / {viewerState.maxPage}
+				</button>
+			{/if}
+			{#if viewerState.privateReading}
+				<button
+					class="viewer-private"
+					title="Reading progress isn't being saved. Click to start saving it."
+					onclick={() => (viewerState.privateReading = false)}
+				>
+					<ViewOff size={16} /><span>Private</span>
 				</button>
 			{/if}
 		</div>
@@ -162,6 +172,21 @@
 	.viewer-page.active {
 		background: var(--cds-interactive-01, #0f62fe);
 		color: var(--cds-text-04, #ffffff);
+	}
+
+	.viewer-private {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		font-size: 0.75rem;
+		color: var(--cds-text-01, #f4f4f4);
+		background: none;
+		padding: 0.125rem 0.5rem;
+		border: 1px solid var(--cds-ui-04, #8d8d8d);
+		border-radius: 1rem;
+		pointer-events: auto;
+		cursor: pointer;
 	}
 
 	/* On narrow screens the title eats the header; drop it and keep only the

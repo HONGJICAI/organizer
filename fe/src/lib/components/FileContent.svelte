@@ -14,8 +14,13 @@
 		onClose: () => void;
 		// Open straight into the page overview (e.g. from the duplicate finder).
 		initialOverview?: boolean;
+		// Don't save reading progress until the user turns it on from the header.
+		privateReading?: boolean;
 	}
-	let { file, onClose, initialOverview = false }: Props = $props();
+	let { file, onClose, initialOverview = false, privateReading = false }: Props = $props();
+
+	// Set before any effect runs so the first page report already sees it.
+	viewerState.privateReading = privateReading;
 
 	const isScroll = $derived(config.viewMode === ViewMode.Scroll);
 
@@ -31,9 +36,12 @@
 	// Reading-progress reporting is shared across the paged and scroll readers,
 	// which both drive viewerState.page. Schedule a (debounced) report whenever
 	// the settled page changes, and flush any pending one when the viewer closes.
-	const reporter = createProgressReporter(file);
+	const reporter = createProgressReporter(file, 1000, () => !viewerState.privateReading);
 	$effect(() => {
-		if (viewerState.maxPage >= 1) reporter.schedule(viewerState.page);
+		// Reading privateReading here re-reports the current page as soon as
+		// saving is turned on.
+		if (viewerState.maxPage >= 1 && !viewerState.privateReading)
+			reporter.schedule(viewerState.page);
 	});
 
 	// Only paged/scroll media (comics, image albums) have a page overview.
@@ -48,6 +56,7 @@
 			viewerState.active = false;
 			viewerState.overviewOpen = false;
 			reporter.flush();
+			viewerState.privateReading = false;
 		};
 	});
 </script>

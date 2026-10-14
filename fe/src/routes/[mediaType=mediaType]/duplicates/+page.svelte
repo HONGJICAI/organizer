@@ -159,7 +159,8 @@
 	the similarity threshold — check those carefully. Everything except the suggested
 	<strong>Keep</strong> copy (favorited, then most pages, then largest) is pre-selected. Groups are sorted
 	by the space deleting the extra copies would free; counts and deletion only cover the groups the filter
-	shows.
+	shows. Comics opened from here are read privately: their reading progress isn't saved unless you turn
+	it on from the reader's header.
 </p>
 
 <div class="controls">
@@ -247,7 +248,7 @@
 					<div class="item" class:marked={selected.has(comic.id)}>
 						<a
 							class="cover-cell"
-							href="/{mediaType}/{comic.id}"
+							href="/{mediaType}/{comic.id}?private=1"
 							target="_blank"
 							rel="noopener"
 							title="Open in reader"
@@ -294,7 +295,7 @@
 								kind="ghost"
 								size="small"
 								icon={Grid}
-								href="/{mediaType}/{comic.id}?overview=1"
+								href="/{mediaType}/{comic.id}?overview=1&private=1"
 								target="_blank"
 								rel="noopener">Pages</Button
 							>
