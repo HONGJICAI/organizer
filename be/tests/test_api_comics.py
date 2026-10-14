@@ -1,11 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
+
+import pytest
 
 
 import comicfile
 from conftest import MockComicfile, insert_comic, make_zip_comic
 from loader import ComicLoader
-from model import ComicEntity
+from model import ActivityEvent, ComicEntity
 from util import PathState
 
 
@@ -394,3 +396,81 @@ class TestDuplicates:
     def test_threshold_out_of_range_returns_400(self, client):
         assert client.get("/api/comics/duplicates", params={"threshold": 0.1}).status_code == 400
         assert client.get("/api/comics/duplicates", params={"threshold": 2}).status_code == 400
+
+
+class TestStats:
+    @staticmethod
+    def _event(session, kind, entity_id, time, **data):
+        session.add(ActivityEvent(kind=kind, mediaType="comic", entityId=entity_id, time=time, data=data))
+        session.commit()
+
+    def test_empty(self, client):
+        r = client.get("/api/comics/stats")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["library"] == {
+            "total": 0, "totalSize": 0, "favorited": 0, "started": 0, "finished": 0, "archived": 0,
+        }
+        assert body["since"] is None
+        assert body["total"] == {"added": 0, "read": 0, "readDays": 0, "deleted": 0, "deletedSize": 0}
+        assert len(body["months"]) == 12
+        assert body["months"][-1]["month"] == datetime.now().strftime("%Y-%m")
+        assert body["topRead"] == []
+
+    def test_library(self, client, session):
+        now = datetime.now()
+        insert_comic(session, id=1, path="/a", page=10, favorited=True, lastViewedTime=now, lastViewedPosition=10)
+        insert_comic(session, id=2, path="/b", page=10, lastViewedTime=now, lastViewedPosition=3)
+        insert_comic(session, id=3, path="/c", page=10)
+        insert_comic(session, id=4, path="/d", archived=True)
+        insert_comic(session, id=5, path="/e", missing=True)
+        lib = client.get("/api/comics/stats").json()["library"]
+        assert lib == {
+            "total": 3, "totalSize": 3000, "favorited": 1, "started": 2, "finished": 1, "archived": 1,
+        }
+
+    def test_activity(self, client, session):
+        insert_comic(session, id=1, name="one.zip", path="/a")
+        insert_comic(session, id=2, name="two.zip", path="/b")
+        now = datetime.now()
+        long_ago = now - timedelta(days=800)
+        self._event(session, "add", 1, long_ago, name="one.zip", size=10)
+        self._event(session, "add", 2, now, name="two.zip", size=20)
+        self._event(session, "read", 1, now - timedelta(days=1), position=1)
+        self._event(session, "read", 1, now, position=2)
+        self._event(session, "read", 2, now, position=1)
+        self._event(session, "read", 2, long_ago, position=1)
+        self._event(session, "delete", 9, now, name="gone.zip", size=500, permanent=True)
+        # Other media types are not counted.
+        session.add(ActivityEvent(kind="add", mediaType="video", entityId=1, time=now, data={}))
+        session.commit()
+
+        body = client.get("/api/comics/stats?months=1").json()
+        assert body["since"].startswith(long_ago.strftime("%Y-%m-%d"))
+        assert body["total"] == {"added": 2, "read": 2, "readDays": 4, "deleted": 1, "deletedSize": 500}
+        [month] = body["months"]
+        assert month["month"] == now.strftime("%Y-%m")
+        assert month["added"] == 1
+        assert month["deleted"] == 1 and month["deletedSize"] == 500
+        # The day-before read can fall in last month on the 1st.
+        assert month["read"] == 2
+        assert month["readDays"] in (2, 3)
+        assert body["topRead"] == [
+            {"id": 1, "name": "one.zip", "readDays": 2},
+            {"id": 2, "name": "two.zip", "readDays": 2},
+        ]
+
+    def test_top_read_skips_deleted_comics(self, client, session):
+        self._event(session, "read", 42, datetime.now(), position=1)
+        assert client.get("/api/comics/stats").json()["topRead"] == []
+
+    @pytest.mark.parametrize("months", [0, 61, "x"])
+    def test_invalid_months(self, client, months):
+        assert client.get(f"/api/comics/stats?months={months}").status_code == 400
+
+
+class TestStatsMonths:
+    def test_spans_year_boundary(self, session):
+        import stats
+        r = stats.comic_stats(session, 3, now=datetime(2026, 2, 15))
+        assert [m.month for m in r.months] == ["2025-12", "2026-01", "2026-02"]

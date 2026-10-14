@@ -106,6 +106,12 @@ export async function setupMock(authRequired: boolean) {
 		favorited: false,
 		coverPosition: 0
 	}));
+	// Per-month mock activity for /api/comics/stats, filled lazily so
+	// switching ranges keeps the same numbers.
+	const mockMonthStats = new Map<
+		string,
+		{ added: number; read: number; readDays: number; deleted: number; deletedSize: number }
+	>();
 	const findComic = (id: string | readonly string[] | undefined) =>
 		id !== undefined ? comics.find((c) => c.id === Number(id)) : undefined;
 	const findImage = (id: string | readonly string[] | undefined) =>
@@ -238,6 +244,59 @@ export async function setupMock(authRequired: boolean) {
 				return { id, status: 'absent' };
 			});
 			return HttpResponse.json({ results });
+		}),
+		// Registered before /api/comics/:id so the literal path wins.
+		http.get('/api/comics/stats', async ({ request }) => {
+			await delay(500);
+			const count = Number(new URL(request.url).searchParams.get('months') ?? 12);
+			if (!Number.isInteger(count) || count < 1 || count > 60) {
+				return HttpResponse.json({ msg: 'Invalid months' }, { status: 400 });
+			}
+			const live = comics.filter((c) => !c.archived && !c.missing);
+			const now = new Date();
+			// Activity is random but steady per page load: the log "started" 30
+			// months ago, so longer ranges show full history.
+			const months = [...Array(count).keys()].reverse().map((back) => {
+				const d = new Date(now.getFullYear(), now.getMonth() - back, 1);
+				const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+				const stat = mockMonthStats.get(month) ?? {
+					added: faker.number.int({ min: 0, max: 40 }),
+					read: faker.number.int({ min: 0, max: 25 }),
+					readDays: 0,
+					deleted: faker.number.int({ min: 0, max: 8 }),
+					deletedSize: 0
+				};
+				stat.readDays = Math.max(stat.readDays, stat.read + faker.number.int({ min: 0, max: 15 }));
+				stat.deletedSize ||= stat.deleted * faker.number.int({ min: 20, max: 300 }) * 1024 * 1024;
+				mockMonthStats.set(month, stat);
+				return { month, ...stat };
+			});
+			const sum = (key: 'added' | 'readDays' | 'deleted' | 'deletedSize') =>
+				months.reduce((n, m) => n + m[key], 0);
+			const since = new Date(now.getFullYear(), now.getMonth() - 29, 3);
+			return HttpResponse.json({
+				library: {
+					total: live.length,
+					totalSize: live.reduce((n, c) => n + c.size, 0),
+					favorited: live.filter((c) => c.favorited).length,
+					started: live.filter((c) => c.lastViewedTime).length,
+					finished: live.filter((c) => c.page > 0 && (c.lastViewedPosition ?? 0) >= c.page).length,
+					archived: comics.filter((c) => c.archived).length
+				},
+				since: since.toISOString(),
+				total: {
+					added: sum('added'),
+					read: Math.min(
+						live.length,
+						months.reduce((n, m) => n + m.read, 0)
+					),
+					readDays: sum('readDays'),
+					deleted: sum('deleted'),
+					deletedSize: sum('deletedSize')
+				},
+				months,
+				topRead: live.slice(0, 10).map((c, i) => ({ id: c.id, name: c.name, readDays: 20 - i * 2 }))
+			});
 		}),
 		// Registered before /api/comics/:id so the literal path wins.
 		http.get('/api/comics/duplicates', async () => {

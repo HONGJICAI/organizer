@@ -1,6 +1,7 @@
 """Pydantic models for comic-related requests and responses"""
 from pydantic import BaseModel, Field
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 
 from model import ComicEntity
 
@@ -35,3 +36,41 @@ class DuplicateGroup(BaseModel):
 class DuplicatesResponse(BaseModel):
     """Response for the duplicate finder"""
     groups: List[DuplicateGroup]
+
+
+class ComicLibraryStats(BaseModel):
+    """Current state of the live library (not archived, file present)"""
+    total: int
+    totalSize: int = Field(description="Bytes")
+    favorited: int
+    started: int = Field(description="Opened at least once")
+    finished: int = Field(description="Last position reached the last page")
+    archived: int = Field(description="Deleted files whose record was kept")
+
+
+class ComicActivityStats(BaseModel):
+    """Activity counted from the event log over one period"""
+    added: int
+    read: int = Field(description="Distinct comics read")
+    readDays: int = Field(description="Comic-days read: one comic read on one day counts once")
+    deleted: int
+    deletedSize: int = Field(description="Bytes freed by deletes")
+
+
+class ComicMonthStats(ComicActivityStats):
+    month: str = Field(description="YYYY-MM, local time")
+
+
+class ComicTopRead(BaseModel):
+    id: int
+    name: str
+    readDays: int
+
+
+class ComicStatsResponse(BaseModel):
+    """Response for the stats page"""
+    library: ComicLibraryStats
+    since: Optional[datetime] = Field(default=None, description="Time of the first logged event; null when none")
+    total: ComicActivityStats
+    months: List[ComicMonthStats] = Field(description="Oldest first, the current month last; empty months included")
+    topRead: List[ComicTopRead] = Field(description="Most read comics by distinct days, existing comics only")
