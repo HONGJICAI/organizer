@@ -35,3 +35,53 @@ export function clearGroup(selected: Set<number>, group: DupGroup): Set<number> 
 	for (const c of group.items) next.delete(c.id);
 	return next;
 }
+
+export type DupFilter = 'all' | 'exact' | 'similar';
+
+export interface SizedItem extends DupItem {
+	size: number;
+	page: number;
+}
+
+export interface SizedGroup<T extends SizedItem = SizedItem> extends DupGroup<T> {
+	exact: boolean;
+}
+
+/** Groups matching the exact/similar filter. */
+export function filterGroups<G extends SizedGroup>(groups: G[], filter: DupFilter): G[] {
+	if (filter === 'all') return groups;
+	return groups.filter((g) => g.exact === (filter === 'exact'));
+}
+
+/** Space freed by deleting every deletable copy except the keeper. */
+export function reclaimable(group: SizedGroup): number {
+	const ids = new Set(deletable(group.items, group.keepId));
+	return group.items.reduce((sum, c) => (ids.has(c.id) ? sum + c.size : sum), 0);
+}
+
+/** Groups by reclaimable space, largest first; each group's copies largest first. */
+export function sortBySavings<G extends SizedGroup>(groups: G[]): G[] {
+	return groups
+		.map((g) => ({
+			g: { ...g, items: [...g.items].sort((a, b) => b.size - a.size) },
+			saved: reclaimable(g)
+		}))
+		.sort((a, b) => b.saved - a.saved)
+		.map(({ g }) => g);
+}
+
+/**
+ * Copies of one work should have about the same page count. A big spread
+ * (largest ≥ 1.5× smallest) suggests the names matched but the books differ,
+ * or one copy is incomplete. Unknown (0) page counts are ignored.
+ */
+export function pageMismatch(group: SizedGroup, ratio = 1.5): boolean {
+	const pages = group.items.map((c) => c.page).filter((p) => p > 0);
+	if (pages.length < 2) return false;
+	return Math.max(...pages) >= Math.min(...pages) * ratio;
+}
+
+/** Ids in `selected` that belong to `groups` — what an action on the visible groups touches. */
+export function selectedIn(selected: Set<number>, groups: DupGroup[]): number[] {
+	return groups.flatMap((g) => g.items.filter((c) => selected.has(c.id)).map((c) => c.id));
+}
