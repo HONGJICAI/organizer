@@ -250,7 +250,16 @@ export async function setupMock(authRequired: boolean) {
 					p95_ms: Math.round(p95 * 10) / 10,
 					slowest
 				},
-				last_result: scanState.finishedAt ? { status: 'success', comics: 'done' } : null
+				last_result: scanState.finishedAt ? { status: 'success', comics: 'done' } : null,
+				// A couple of files the scan couldn't import, once it has gone far enough.
+				skipped_count: count >= 50 ? 2 : 0,
+				skipped:
+					count >= 50
+						? [
+								{ path: '/data/comics/broken.zip', reason: 'File is not a zip file' },
+								{ path: '/data/comics/docs.rar', reason: 'No page images found' }
+							]
+						: []
 			});
 		}),
 		http.post('/api/system/scan', async () => {

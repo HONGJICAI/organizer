@@ -18,6 +18,8 @@ from typing import List, Optional, Tuple
 # How many of the slowest files to surface — enough to spot a bad folder or a
 # struggling mount without unbounded memory on a huge library.
 _SLOWEST_N = 10
+# Skipped files listed in the status; skipped_count covers the rest.
+_SKIPPED_N = 100
 
 
 class ScanProgress:
@@ -40,6 +42,8 @@ class ScanProgress:
         # Per-file processing time in ms, plus a bounded min-heap of the slowest.
         self._durations: List[float] = []
         self._slowest: List[Tuple[float, str]] = []
+        self.skipped: List[dict] = []
+        self.skipped_count = 0
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -56,6 +60,8 @@ class ScanProgress:
             self.finished_at = None
             self._durations = []
             self._slowest = []
+            self.skipped = []
+            self.skipped_count = 0
 
     def set_phase(self, phase: str, total: int):
         with self._lock:
@@ -72,6 +78,13 @@ class ScanProgress:
                 heapq.heappush(self._slowest, (ms, path))
             elif ms > self._slowest[0][0]:
                 heapq.heapreplace(self._slowest, (ms, path))
+
+    def add_skipped(self, path: str, reason: str):
+        """Record a file the scan found but couldn't import."""
+        with self._lock:
+            self.skipped_count += 1
+            if len(self.skipped) < _SKIPPED_N:
+                self.skipped.append({"path": path, "reason": reason})
 
     def add_reconciled(self, n: int):
         with self._lock:
@@ -123,6 +136,8 @@ class ScanProgress:
                     "slowest": slowest,
                 },
                 "last_result": self.last_result,
+                "skipped_count": self.skipped_count,
+                "skipped": list(self.skipped),
             }
 
 

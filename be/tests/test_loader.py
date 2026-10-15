@@ -1,4 +1,6 @@
 from datetime import datetime
+import os
+import zipfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,7 +9,7 @@ from sqlmodel import Session, select
 import comicfile
 import global_data
 from conftest import insert_comic, make_zip_comic
-from loader import ComicLoader, VideoLoader, scan
+from loader import ComicLoader, SkipFile, VideoLoader, scan
 from model import ComicEntity, VideoEntity
 
 
@@ -56,6 +58,31 @@ class TestScan:
         result = scan([".zip", ".rar"], [str(tmp_path)])
         assert len(result) == 2
 
+    def test_extensions_are_case_insensitive(self, tmp_path):
+        (tmp_path / "a.ZIP").write_bytes(b"x")
+        (tmp_path / "b.Rar").write_bytes(b"x")
+        result = scan([".zip", ".rar"], [str(tmp_path)])
+        assert len(result) == 2
+
+    def test_folder_with_uppercase_image_extension(self, tmp_path):
+        d = tmp_path / "comic"
+        d.mkdir()
+        (d / "1.JPG").write_bytes(b"img")
+        assert scan([""], [str(tmp_path)]) == [str(d)]
+
+    def test_extensionless_files_are_not_comics(self, tmp_path):
+        (tmp_path / "README").write_text("x")
+        (tmp_path / ".DS_Store").write_bytes(b"x")
+        (tmp_path / "a.zip").write_bytes(b"x")
+        assert scan(ComicLoader.comic_ext, [str(tmp_path)]) == [str(tmp_path / "a.zip")]
+
+    def test_skips_hidden_files_and_macos_metadata(self, tmp_path):
+        (tmp_path / "._a.zip").write_bytes(b"x")
+        junk = tmp_path / "junk"
+        junk.mkdir()
+        (junk / "._1.jpg").write_bytes(b"x")
+        assert scan(ComicLoader.comic_ext, [str(tmp_path)]) == []
+
 
 # ---------------------------------------------------------------------------
 # ComicLoader
@@ -102,6 +129,15 @@ class TestComicLoaderLoad:
             assert comics[0].path == str(f)
             assert comics[0].page == 2
 
+    def test_load_raises_for_unimportable_file(self, task_engine, tmp_path):
+        f = tmp_path / "docs.zip"
+        with zipfile.ZipFile(f, "w") as zf:
+            zf.writestr("readme.txt", "x")
+        with pytest.raises(SkipFile):
+            ComicLoader().load(str(f))
+        with Session(task_engine) as s:
+            assert s.exec(select(ComicEntity)).all() == []
+
     def test_raises_on_duplicate_path(self, task_session, task_engine, tmp_path):
         f = tmp_path / "dup.zip"
         make_zip_comic(str(f))
@@ -122,22 +158,24 @@ class TestComicLoaderToEntity:
         assert entity.page == 3
         assert entity.path == str(f)
 
-    def test_bad_zip_returns_none(self, task_engine, tmp_path):
+    def test_bad_zip_raises(self, task_engine, tmp_path):
         f = tmp_path / "bad.zip"
         f.write_bytes(b"not a zip")
-        loader = ComicLoader()
-        entity = loader._to_entity(str(f))
-        assert entity is None
+        with pytest.raises(Exception):
+            ComicLoader()._to_entity(str(f))
 
-    def test_adds_error_message_on_failure(self, task_engine, tmp_path):
-        import global_data
-        f = tmp_path / "bad.zip"
-        f.write_bytes(b"not a zip")
-        global_data.err_message.clear()
-        loader = ComicLoader()
-        loader._to_entity(str(f))
-        assert len(global_data.err_message) > 0
-        global_data.err_message.clear()
+    def test_unsupported_path_raises_skip(self, task_engine, tmp_path):
+        f = tmp_path / "notes.txt"
+        f.write_text("x")
+        with pytest.raises(SkipFile, match="Not a supported comic file"):
+            ComicLoader()._to_entity(str(f))
+
+    def test_archive_without_images_raises_skip(self, task_engine, tmp_path):
+        f = tmp_path / "docs.zip"
+        with zipfile.ZipFile(f, "w") as zf:
+            zf.writestr("readme.txt", "x")
+        with pytest.raises(SkipFile, match="No page images found"):
+            ComicLoader()._to_entity(str(f))
 
 
 class TestComicLoaderGenCover:
@@ -215,6 +253,24 @@ class TestComicLoaderWork:
         with Session(task_engine) as s:
             comics = s.exec(select(ComicEntity)).all()
             assert len(comics) == 1
+
+    def test_work_records_skipped_files_and_imports_the_rest(self, task_engine, tmp_path, monkeypatch):
+        from core.scan_progress import progress
+        make_zip_comic(str(tmp_path / "good.zip"), pages=2)
+        (tmp_path / "bad.zip").write_bytes(b"not a zip")
+        with zipfile.ZipFile(tmp_path / "empty.zip", "w") as zf:
+            zf.writestr("readme.txt", "x")
+        monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [str(tmp_path)])
+        progress.start("comics")
+        with patch.object(ComicLoader, "gen_comic_cover", return_value=True):
+            ComicLoader().work()
+        with Session(task_engine) as s:
+            assert [c.name for c in s.exec(select(ComicEntity)).all()] == ["good.zip"]
+        snap = progress.snapshot()
+        assert snap["skipped_count"] == 2
+        reasons = {os.path.basename(f["path"]): f["reason"] for f in snap["skipped"]}
+        assert reasons["empty.zip"] == "No page images found"
+        assert reasons["bad.zip"] == "File is not a zip file"
 
     def test_work_skips_if_no_files(self, task_engine, tmp_path, monkeypatch):
         monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [str(tmp_path)])

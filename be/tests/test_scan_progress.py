@@ -84,3 +84,26 @@ def test_reset_clears_everything():
     assert snap["last_result"] is None
     assert snap["timing"]["count"] == 0
     assert snap["started_at"] is None
+
+
+def test_skipped_files_are_listed_and_capped(monkeypatch):
+    import core.scan_progress as sp
+    monkeypatch.setattr(sp, "_SKIPPED_N", 2)
+    p = ScanProgress()
+    p.start("comics")
+    for i in range(3):
+        p.add_skipped(f"/bad{i}.zip", "File is not a zip file")
+    snap = p.snapshot()
+    assert snap["skipped_count"] == 3
+    assert snap["skipped"] == [
+        {"path": "/bad0.zip", "reason": "File is not a zip file"},
+        {"path": "/bad1.zip", "reason": "File is not a zip file"},
+    ]
+
+
+def test_start_clears_skipped():
+    p = ScanProgress()
+    p.add_skipped("/bad.zip", "x")
+    p.start("all")
+    snap = p.snapshot()
+    assert (snap["skipped_count"], snap["skipped"]) == (0, [])

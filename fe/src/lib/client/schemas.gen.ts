@@ -905,6 +905,20 @@ export const ScanStatusResponseSchema = {
                 }
             ],
             title: 'Last Result'
+        },
+        skipped_count: {
+            type: 'integer',
+            title: 'Skipped Count',
+            description: "Files the scan found but couldn't import",
+            default: 0
+        },
+        skipped: {
+            items: {
+                '$ref': '#/components/schemas/SkippedFile'
+            },
+            type: 'array',
+            title: 'Skipped',
+            description: 'First skipped files only; `skipped_count` counts all'
         }
     },
     type: 'object',
@@ -937,6 +951,22 @@ export const ScanTimingSchema = {
     type: 'object',
     required: ['count', 'avg_ms', 'p95_ms', 'slowest'],
     title: 'ScanTiming'
+} as const;
+
+export const SkippedFileSchema = {
+    properties: {
+        path: {
+            type: 'string',
+            title: 'Path'
+        },
+        reason: {
+            type: 'string',
+            title: 'Reason'
+        }
+    },
+    type: 'object',
+    required: ['path', 'reason'],
+    title: 'SkippedFile'
 } as const;
 
 export const SlowFileSchema = {

@@ -11,7 +11,7 @@ allowImgs = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"]
 allowZips = [".zip", ".rar"]
 
 
-def _is_page(name: str) -> bool:
+def is_page(name: str) -> bool:
     """Whether an archive or folder entry is a comic page.
 
     macOS adds AppleDouble metadata to archives it creates: ``._001.jpg``
@@ -32,7 +32,7 @@ def order_pages(names) -> List[str]:
     sorted numerically within each folder instead, so ``Title/2.jpg`` comes
     before ``Title/10.jpg``.
     """
-    pages = [n for n in names if _is_page(n)]
+    pages = [n for n in names if is_page(n)]
     split = [os.path.split(n.replace("\\", "/")) for n in pages]
     if pages and all(os.path.splitext(base)[0].isdigit() for _, base in split):
         order = sorted(range(len(pages)), key=lambda i: (split[i][0], int(os.path.splitext(split[i][1])[0])))

@@ -25,6 +25,10 @@ import util
 p = ThreadPool(8)
 
 
+class SkipFile(Exception):
+    """A scanned path that can't be imported; the message says why."""
+
+
 class Loader:
     # Subclasses set this to their SQLModel table class so the shared reconcile
     # can flag/clear the ``missing`` column generically.
@@ -75,6 +79,13 @@ class Loader:
                 started = time.perf_counter()
                 try:
                     return self._to_entity(path)
+                except Exception as ex:
+                    # Listed in the scan status (Admin) instead of failing the
+                    # whole scan. Not remembered: the next scan tries again.
+                    reason = str(ex) or type(ex).__name__
+                    print("skip", path, reason)
+                    progress.add_skipped(path, reason)
+                    return None
                 finally:
                     bar.update(task, advance=1)
                     progress.advance(path, (time.perf_counter() - started) * 1000)
@@ -142,20 +153,26 @@ class Loader:
 
 
 def scan(exts: List[str], pathes: List[str]):
+    """Media paths under ``pathes``.
+
+    Files match ``exts`` case-insensitively (``.ZIP`` counts). The empty
+    string in ``exts`` stands for folder comics: a folder with no subfolders
+    that holds at least one page image. It never matches extensionless files
+    (``README``, ``.DS_Store``). Hidden files, such as macOS ``._name.zip``
+    metadata, are skipped.
+    """
     ret = []
-    scanDir = "" in exts  # "" means scan dir
+    scan_dir = "" in exts
+    file_exts = {e.lower() for e in exts if e}
     for path in pathes:
         for root, dirs, files in os.walk(path):
-            file_exts = [os.path.splitext(file)[1] for file in files]
-            # dir with no sub dir
-            if scanDir and len(dirs) == 0:
-                # if has image file, add dir
-                if any([ext in comicfile.allowImgs for ext in file_exts]):
-                    ret.append(root)
-            for file, ext in zip(files, file_exts):
-                if ext in exts:
-                    f = os.path.join(root, file)
-                    ret.append(f)
+            if scan_dir and not dirs and any(comicfile.is_page(f) for f in files):
+                ret.append(root)
+            for file in files:
+                if file.startswith("."):
+                    continue
+                if os.path.splitext(file)[1].lower() in file_exts:
+                    ret.append(os.path.join(root, file))
 
     return list(set(ret))
 
@@ -180,11 +197,11 @@ class ComicLoader(Loader):
             entities = session.exec(statement).all()
             if len(entities) > 0:
                 raise Exception(f"{path} already exists in db.")
+            # Raises when the file can't be imported, so callers see why.
             entity = self._to_entity(path)
-            if entity is not None:
-                session.add(entity)
-                events.record_adds(session, self.media_type, [entity])
-                session.commit()
+            session.add(entity)
+            events.record_adds(session, self.media_type, [entity])
+            session.commit()
 
     def _load_old(self) -> List[str]:
         with Session(db.engine) as session:
@@ -199,17 +216,18 @@ class ComicLoader(Loader):
         return scan(self.comic_ext, global_data.Config.Comic.scan_pathes)
 
     def _to_entity(self, path: str):
+        """Build the entity for a new comic; raises when it can't be imported."""
         ret = ComicEntity.from_path(pathlib.Path(path), self._get_id())
-
-        try:
-            with comicfile.create(ret.path) as cf:
-                ret.page = cf.page
-                ComicLoader.gen_comic_cover(ret, cf, True)
-        except Exception as ex:
-            print("skip", ret.path, ex)
-            global_data.err_message.append(f"{ret.path}: {ex}")
-            return None
-
+        cf = comicfile.create(ret.path)
+        if cf is None:
+            raise SkipFile("Not a supported comic file")
+        with cf:
+            if cf.page == 0:
+                raise SkipFile("No page images found")
+            ret.page = cf.page
+            # Cover failures other than encryption errors are logged inside and
+            # don't block the import; "Generate missing" can retry them.
+            ComicLoader.gen_comic_cover(ret, cf, True)
         return ret
 
     @staticmethod
