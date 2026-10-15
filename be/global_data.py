@@ -1,9 +1,5 @@
 import os
 
-
-err_message = []
-
-
 _cache_base = os.environ.get(
     "CACHE_PATH",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "nginx", "html")),

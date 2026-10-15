@@ -77,6 +77,16 @@ class TestScan:
         assert r.json()["running"] is False
         assert r.json()["last_result"] is None
 
+    def test_status_lists_skipped_files(self, client):
+        from core.scan_progress import progress
+        self._reset()
+        progress.start("comics")
+        progress.add_skipped("/data/comics/bad.zip", "File is not a zip file")
+        body = client.get("/api/system/scan").json()
+        assert body["skipped_count"] == 1
+        assert body["skipped"] == [{"path": "/data/comics/bad.zip", "reason": "File is not a zip file"}]
+        self._reset()
+
     def test_status_after_scan(self, client):
         self._reset()
         with patch("loader.ComicLoader.work"), patch("loader.VideoLoader.work"):

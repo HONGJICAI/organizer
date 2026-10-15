@@ -328,6 +328,14 @@ export type ScanStatusResponse = {
     last_result?: {
         [key: string]: unknown;
     } | null;
+    /**
+     * Files the scan found but couldn't import
+     */
+    skipped_count?: number;
+    /**
+     * First skipped files only; `skipped_count` counts all
+     */
+    skipped?: Array<SkippedFile>;
 };
 
 export type ScanTiming = {
@@ -335,6 +343,11 @@ export type ScanTiming = {
     avg_ms: number;
     p95_ms: number;
     slowest: Array<SlowFile>;
+};
+
+export type SkippedFile = {
+    path: string;
+    reason: string;
 };
 
 export type SlowFile = {

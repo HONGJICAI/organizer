@@ -176,7 +176,24 @@
 			<dd>{fmtDuration(scan?.duration_seconds)}</dd>
 			<dt>Missing reconciled</dt>
 			<dd>{scan?.reconciled ?? 0}</dd>
+			<dt>Skipped</dt>
+			<dd class:err={!!scan?.skipped_count}>{scan?.skipped_count ?? 0}</dd>
 		</dl>
+		{#if scan?.skipped?.length}
+			<h4>Skipped files</h4>
+			<p class="muted note">Found but not imported. They are retried on every scan.</p>
+			<ul class="failures">
+				{#each scan.skipped as f (f.path)}
+					<li>
+						<span title={f.path}>{f.path}</span>
+						<span class="err" title={f.reason}>{f.reason}</span>
+					</li>
+				{/each}
+			</ul>
+			{#if (scan.skipped_count ?? 0) > scan.skipped.length}
+				<p class="muted">…and {(scan.skipped_count ?? 0) - scan.skipped.length} more</p>
+			{/if}
+		{/if}
 
 		<Button icon={Renew} disabled={triggering || scan?.running} on:click={triggerScan}>
 			{scan?.running ? 'Scan in progress…' : 'Scan now'}
@@ -397,6 +414,11 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
+	}
+
+	.note {
+		margin: 0;
+		font-size: 0.8125rem;
 	}
 
 	.failures {

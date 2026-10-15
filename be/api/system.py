@@ -87,6 +87,11 @@ class ScanTiming(BaseModel):
     slowest: List[SlowFile]
 
 
+class SkippedFile(BaseModel):
+    path: str
+    reason: str
+
+
 class ScanStatusResponse(BaseModel):
     running: bool
     media_type: Optional[str] = None
@@ -99,6 +104,8 @@ class ScanStatusResponse(BaseModel):
     duration_seconds: Optional[float] = None
     timing: ScanTiming
     last_result: Optional[dict] = None
+    skipped_count: int = Field(default=0, description="Files the scan found but couldn't import")
+    skipped: List[SkippedFile] = Field(default_factory=list, description="First skipped files only; `skipped_count` counts all")
 
 
 class DailyScanInfo(BaseModel):
