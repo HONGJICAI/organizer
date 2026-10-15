@@ -83,8 +83,19 @@ export function savePrefs() {
 export const config = $state({ ...DefaultConfig, ...loadPrefs() });
 
 function configAssign(c: Config) {
+	// Device presets carry display defaults only. apiServer belongs to the
+	// connect flow; copying the preset's empty one would point the client back
+	// at the page's own origin after connecting.
+	const { apiServer, ...defaults } = c;
+	void apiServer;
 	// Saved preferences win over device defaults.
-	Object.assign(config, c, loadPrefs());
+	Object.assign(config, defaults, loadPrefs());
+}
+
+/** Where covers are served from: the Static Server setting, else the API server
+ * (the Docker image's nginx serves both from one origin). */
+export function staticBase(): string {
+	return config.staticServer || config.apiServer;
 }
 
 export function setDesktopConfig() {
