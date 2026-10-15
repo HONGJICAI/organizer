@@ -10,7 +10,6 @@
 	}
 	let { open = $bindable(false), onCloseModal = () => undefined }: Props = $props();
 	let apiServer = $state(config.apiServer),
-		staticServer = $state(config.staticServer),
 		viewMode = $state(config.viewMode),
 		pageWidthMode = $state(config.pageWidthMode),
 		pageWidthCustom = $state(config.pageWidthCustom);
@@ -29,7 +28,6 @@
 		// A new API server goes through the connect flow, which checks it and
 		// remembers it for the next visit.
 		if (apiServer && apiServer !== config.apiServer) connect(apiServer);
-		config.staticServer = staticServer;
 		config.viewMode = viewMode;
 		config.pageWidthMode = pageWidthMode;
 		config.pageWidthCustom = pageWidthCustom;
@@ -39,12 +37,6 @@
 >
 	<h>Server</h>
 	<TextInput labelText="API Server" bind:value={apiServer} />
-	<TextInput
-		labelText="Static Server"
-		placeholder={config.apiServer || 'Same as API server'}
-		helperText="Where covers load from. Leave empty to use the API server."
-		bind:value={staticServer}
-	/>
 	<h>Read</h>
 	<div>
 		<ContentSwitcher bind:selectedIndex={viewMode}>

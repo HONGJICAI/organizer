@@ -13,7 +13,6 @@ export enum PageWidthMode {
 
 interface Config {
 	apiServer: string;
-	staticServer: string;
 	viewMode: ViewMode;
 	pageWidthMode: PageWidthMode;
 	pageWidthCustom: number;
@@ -23,7 +22,6 @@ interface Config {
 
 const DefaultConfig: Config = {
 	apiServer: '',
-	staticServer: '',
 	viewMode: ViewMode.Contain,
 	pageWidthMode: PageWidthMode.Original,
 	pageWidthCustom: 1080,
@@ -57,7 +55,6 @@ function loadPrefs(): Partial<Config> {
 	if (typeof raw !== 'object' || raw === null) return {};
 	const saved = raw as Record<string, unknown>;
 	const prefs: Partial<Config> = {};
-	if (typeof saved.staticServer === 'string') prefs.staticServer = saved.staticServer;
 	if (typeof saved.viewMode === 'number' && saved.viewMode in ViewMode)
 		prefs.viewMode = saved.viewMode;
 	if (typeof saved.pageWidthMode === 'number' && saved.pageWidthMode in PageWidthMode)
@@ -72,7 +69,6 @@ export function savePrefs() {
 	localStorage.setItem(
 		CONFIG_KEY,
 		JSON.stringify({
-			staticServer: config.staticServer,
 			viewMode: config.viewMode,
 			pageWidthMode: config.pageWidthMode,
 			pageWidthCustom: config.pageWidthCustom
@@ -90,12 +86,6 @@ function configAssign(c: Config) {
 	void apiServer;
 	// Saved preferences win over device defaults.
 	Object.assign(config, defaults, loadPrefs());
-}
-
-/** Where covers are served from: the Static Server setting, else the API server
- * (the Docker image's nginx serves both from one origin). */
-export function staticBase(): string {
-	return config.staticServer || config.apiServer;
 }
 
 export function setDesktopConfig() {
