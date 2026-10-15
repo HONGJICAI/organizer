@@ -10,6 +10,9 @@
 
 	// Hidden in the Docker image (built with VITE_HIDE_MOCK=1); shown by default.
 	const showMockButton = import.meta.env.VITE_HIDE_MOCK !== '1';
+	// Only the Docker image serves the API from the page's own origin. A
+	// standalone deploy (Vercel) would just be connecting to itself.
+	const sameOriginBackend = import.meta.env.VITE_HIDE_MOCK === '1';
 
 	onMount(async () => {
 		const params = new URLSearchParams(window.location.search);
@@ -26,7 +29,7 @@
 		}
 
 		const saved = localStorage.getItem(SERVER_URL_KEY);
-		serverUrl = saved ?? window.location.origin;
+		serverUrl = saved ?? (sameOriginBackend ? window.location.origin : '');
 		if (saved !== null) {
 			const ok = await connect(saved);
 			if (ok) {
@@ -74,7 +77,7 @@
 			>
 				<TextInput
 					labelText="Server URL"
-					placeholder={window.location.origin}
+					placeholder={sameOriginBackend ? window.location.origin : 'https://your-server'}
 					bind:value={serverUrl}
 				/>
 				{#if connectionState.error}
