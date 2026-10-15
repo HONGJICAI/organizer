@@ -142,20 +142,26 @@ class Loader:
 
 
 def scan(exts: List[str], pathes: List[str]):
+    """Media paths under ``pathes``.
+
+    Files match ``exts`` case-insensitively (``.ZIP`` counts). The empty
+    string in ``exts`` stands for folder comics: a folder with no subfolders
+    that holds at least one page image. It never matches extensionless files
+    (``README``, ``.DS_Store``). Hidden files, such as macOS ``._name.zip``
+    metadata, are skipped.
+    """
     ret = []
-    scanDir = "" in exts  # "" means scan dir
+    scan_dir = "" in exts
+    file_exts = {e.lower() for e in exts if e}
     for path in pathes:
         for root, dirs, files in os.walk(path):
-            file_exts = [os.path.splitext(file)[1] for file in files]
-            # dir with no sub dir
-            if scanDir and len(dirs) == 0:
-                # if has image file, add dir
-                if any([ext in comicfile.allowImgs for ext in file_exts]):
-                    ret.append(root)
-            for file, ext in zip(files, file_exts):
-                if ext in exts:
-                    f = os.path.join(root, file)
-                    ret.append(f)
+            if scan_dir and not dirs and any(comicfile.is_page(f) for f in files):
+                ret.append(root)
+            for file in files:
+                if file.startswith("."):
+                    continue
+                if os.path.splitext(file)[1].lower() in file_exts:
+                    ret.append(os.path.join(root, file))
 
     return list(set(ret))
 

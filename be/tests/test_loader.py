@@ -56,6 +56,31 @@ class TestScan:
         result = scan([".zip", ".rar"], [str(tmp_path)])
         assert len(result) == 2
 
+    def test_extensions_are_case_insensitive(self, tmp_path):
+        (tmp_path / "a.ZIP").write_bytes(b"x")
+        (tmp_path / "b.Rar").write_bytes(b"x")
+        result = scan([".zip", ".rar"], [str(tmp_path)])
+        assert len(result) == 2
+
+    def test_folder_with_uppercase_image_extension(self, tmp_path):
+        d = tmp_path / "comic"
+        d.mkdir()
+        (d / "1.JPG").write_bytes(b"img")
+        assert scan([""], [str(tmp_path)]) == [str(d)]
+
+    def test_extensionless_files_are_not_comics(self, tmp_path):
+        (tmp_path / "README").write_text("x")
+        (tmp_path / ".DS_Store").write_bytes(b"x")
+        (tmp_path / "a.zip").write_bytes(b"x")
+        assert scan(ComicLoader.comic_ext, [str(tmp_path)]) == [str(tmp_path / "a.zip")]
+
+    def test_skips_hidden_files_and_macos_metadata(self, tmp_path):
+        (tmp_path / "._a.zip").write_bytes(b"x")
+        junk = tmp_path / "junk"
+        junk.mkdir()
+        (junk / "._1.jpg").write_bytes(b"x")
+        assert scan(ComicLoader.comic_ext, [str(tmp_path)]) == []
+
 
 # ---------------------------------------------------------------------------
 # ComicLoader
