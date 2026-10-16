@@ -2,7 +2,7 @@
 import asyncio
 import datetime
 import os
-import shutil
+import sqlite3
 
 def _get_paths() -> tuple[str, str]:
     db_path = os.environ.get("DB_PATH", "prod.sqlite")
@@ -28,7 +28,15 @@ async def backup_database_loop():
 
 
 async def backup_database():
-    """Backup the database to the backups subfolder only if it has been modified"""
+    """Back up the database unless it hasn't changed since the last backup.
+
+    Runs in a worker thread: the copy can take a while on a big database, and
+    doing it on the event loop would stall every request meanwhile.
+    """
+    await asyncio.to_thread(_backup_database)
+
+
+def _backup_database():
     try:
         db_path, backup_dir = _get_paths()
 
@@ -50,7 +58,9 @@ async def backup_database():
 
         if backup_files:
             latest_path = os.path.join(backup_dir, backup_files[-1])
-            if abs(db_mtime - os.path.getmtime(latest_path)) < 1:
+            # The backup file is written after the database was last modified,
+            # so a database untouched since then is no newer than it.
+            if db_mtime <= os.path.getmtime(latest_path):
                 print(
                     f"[Task] Backup skipped — no changes "
                     f"(DB: {db_modified_time.strftime('%Y-%m-%d %H:%M:%S')})",
@@ -60,7 +70,7 @@ async def backup_database():
 
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = os.path.join(backup_dir, f"{db_stem}_{timestamp}{backup_ext}")
-        shutil.copy2(db_path, backup_path)
+        _sqlite_backup(db_path, backup_path)
         print(f"[Task] Backed up to {backup_path}", flush=True)
 
         # Keep last 7 backups
@@ -74,3 +84,25 @@ async def backup_database():
 
     except Exception as e:
         print(f"[Task] Failed to backup database: {e}", flush=True)
+
+
+def _sqlite_backup(db_path: str, backup_path: str):
+    """Copy the database with SQLite's online backup API.
+
+    Unlike copying the file, this yields a consistent snapshot even while a
+    scan or cover run is writing. A failed backup leaves no partial file that
+    would later be mistaken for a good one.
+    """
+    src = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        dst = sqlite3.connect(backup_path)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    except Exception:
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+        raise
+    finally:
+        src.close()

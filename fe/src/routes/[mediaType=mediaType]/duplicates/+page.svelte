@@ -24,9 +24,9 @@
 		filterGroups,
 		keepOnly,
 		pageMismatch,
-		reclaimable,
+		groupSize,
 		selectedIn,
-		sortBySavings,
+		sortBySize,
 		suggestedSelection,
 		type DupFilter
 	} from '$lib/duplicateSelection';
@@ -42,7 +42,9 @@
 	let groups = $state<Group[]>([]);
 	// Similarity threshold in percent; the API takes 0.5–1.0.
 	let threshold = $state(85);
-	let permanent = $state(false);
+	// Default to dropping the record too: a duplicate copy rarely needs an
+	// archived tombstone ("Archive record" keeps one).
+	let permanent = $state(true);
 	let selected = $state<Set<number>>(new Set());
 	let confirmOpen = $state(false);
 	let deleting = $state(false);
@@ -51,14 +53,14 @@
 	let filterIndex = $state(0);
 	// Selections in hidden groups are kept (they come back with the filter) but
 	// never counted or deleted: every action works on what is on screen.
-	let visible = $derived(sortBySavings(filterGroups(groups, filters[filterIndex])));
+	let visible = $derived(sortBySize(filterGroups(groups, filters[filterIndex])));
 	let visibleSelected = $derived(selectedIn(selected, visible));
 	let selectedCount = $derived(visibleSelected.length);
 	let selectedSize = $derived(
 		visible.flatMap((g) => g.items).reduce((n, c) => (selected.has(c.id) ? n + c.size : n), 0)
 	);
 	let duplicateCount = $derived(visible.reduce((n, g) => n + g.items.length - 1, 0));
-	let totalReclaimable = $derived(visible.reduce((n, g) => n + reclaimable(g), 0));
+	let totalSize = $derived(visible.reduce((n, g) => n + groupSize(g), 0));
 	let exactCount = $derived(groups.filter((g) => g.exact).length);
 
 	// Comic.size is MB.
@@ -81,7 +83,8 @@
 				items: g.items.map((c) => new Comic(c))
 			}));
 		}
-		selected = suggestedSelection(groups);
+		// Nothing is pre-selected; "Select suggested" applies the Keep hints.
+		selected = new Set();
 		loading = false;
 	}
 
@@ -156,11 +159,11 @@
 	<code>(C99)</code>, <code>【DL版】</code>, the extension and width/case differences. Different
 	volume numbers (<code>01</code> / <code>Vol.2</code> / <code>第三卷</code> / <code>上・下</code>)
 	are never grouped. <em>Exact</em> groups reduce to the same title; <em>Similar</em> ones only pass
-	the similarity threshold — check those carefully. Everything except the suggested
-	<strong>Keep</strong> copy (favorited, then most pages, then largest) is pre-selected. Groups are sorted
-	by the space deleting the extra copies would free; counts and deletion only cover the groups the filter
-	shows. Comics opened from here are read privately: their reading progress isn't saved unless you turn
-	it on from the reader's header.
+	the similarity threshold — check those carefully. Nothing is selected to start with; the
+	<strong>Keep</strong> tag marks the suggested copy (favorited, then most pages, then largest), and
+	<em>Select suggested</em> selects every other copy. Groups are sorted by their total size; counts and
+	deletion only cover the groups the filter shows. Comics opened from here are read privately: their
+	reading progress isn't saved unless you turn it on from the reader's header.
 </p>
 
 <div class="controls">
@@ -212,7 +215,7 @@
 		<Switch text="Similar ({groups.length - exactCount})" />
 	</ContentSwitcher>
 	<p class="summary">
-		{visible.length} groups, {duplicateCount} extra copies · up to {formatSize(totalReclaimable)} reclaimable
+		{visible.length} groups, {duplicateCount} extra copies · {formatSize(totalSize)} in total
 		{#if selectedCount > 0}· {formatSize(selectedSize)} selected{/if}
 	</p>
 	{#if deleting}
@@ -235,7 +238,7 @@
 						>⚠ Page counts differ</Tag
 					>
 				{/if}
-				<span class="saving">{formatSize(reclaimable(group))} reclaimable</span>
+				<span class="saving">{formatSize(groupSize(group))}</span>
 				<Button
 					kind="ghost"
 					size="small"
