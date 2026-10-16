@@ -27,11 +27,11 @@ from sqlmodel import Session, select
 import db
 import global_data
 from api.comicpage import PAGE_CACHE_CONTROL, page_etag, resize_to_width
-from comicfile import allowImgs, mediaTypes
+from comicfile import allowImgs, image_info, mediaTypes
 from core.exceptions import abort
 from loader import ComicLoader
 from model import ComicEntity, ImageEntity
-from schemas.common import ProgressRequest, ProgressResponse
+from schemas.common import PageInfoResponse, ProgressRequest, ProgressResponse
 from schemas.image import (
     ImageDetailResponse,
     ImagePageDetailResponse,
@@ -241,7 +241,10 @@ class ImageCBV:
     def detail(self, id: int, _: None = Depends(require_auth)) -> ImageDetailResponse:
         entity = _get(id)
         files = _image_files(entity.path)
-        return ImageDetailResponse(pageDetails=[ImagePageDetailResponse(name=f) for f in files])
+        return ImageDetailResponse(pageDetails=[
+            ImagePageDetailResponse(name=f, size=os.path.getsize(os.path.join(entity.path, f)))
+            for f in files
+        ])
 
     @router.get("/api/images/{id}/pages/{page}", tags=["images"])
     def get_page(
@@ -281,6 +284,28 @@ class ImageCBV:
             if resized is not None:
                 content, media_type = resized
         return Response(content=content, media_type=media_type, headers=headers)
+
+    @router.get(
+        "/api/images/{id}/pages/{page}/info",
+        tags=["images"],
+        responses={400: {"model": dict}, 404: {"model": dict}},
+    )
+    def page_info(self, id: int, page: int, _: None = Depends(require_auth)) -> PageInfoResponse:
+        """Original size of an album page (see the comic equivalent)."""
+        entity = _get(id)
+        files = _image_files(entity.path)
+        if not 1 <= page <= len(files):
+            abort(404, "Page not found")
+        try:
+            f = open(os.path.join(entity.path, files[page - 1]), "rb")
+        except OSError:
+            abort(404, "Image file not found")
+        with f:
+            try:
+                info = image_info(f)
+            except Exception:  # includes PIL's UnidentifiedImageError (an OSError)
+                abort(400, "Page is not a readable image")
+        return PageInfoResponse(**info)
 
     @router.put("/api/images/{id}/progress", tags=["images"])
     def update_progress(

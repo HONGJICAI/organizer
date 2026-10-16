@@ -2,6 +2,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch
 
+import comicfile
 import global_data
 from conftest import MockComicfile, insert_comic, make_jpeg_bytes
 from loader import ComicLoader
@@ -306,3 +307,88 @@ class TestSetCover:
         session.expire_all()
         refreshed = session.get(ComicEntity, 1)
         assert refreshed.entityUpdateTime == old
+
+
+# ---------------------------------------------------------------------------
+# GET /api/comics/{id}/pages/{page}/info
+# ---------------------------------------------------------------------------
+
+def _png(width: int, height: int) -> bytes:
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height)).save(buf, "PNG")
+    return buf.getvalue()
+
+
+class TestPageInfo:
+    def test_zip_page(self, client, session, tmp_path):
+        import zipfile
+        f = tmp_path / "a.zip"
+        with zipfile.ZipFile(f, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("1.png", _png(30, 20))
+            zf.writestr("2.png", _png(40, 50))
+        insert_comic(session, id=1, path=str(f), page=2)
+        r = client.get("/api/comics/1/pages/2/info")
+        assert r.status_code == 200
+        assert r.json() == {"width": 40, "height": 50, "format": "PNG"}
+
+    def test_folder_page(self, client, session, tmp_path):
+        (tmp_path / "1.png").write_bytes(_png(12, 34))
+        insert_comic(session, id=1, path=str(tmp_path), page=1)
+        assert client.get("/api/comics/1/pages/1/info").json() == {
+            "width": 12, "height": 34, "format": "PNG",
+        }
+
+    def test_mocked_archive(self, client, session):
+        insert_comic(session, id=1, page=3)
+        with patch.object(comicfile, "create_open", return_value=MockComicfile(pages=3)):
+            r = client.get("/api/comics/1/pages/3/info")
+        assert r.json() == {"width": 10, "height": 10, "format": "JPEG"}
+
+    @pytest.mark.parametrize("page", [0, 3])
+    def test_page_out_of_range(self, client, session, page):
+        insert_comic(session, id=1, page=2)
+        with patch.object(comicfile, "create_open", return_value=MockComicfile(pages=2)):
+            assert client.get(f"/api/comics/1/pages/{page}/info").status_code == 404
+
+    def test_comic_not_found(self, client):
+        assert client.get("/api/comics/99/pages/1/info").status_code == 404
+
+    def test_file_missing(self, client, session):
+        insert_comic(session, id=1)
+        with patch.object(comicfile, "create_open", return_value=None):
+            assert client.get("/api/comics/1/pages/1/info").status_code == 404
+
+    def test_unreadable_image(self, client, session, tmp_path):
+        import zipfile
+        f = tmp_path / "bad.zip"
+        with zipfile.ZipFile(f, "w") as zf:
+            zf.writestr("1.jpg", b"not an image")
+        insert_comic(session, id=1, path=str(f), page=1)
+        assert client.get("/api/comics/1/pages/1/info").status_code == 400
+
+
+class TestRarPageInfo:
+    """RAR pages are read whole (the generic Comicfile.page_info path)."""
+
+    class FakeRar:
+        def __init__(self, files):
+            self.files = files
+
+        def namelist(self):
+            return list(self.files)
+
+        def read(self, name):
+            return self.files[name]
+
+        def close(self):
+            pass
+
+    def test_reads_page(self, monkeypatch):
+        import rarfile
+        files = {"1.png": _png(7, 9), "2.png": _png(3, 4)}
+        monkeypatch.setattr(rarfile, "RarFile", lambda path: self.FakeRar(files))
+        with comicfile.RarComicfile("/x.rar") as cf:
+            assert cf.page_info(1) == {"width": 3, "height": 4, "format": "PNG"}
+            assert cf.page_info(5) is None

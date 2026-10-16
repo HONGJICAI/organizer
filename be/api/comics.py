@@ -168,7 +168,10 @@ class ComicCBV:
         cf = comicfile.create_open(comic.path)
         if cf is None:
             abort(404, "Comic file not found")
-        pageDetails = [ComicPageDetailResponse(name=name) for name in cf.namelist]
+        pageDetails = [
+            ComicPageDetailResponse(name=name, size=size)
+            for name, size in zip(cf.namelist, cf.page_sizes())
+        ]
         return ComicDetailResponse(pageDetails=pageDetails)
 
     @router.post(

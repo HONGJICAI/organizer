@@ -9,6 +9,7 @@ from model import ComicEntity
 class ComicPageDetailResponse(BaseModel):
     """Response for comic page details"""
     name: str
+    size: int = Field(description="Page file size in bytes (uncompressed)")
 
 
 class ComicDetailResponse(BaseModel):

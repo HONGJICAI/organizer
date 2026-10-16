@@ -16,7 +16,9 @@ import { Comic, Image, MediaType, Video, type MediaFile } from '$lib/model.svelt
 export type Outcome<T> = { data: T; error?: undefined } | { data?: undefined; error: string };
 
 type Entity = ComicEntity | VideoEntity | ImageEntity;
-type PageDetails = { pageDetails: { name: string }[] };
+export type PageDetail = { name: string; size: number };
+export type PageInfo = { width: number; height: number; format: string };
+type PageDetails = { pageDetails: PageDetail[] };
 
 export interface MediaAdapter {
 	/** Noun for confirmations, e.g. "Confirm delete comic". */
@@ -39,6 +41,8 @@ export interface MediaAdapter {
 	refresh?(id: number): Promise<Outcome<Entity>>;
 	favor?(id: number, favorited: boolean): Promise<Outcome<boolean>>;
 	detail?(id: number): Promise<Outcome<PageDetails>>;
+	// Original width/height/format of one 1-based page.
+	pageInfo?(id: number, page: number): Promise<Outcome<PageInfo>>;
 	deletePage?(id: number, page: number): Promise<Outcome<Entity>>;
 	likePage?(id: number, page: number): Promise<Outcome<void>>;
 	setCover?(id: number, page: number): Promise<Outcome<void>>;
@@ -87,6 +91,7 @@ export const comicAdapter = {
 			(r) => r.favorited
 		),
 	detail: (id) => call(ComicsService.comicDetail({ path: { id } })),
+	pageInfo: (id, page) => call(ComicpageService.comicPageInfo({ path: { id, page } })),
 	likePage: (id, page) => callVoid(ComicpageService.comicPageLike({ path: { id, page } })),
 	setCover: (id, page) => callVoid(ComicpageService.comicPageSetCover({ path: { id, page } })),
 	updateProgress: (id, position) =>
@@ -115,6 +120,7 @@ export const imageAdapter = {
 	rename: (id, name) => callVoid(ImagesService.imageRename({ path: { id }, body: { name } })),
 	refresh: (id) => call(ImagesService.imageRefresh({ path: { id } })),
 	detail: (id) => call(ImagesService.imageDetail({ path: { id } })),
+	pageInfo: (id, page) => call(ImagesService.imagePageInfo({ path: { id, page } })),
 	deletePage: (id, page) => call(ImagesService.imageDeletePage({ path: { id, page } })),
 	likePage: (id, page) => callVoid(ImagesService.imageLike({ path: { id, page } })),
 	updateProgress: (id, position) =>

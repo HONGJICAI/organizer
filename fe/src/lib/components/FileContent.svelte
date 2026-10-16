@@ -4,6 +4,7 @@
 	import { config, ViewMode } from '$lib/config.svelte';
 	import { viewerState } from '$lib/viewerState.svelte';
 	import { createProgressReporter } from '$lib/readingProgress';
+	import { adapters } from '$lib/mediaAdapters';
 	import PagedReader from './PagedReader.svelte';
 	import ScrollReader from './ScrollReader.svelte';
 	import VideoPlayer from './VideoPlayer.svelte';
@@ -44,6 +45,23 @@
 			reporter.schedule(viewerState.page);
 	});
 
+	// Original dimensions of the current page, fetched only while the header's
+	// page info is shown (the reader may display a downscaled copy, so the
+	// loaded <img> can't tell). Cached per page for this file.
+	// Set false on unmount, so late responses don't land on the next file.
+	let mounted = true;
+	const requested = new Set<number>();
+	$effect(() => {
+		const page = viewerState.page;
+		const pageInfo = adapters[file.type].pageInfo;
+		if (!config.showPageInfo || !pageInfo || page < 1 || requested.has(page)) return;
+		requested.add(page);
+		pageInfo(file.id, page).then((result) => {
+			if (!mounted) return;
+			viewerState.pageInfos[page] = result.error === undefined ? result.data : null;
+		});
+	});
+
 	// Only paged/scroll media (comics, image albums) have a page overview.
 	const hasPages = $derived(file.type !== MediaType.Video);
 
@@ -52,11 +70,25 @@
 		viewerState.title = file.name;
 		viewerState.onClose = onClose;
 		if (initialOverview && hasPages) viewerState.overviewOpen = true;
+		// Page names and sizes for the header's page info; one cheap request
+		// (sizes come from the archive's directory, nothing is decompressed).
+		viewerState.pageDetails = [];
+		viewerState.pageInfos = {};
+		const detail = adapters[file.type].detail;
+		if (hasPages && detail) {
+			detail(file.id).then((result) => {
+				if (mounted && result.error === undefined)
+					viewerState.pageDetails = result.data.pageDetails;
+			});
+		}
 		return () => {
 			viewerState.active = false;
 			viewerState.overviewOpen = false;
 			reporter.flush();
 			viewerState.privateReading = false;
+			mounted = false;
+			viewerState.pageDetails = [];
+			viewerState.pageInfos = {};
 		};
 	});
 </script>

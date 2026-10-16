@@ -93,6 +93,14 @@ class MockComicfile:
             return False, None
         return True, make_jpeg_bytes()
 
+    def page_sizes(self):
+        return [1000 + i for i in range(self._pages)]
+
+    def page_info(self, page_idx: int):
+        if not 0 <= page_idx < self._pages:
+            return None
+        return comicfile.image_info(io.BytesIO(make_jpeg_bytes()))
+
     def close(self):
         pass
 

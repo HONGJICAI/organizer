@@ -1,10 +1,12 @@
 from abc import abstractmethod
+import io
 import os
 import pathlib
 import threading
 from typing import List
 import zipfile
 from cachetools import TTLCache, cached
+from PIL import Image
 import rarfile
 
 allowImgs = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"]
@@ -23,6 +25,16 @@ def is_page(name: str) -> bool:
     if parts[-1].startswith(".") or "__MACOSX" in parts:
         return False
     return os.path.splitext(name)[1].lower() in allowImgs
+
+
+def image_info(fp) -> dict:
+    """Width, height and format of the image in ``fp``.
+
+    Pillow reads only the header here, so a stream needs just its first few KB.
+    Raises if it isn't an image Pillow can identify.
+    """
+    with Image.open(fp) as img:
+        return {"width": img.width, "height": img.height, "format": img.format}
 
 
 def order_pages(names) -> List[str]:
@@ -89,6 +101,18 @@ class Comicfile:
             raise Exception("comic file not opened")
         return self._namelist
 
+    @abstractmethod
+    def page_sizes(self) -> List[int]:
+        """Uncompressed size in bytes of each page, in page order."""
+
+    def page_info(self, page: int) -> dict | None:
+        """image_info() of a 0-based page, or None when there is no such page.
+
+        Reads the whole page; subclasses that can stream override this.
+        """
+        ok, buf = self.read(page)
+        return image_info(io.BytesIO(buf)) if ok else None
+
 
 def create(filepath: str) -> Comicfile | None:
     path = pathlib.Path(filepath)
@@ -136,6 +160,21 @@ class ZipRarComicfile(Comicfile):
         if page >= self.page:
             return False, None
         return True, self._archive.read(self._namelist[page])
+
+    def page_sizes(self) -> List[int]:
+        # From the archive's directory: no page is decompressed.
+        return [self._archive.getinfo(name).file_size for name in self.namelist]
+
+    def page_info(self, page: int) -> dict | None:
+        if not 0 <= page < self.page:
+            return None
+        if isinstance(self._archive, zipfile.ZipFile):
+            # Decompresses only as far as Pillow reads (the image header).
+            with self._archive.open(self._namelist[page]) as f:
+                return image_info(f)
+        # rarfile extracts through an external tool; reading the page whole is
+        # cheaper than letting Pillow seek around in that stream.
+        return super().page_info(page)
 
     def close(self):
         self._opened = False
@@ -195,6 +234,15 @@ class DirectoryComicfile(Comicfile):
     @property
     def page(self):
         return self._page
+
+    def page_sizes(self) -> List[int]:
+        return [os.path.getsize(os.path.join(self._filepath, name)) for name in self.namelist]
+
+    def page_info(self, page: int) -> dict | None:
+        if not 0 <= page < self.page:
+            return None
+        with open(os.path.join(self._filepath, self._namelist[page]), "rb") as f:
+            return image_info(f)
 
     def read(self, page):
         if page >= self._page:

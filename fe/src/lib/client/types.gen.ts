@@ -141,6 +141,10 @@ export type ComicMonthStats = {
  */
 export type ComicPageDetailResponse = {
     name: string;
+    /**
+     * Page file size in bytes (uncompressed)
+     */
+    size: number;
 };
 
 /**
@@ -273,6 +277,10 @@ export type ImageEntity = {
 
 export type ImagePageDetailResponse = {
     name: string;
+    /**
+     * Page file size in bytes
+     */
+    size: number;
 };
 
 export type ImageRenameRequest = {
@@ -289,6 +297,18 @@ export type LoginRequest = {
 
 export type LoginResponse = {
     token: string;
+};
+
+/**
+ * Original dimensions and format of one page image
+ */
+export type PageInfoResponse = {
+    width: number;
+    height: number;
+    /**
+     * Pillow format name, e.g. JPEG, PNG, WEBP
+     */
+    format: string;
 };
 
 /**
@@ -985,6 +1005,50 @@ export type ComicPageGetResponses = {
     200: unknown;
 };
 
+export type ComicPageInfoData = {
+    body?: never;
+    path: {
+        id: number;
+        page: number;
+    };
+    query?: never;
+    url: '/api/comics/{id}/pages/{page}/info';
+};
+
+export type ComicPageInfoErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicPageInfoError = ComicPageInfoErrors[keyof ComicPageInfoErrors];
+
+export type ComicPageInfoResponses = {
+    /**
+     * Successful Response
+     */
+    200: PageInfoResponse;
+};
+
+export type ComicPageInfoResponse = ComicPageInfoResponses[keyof ComicPageInfoResponses];
+
 export type ComicPageUpdateProgressData = {
     body: ProgressRequest;
     path: {
@@ -1503,6 +1567,50 @@ export type ImageGetPageResponses = {
      */
     200: unknown;
 };
+
+export type ImagePageInfoData = {
+    body?: never;
+    path: {
+        id: number;
+        page: number;
+    };
+    query?: never;
+    url: '/api/images/{id}/pages/{page}/info';
+};
+
+export type ImagePageInfoErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ImagePageInfoError = ImagePageInfoErrors[keyof ImagePageInfoErrors];
+
+export type ImagePageInfoResponses = {
+    /**
+     * Successful Response
+     */
+    200: PageInfoResponse;
+};
+
+export type ImagePageInfoResponse = ImagePageInfoResponses[keyof ImagePageInfoResponses];
 
 export type ImageUpdateProgressData = {
     body: ProgressRequest;

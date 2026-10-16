@@ -292,6 +292,8 @@ class TestDetail:
         assert r.status_code == 200
         names = [p["name"] for p in r.json()["pageDetails"]]
         assert names == ["a.jpg", "b.jpg", "c.jpg"]
+        size = len(make_jpeg_bytes())
+        assert [p["size"] for p in r.json()["pageDetails"]] == [size, size, size]
 
     def test_missing_returns_404(self, client):
         assert client.get("/api/images/999/detail").status_code == 404
@@ -727,3 +729,40 @@ def test_startup_serves_snapshot(written_snapshot, client):
     r = client.get("/api/images")
     assert r.status_code == 200
     assert [e["name"] for e in r.json()] == ["from-snapshot"]
+
+
+class TestPageInfo:
+    def test_success(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "1.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=1))
+        r = client.get("/api/images/1/pages/1/info")
+        assert r.status_code == 200
+        assert r.json() == {"width": 10, "height": 10, "format": "JPEG"}
+
+    @pytest.mark.parametrize("page", [0, 2])
+    def test_page_out_of_range(self, client, tmp_path, page):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "1.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=1))
+        assert client.get(f"/api/images/1/pages/{page}/info").status_code == 404
+
+    def test_album_not_found(self, client):
+        assert client.get("/api/images/999/pages/1/info").status_code == 404
+
+    def test_unreadable_image(self, client, tmp_path):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "1.jpg").write_bytes(b"not an image")
+        set_store(make_entity(id=1, path=str(d), page=1))
+        assert client.get("/api/images/1/pages/1/info").status_code == 400
+
+    def test_file_gone(self, client, tmp_path, monkeypatch):
+        d = tmp_path / "album"
+        d.mkdir()
+        (d / "1.jpg").write_bytes(make_jpeg_bytes())
+        set_store(make_entity(id=1, path=str(d), page=1))
+        monkeypatch.setattr(img_api, "_image_files", lambda path: ["gone.jpg"])
+        assert client.get("/api/images/1/pages/1/info").status_code == 404

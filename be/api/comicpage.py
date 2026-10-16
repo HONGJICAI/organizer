@@ -16,7 +16,7 @@ import global_data
 from core.exceptions import abort
 from loader import ComicLoader
 from model import ComicEntity
-from schemas.common import ProgressRequest, ProgressResponse
+from schemas.common import PageInfoResponse, ProgressRequest, ProgressResponse
 
 
 router = APIRouter()
@@ -90,6 +90,28 @@ class ComicPageCBV:
             if resized is not None:
                 buf, media_type = resized
         return Response(content=buf, media_type=media_type, headers=headers)
+
+    @router.get(
+        "/api/comics/{id}/pages/{page}/info",
+        tags=["comicpage"],
+        responses={400: {"model": dict}, 404: {"model": dict}},
+    )
+    def info(self, id: int, page: int, _: None = Depends(require_auth)) -> PageInfoResponse:
+        """Original size of a page, which the reader can't see when it loads a
+        downscaled copy (the ``width`` parameter of the page endpoint)."""
+        if page < 1:
+            abort(404, "Page not found")
+        comic = self.__get(id)
+        cf = comicfile.create_open(comic.path)
+        if cf is None:
+            abort(404, "Comic file not found")
+        try:
+            info = cf.page_info(page - 1)
+        except Exception:
+            abort(400, "Page is not a readable image")
+        if info is None:
+            abort(404, "Page not found")
+        return PageInfoResponse(**info)
 
     @router.put("/api/comics/{id}/progress", tags=["comicpage"])
     def update_progress(

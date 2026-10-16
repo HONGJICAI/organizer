@@ -21,6 +21,13 @@ class ProgressResponse(BaseModel):
     lastViewedTime: datetime
 
 
+class PageInfoResponse(BaseModel):
+    """Original dimensions and format of one page image"""
+    width: int
+    height: int
+    format: str = Field(description="Pillow format name, e.g. JPEG, PNG, WEBP")
+
+
 class FavorResponse(BaseModel):
     """Response for favor/unfavor operations"""
     favorited: bool

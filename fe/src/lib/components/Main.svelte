@@ -16,6 +16,9 @@
 	import Close from 'carbon-icons-svelte/lib/Close.svelte';
 	import SearchIcon from 'carbon-icons-svelte/lib/Search.svelte';
 	import ViewOff from 'carbon-icons-svelte/lib/ViewOff.svelte';
+	import Information from 'carbon-icons-svelte/lib/Information.svelte';
+	import { config, savePrefs } from '$lib/config.svelte';
+	import { formatBytes } from '$lib/stats';
 	import { goto } from '$app/navigation';
 	import SettingsModal from './SettingsModal.svelte';
 	import { notifications } from '$lib/state.svelte';
@@ -55,13 +58,37 @@
 					{viewerState.page} / {viewerState.maxPage}
 				</button>
 			{/if}
+			{#if viewerState.maxPage > 0 && viewerState.pageDetails.length > 0}
+				{@const info = viewerState.pageDetails[viewerState.page - 1]}
+				{@const dims = viewerState.pageInfos[viewerState.page]}
+				<button
+					class="viewer-info"
+					class:open={config.showPageInfo}
+					title={config.showPageInfo ? 'Hide page info' : 'Show page file name and size'}
+					aria-label={config.showPageInfo ? 'Hide page info' : 'Show page info'}
+					aria-pressed={config.showPageInfo}
+					onclick={() => {
+						config.showPageInfo = !config.showPageInfo;
+						savePrefs();
+					}}
+				>
+					<Information size={16} />
+					{#if config.showPageInfo && info}
+						<span class="viewer-info-detail">
+							<span class="viewer-info-name" title={info.name}>{info.name}</span>
+							{#if dims}<span>· {dims.width}×{dims.height} {dims.format}</span>{/if}
+							<span>· {formatBytes(info.size)}</span>
+						</span>
+					{/if}
+				</button>
+			{/if}
 			{#if viewerState.privateReading}
 				<button
 					class="viewer-private"
 					title="Reading progress isn't being saved. Click to start saving it."
 					onclick={() => (viewerState.privateReading = false)}
 				>
-					<ViewOff size={16} /><span>Private</span>
+					<ViewOff size={16} /><span class="viewer-private-label">Private</span>
 				</button>
 			{/if}
 		</div>
@@ -189,11 +216,71 @@
 		cursor: pointer;
 	}
 
-	/* On narrow screens the title eats the header; drop it and keep only the
-	   page counter (which doubles as the overview entry point). */
+	.viewer-info {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		min-width: 0;
+		max-width: 22rem;
+		padding: 0.125rem 0.375rem;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		color: var(--cds-text-02, #c6c6c6);
+		background: none;
+		border: 1px solid transparent;
+		border-radius: 1rem;
+		pointer-events: auto;
+		cursor: pointer;
+	}
+
+	.viewer-info.open {
+		color: var(--cds-text-01, #f4f4f4);
+		border-color: var(--cds-ui-04, #8d8d8d);
+	}
+
+	.viewer-info-detail {
+		display: inline-flex;
+		gap: 0.25rem;
+		min-width: 0;
+	}
+
+	.viewer-info-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* On narrow screens the header has room for little besides the page
+	   counter (which doubles as the overview entry point): drop the title and
+	   the "Organizer" name (the close button leaves the reader), shrink the
+	   chips to icons, and show the page info in a strip below the header. */
 	@media screen and (max-width: 672px) {
-		.viewer-title {
+		.viewer-title,
+		.viewer-private-label {
 			display: none;
+		}
+
+		:global(.bx--header:has(.viewer-center) .bx--header__name) {
+			display: none;
+		}
+
+		.viewer-info {
+			flex-shrink: 0;
+			max-width: none;
+		}
+
+		.viewer-info-detail {
+			position: absolute;
+			top: calc(100% + 0.75rem);
+			left: 50%;
+			transform: translateX(-50%);
+			max-width: calc(100vw - 1rem);
+			padding: 0.25rem 0.625rem;
+			border-radius: 1rem;
+			background: rgba(22, 22, 22, 0.85);
+			color: var(--cds-text-01, #f4f4f4);
+			pointer-events: none;
 		}
 	}
 

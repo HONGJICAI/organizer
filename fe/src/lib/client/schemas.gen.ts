@@ -311,10 +311,15 @@ export const ComicPageDetailResponseSchema = {
         name: {
             type: 'string',
             title: 'Name'
+        },
+        size: {
+            type: 'integer',
+            title: 'Size',
+            description: 'Page file size in bytes (uncompressed)'
         }
     },
     type: 'object',
-    required: ['name'],
+    required: ['name', 'size'],
     title: 'ComicPageDetailResponse',
     description: 'Response for comic page details'
 } as const;
@@ -711,10 +716,15 @@ export const ImagePageDetailResponseSchema = {
         name: {
             type: 'string',
             title: 'Name'
+        },
+        size: {
+            type: 'integer',
+            title: 'Size',
+            description: 'Page file size in bytes'
         }
     },
     type: 'object',
-    required: ['name'],
+    required: ['name', 'size'],
     title: 'ImagePageDetailResponse'
 } as const;
 
@@ -764,6 +774,28 @@ export const LoginResponseSchema = {
     type: 'object',
     required: ['token'],
     title: 'LoginResponse'
+} as const;
+
+export const PageInfoResponseSchema = {
+    properties: {
+        width: {
+            type: 'integer',
+            title: 'Width'
+        },
+        height: {
+            type: 'integer',
+            title: 'Height'
+        },
+        format: {
+            type: 'string',
+            title: 'Format',
+            description: 'Pillow format name, e.g. JPEG, PNG, WEBP'
+        }
+    },
+    type: 'object',
+    required: ['width', 'height', 'format'],
+    title: 'PageInfoResponse',
+    description: 'Original dimensions and format of one page image'
 } as const;
 
 export const ProgressRequestSchema = {
