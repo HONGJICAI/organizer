@@ -95,7 +95,29 @@ class TestDetail:
         with patch("comicfile.create_open", return_value=mock_cf):
             r = client.get("/api/comics/1/detail")
         assert r.status_code == 200
-        assert len(r.json()["pageDetails"]) == 3
+        assert r.json()["pageDetails"] == [
+            {"name": "0000.jpg", "size": 1000},
+            {"name": "0001.jpg", "size": 1001},
+            {"name": "0002.jpg", "size": 1002},
+        ]
+
+    def test_sizes_from_real_zip(self, client, session, tmp_path):
+        import zipfile
+        f = tmp_path / "a.zip"
+        with zipfile.ZipFile(f, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("2.jpg", b"x" * 300)
+            zf.writestr("1.jpg", b"y" * 100)
+        insert_comic(session, 1, path=str(f), page=2)
+        pages = client.get("/api/comics/1/detail").json()["pageDetails"]
+        # Uncompressed sizes, in page order.
+        assert pages == [{"name": "1.jpg", "size": 100}, {"name": "2.jpg", "size": 300}]
+
+    def test_sizes_from_folder(self, client, session, tmp_path):
+        (tmp_path / "1.jpg").write_bytes(b"x" * 10)
+        (tmp_path / "2.jpg").write_bytes(b"x" * 20)
+        insert_comic(session, 1, path=str(tmp_path), page=2)
+        pages = client.get("/api/comics/1/detail").json()["pageDetails"]
+        assert [p["size"] for p in pages] == [10, 20]
 
 
 # ---------------------------------------------------------------------------

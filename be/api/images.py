@@ -241,7 +241,10 @@ class ImageCBV:
     def detail(self, id: int, _: None = Depends(require_auth)) -> ImageDetailResponse:
         entity = _get(id)
         files = _image_files(entity.path)
-        return ImageDetailResponse(pageDetails=[ImagePageDetailResponse(name=f) for f in files])
+        return ImageDetailResponse(pageDetails=[
+            ImagePageDetailResponse(name=f, size=os.path.getsize(os.path.join(entity.path, f)))
+            for f in files
+        ])
 
     @router.get("/api/images/{id}/pages/{page}", tags=["images"])
     def get_page(

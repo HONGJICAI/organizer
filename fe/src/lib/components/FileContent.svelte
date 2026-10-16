@@ -4,6 +4,7 @@
 	import { config, ViewMode } from '$lib/config.svelte';
 	import { viewerState } from '$lib/viewerState.svelte';
 	import { createProgressReporter } from '$lib/readingProgress';
+	import { adapters } from '$lib/mediaAdapters';
 	import PagedReader from './PagedReader.svelte';
 	import ScrollReader from './ScrollReader.svelte';
 	import VideoPlayer from './VideoPlayer.svelte';
@@ -52,11 +53,23 @@
 		viewerState.title = file.name;
 		viewerState.onClose = onClose;
 		if (initialOverview && hasPages) viewerState.overviewOpen = true;
+		// Page names and sizes for the header's page info; one cheap request
+		// (sizes come from the archive's directory, nothing is decompressed).
+		viewerState.pageDetails = [];
+		let open = true;
+		const detail = adapters[file.type].detail;
+		if (hasPages && detail) {
+			detail(file.id).then((result) => {
+				if (open && result.error === undefined) viewerState.pageDetails = result.data.pageDetails;
+			});
+		}
 		return () => {
 			viewerState.active = false;
 			viewerState.overviewOpen = false;
 			reporter.flush();
 			viewerState.privateReading = false;
+			open = false;
+			viewerState.pageDetails = [];
 		};
 	});
 </script>

@@ -16,7 +16,8 @@ import { Comic, Image, MediaType, Video, type MediaFile } from '$lib/model.svelt
 export type Outcome<T> = { data: T; error?: undefined } | { data?: undefined; error: string };
 
 type Entity = ComicEntity | VideoEntity | ImageEntity;
-type PageDetails = { pageDetails: { name: string }[] };
+export type PageDetail = { name: string; size: number };
+type PageDetails = { pageDetails: PageDetail[] };
 
 export interface MediaAdapter {
 	/** Noun for confirmations, e.g. "Confirm delete comic". */

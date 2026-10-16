@@ -1,3 +1,5 @@
+import type { PageDetail } from '$lib/mediaAdapters';
+
 export const viewerState = $state({
 	active: false,
 	title: '',
@@ -10,6 +12,9 @@ export const viewerState = $state({
 	// no read in stats). Set by the reader on open (`?private=1`, used by the
 	// duplicate finder); the header chip turns it off to start saving.
 	privateReading: false,
+	// Per-page file name and size of the open comic/album, for the header's
+	// page info. Empty until loaded, and for media without pages.
+	pageDetails: [] as PageDetail[],
 	// eslint-disable-next-line @typescript-eslint/no-empty-function
 	onClose: () => {},
 	// Reverse channel from the chrome/overview to the active reader: jump to a

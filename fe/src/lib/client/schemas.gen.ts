@@ -311,10 +311,15 @@ export const ComicPageDetailResponseSchema = {
         name: {
             type: 'string',
             title: 'Name'
+        },
+        size: {
+            type: 'integer',
+            title: 'Size',
+            description: 'Page file size in bytes (uncompressed)'
         }
     },
     type: 'object',
-    required: ['name'],
+    required: ['name', 'size'],
     title: 'ComicPageDetailResponse',
     description: 'Response for comic page details'
 } as const;
@@ -711,10 +716,15 @@ export const ImagePageDetailResponseSchema = {
         name: {
             type: 'string',
             title: 'Name'
+        },
+        size: {
+            type: 'integer',
+            title: 'Size',
+            description: 'Page file size in bytes'
         }
     },
     type: 'object',
-    required: ['name'],
+    required: ['name', 'size'],
     title: 'ImagePageDetailResponse'
 } as const;
 

@@ -141,6 +141,10 @@ export type ComicMonthStats = {
  */
 export type ComicPageDetailResponse = {
     name: string;
+    /**
+     * Page file size in bytes (uncompressed)
+     */
+    size: number;
 };
 
 /**
@@ -273,6 +277,10 @@ export type ImageEntity = {
 
 export type ImagePageDetailResponse = {
     name: string;
+    /**
+     * Page file size in bytes
+     */
+    size: number;
 };
 
 export type ImageRenameRequest = {

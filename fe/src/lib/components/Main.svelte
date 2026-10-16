@@ -16,6 +16,9 @@
 	import Close from 'carbon-icons-svelte/lib/Close.svelte';
 	import SearchIcon from 'carbon-icons-svelte/lib/Search.svelte';
 	import ViewOff from 'carbon-icons-svelte/lib/ViewOff.svelte';
+	import Information from 'carbon-icons-svelte/lib/Information.svelte';
+	import { config, savePrefs } from '$lib/config.svelte';
+	import { formatBytes } from '$lib/stats';
 	import { goto } from '$app/navigation';
 	import SettingsModal from './SettingsModal.svelte';
 	import { notifications } from '$lib/state.svelte';
@@ -53,6 +56,26 @@
 					onclick={() => (viewerState.overviewOpen = !viewerState.overviewOpen)}
 				>
 					{viewerState.page} / {viewerState.maxPage}
+				</button>
+			{/if}
+			{#if viewerState.maxPage > 0 && viewerState.pageDetails.length > 0}
+				{@const info = viewerState.pageDetails[viewerState.page - 1]}
+				<button
+					class="viewer-info"
+					class:open={config.showPageInfo}
+					title={config.showPageInfo ? 'Hide page info' : 'Show page file name and size'}
+					aria-label={config.showPageInfo ? 'Hide page info' : 'Show page info'}
+					aria-pressed={config.showPageInfo}
+					onclick={() => {
+						config.showPageInfo = !config.showPageInfo;
+						savePrefs();
+					}}
+				>
+					<Information size={16} />
+					{#if config.showPageInfo && info}
+						<span class="viewer-info-name" title={info.name}>{info.name}</span>
+						<span>· {formatBytes(info.size)}</span>
+					{/if}
 				</button>
 			{/if}
 			{#if viewerState.privateReading}
@@ -189,10 +212,40 @@
 		cursor: pointer;
 	}
 
+	.viewer-info {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		min-width: 0;
+		max-width: 22rem;
+		padding: 0.125rem 0.375rem;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		color: var(--cds-text-02, #c6c6c6);
+		background: none;
+		border: 1px solid transparent;
+		border-radius: 1rem;
+		pointer-events: auto;
+		cursor: pointer;
+	}
+
+	.viewer-info.open {
+		color: var(--cds-text-01, #f4f4f4);
+		border-color: var(--cds-ui-04, #8d8d8d);
+	}
+
+	.viewer-info-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
 	/* On narrow screens the title eats the header; drop it and keep only the
 	   page counter (which doubles as the overview entry point). */
 	@media screen and (max-width: 672px) {
-		.viewer-title {
+		.viewer-title,
+		.viewer-info-name {
 			display: none;
 		}
 	}

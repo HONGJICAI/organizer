@@ -16,6 +16,8 @@ interface Config {
 	viewMode: ViewMode;
 	pageWidthMode: PageWidthMode;
 	pageWidthCustom: number;
+	// Reader header shows the current page's file name and size.
+	showPageInfo: boolean;
 	OrderByPosition: 'NextToSearchBar' | 'InFilterPanel';
 	DeviceType?: 'Desktop' | 'Mobile';
 }
@@ -25,6 +27,7 @@ const DefaultConfig: Config = {
 	viewMode: ViewMode.Contain,
 	pageWidthMode: PageWidthMode.Original,
 	pageWidthCustom: 1080,
+	showPageInfo: false,
 	OrderByPosition: 'NextToSearchBar',
 	DeviceType: 'Desktop'
 };
@@ -61,6 +64,7 @@ function loadPrefs(): Partial<Config> {
 		prefs.pageWidthMode = saved.pageWidthMode;
 	if (typeof saved.pageWidthCustom === 'number' && saved.pageWidthCustom > 0)
 		prefs.pageWidthCustom = saved.pageWidthCustom;
+	if (typeof saved.showPageInfo === 'boolean') prefs.showPageInfo = saved.showPageInfo;
 	return prefs;
 }
 
@@ -71,7 +75,8 @@ export function savePrefs() {
 		JSON.stringify({
 			viewMode: config.viewMode,
 			pageWidthMode: config.pageWidthMode,
-			pageWidthCustom: config.pageWidthCustom
+			pageWidthCustom: config.pageWidthCustom,
+			showPageInfo: config.showPageInfo
 		})
 	);
 }

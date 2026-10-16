@@ -89,6 +89,10 @@ class Comicfile:
             raise Exception("comic file not opened")
         return self._namelist
 
+    @abstractmethod
+    def page_sizes(self) -> List[int]:
+        """Uncompressed size in bytes of each page, in page order."""
+
 
 def create(filepath: str) -> Comicfile | None:
     path = pathlib.Path(filepath)
@@ -136,6 +140,10 @@ class ZipRarComicfile(Comicfile):
         if page >= self.page:
             return False, None
         return True, self._archive.read(self._namelist[page])
+
+    def page_sizes(self) -> List[int]:
+        # From the archive's directory: no page is decompressed.
+        return [self._archive.getinfo(name).file_size for name in self.namelist]
 
     def close(self):
         self._opened = False
@@ -195,6 +203,9 @@ class DirectoryComicfile(Comicfile):
     @property
     def page(self):
         return self._page
+
+    def page_sizes(self) -> List[int]:
+        return [os.path.getsize(os.path.join(self._filepath, name)) for name in self.namelist]
 
     def read(self, page):
         if page >= self._page:

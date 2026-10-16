@@ -292,6 +292,8 @@ class TestDetail:
         assert r.status_code == 200
         names = [p["name"] for p in r.json()["pageDetails"]]
         assert names == ["a.jpg", "b.jpg", "c.jpg"]
+        size = len(make_jpeg_bytes())
+        assert [p["size"] for p in r.json()["pageDetails"]] == [size, size, size]
 
     def test_missing_returns_404(self, client):
         assert client.get("/api/images/999/detail").status_code == 404

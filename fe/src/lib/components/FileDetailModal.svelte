@@ -35,7 +35,8 @@
 		TrashCan,
 		UpdateNow
 	} from 'carbon-icons-svelte';
-	import { adapters } from '$lib/mediaAdapters';
+	import { adapters, type PageDetail } from '$lib/mediaAdapters';
+	import { formatBytes } from '$lib/stats';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { goto } from '$app/navigation';
@@ -144,7 +145,7 @@
 	}
 
 	let loadingDetail = $state(false);
-	let detail = $state<{ pageDetails: { name: string }[] }>();
+	let detail = $state<{ pageDetails: PageDetail[] }>();
 	async function onClickDetail() {
 		if (!adapter.detail) return;
 		loadingDetail = true;
@@ -309,16 +310,24 @@
 	{#if !file.archived && adapter.detail}
 		<p>Details</p>
 		<DataTable
-			headers={adapter.deletePage
-				? [
-						{ key: 'name', value: 'Name' },
-						{ key: 'actions', empty: true }
-					]
-				: [{ key: 'name', value: 'Name' }]}
-			rows={detail?.pageDetails.map((page, idx) => ({ id: idx, name: page.name })) ?? []}
+			sortable
+			headers={[
+				{ key: 'page', value: '#' },
+				{ key: 'name', value: 'Name' },
+				{ key: 'size', value: 'Size' },
+				...(adapter.deletePage ? [{ key: 'actions', empty: true, sort: false as const }] : [])
+			]}
+			rows={detail?.pageDetails.map((page, idx) => ({
+				id: idx,
+				page: idx + 1,
+				name: page.name,
+				size: page.size
+			})) ?? []}
 		>
 			<svelte:fragment slot="cell" let:row let:cell>
-				{#if cell.key === 'actions'}
+				{#if cell.key === 'size'}
+					{formatBytes(cell.value)}
+				{:else if cell.key === 'actions'}
 					{#if deletingPageIdx === row.id}
 						<InlineLoading />
 					{:else}

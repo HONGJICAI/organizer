@@ -474,7 +474,8 @@ export async function setupMock(authRequired: boolean) {
 			const comic = findComic(params.id);
 			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
 			const pageDetails = Array.from({ length: comic.page }, (_, i) => ({
-				name: `page_${String(i + 1).padStart(3, '0')}.jpg`
+				name: `page_${String(i + 1).padStart(3, '0')}.jpg`,
+				size: faker.number.int({ min: 40_000, max: 1_500_000 })
 			}));
 			return HttpResponse.json({ pageDetails });
 		}),
@@ -537,7 +538,8 @@ export async function setupMock(authRequired: boolean) {
 			const image = findImage(params.id);
 			if (!image) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
 			const pageDetails = Array.from({ length: image.page }, (_, i) => ({
-				name: `image_${String(i + 1).padStart(3, '0')}.jpg`
+				name: `image_${String(i + 1).padStart(3, '0')}.jpg`,
+				size: faker.number.int({ min: 40_000, max: 1_500_000 })
 			}));
 			return HttpResponse.json({ pageDetails });
 		}),
