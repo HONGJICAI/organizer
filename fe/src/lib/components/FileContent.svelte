@@ -17,8 +17,16 @@
 		initialOverview?: boolean;
 		// Don't save reading progress until the user turns it on from the header.
 		privateReading?: boolean;
+		// 1-based page to open at (e.g. "Continue reading" on the home page).
+		initialPage?: number;
 	}
-	let { file, onClose, initialOverview = false, privateReading = false }: Props = $props();
+	let {
+		file,
+		onClose,
+		initialOverview = false,
+		privateReading = false,
+		initialPage = 1
+	}: Props = $props();
 
 	// Set before any effect runs so the first page report already sees it.
 	viewerState.privateReading = privateReading;
@@ -70,6 +78,8 @@
 		viewerState.title = file.name;
 		viewerState.onClose = onClose;
 		if (initialOverview && hasPages) viewerState.overviewOpen = true;
+		// The reader registered gotoPage in its own onMount, which ran first.
+		if (hasPages && initialPage > 1) viewerState.gotoPage(initialPage);
 		// Page names and sizes for the header's page info; one cheap request
 		// (sizes come from the archive's directory, nothing is decompressed).
 		viewerState.pageDetails = [];

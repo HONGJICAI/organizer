@@ -719,6 +719,43 @@ export async function setupMock(authRequired: boolean) {
 		http.delete('/api/videos/:id', async () => {
 			return HttpResponse.text('Error: Not Implemented', { status: 501 });
 		}),
+		// Mirrors api/home.py: up to 12 per type and section, archived and
+		// missing items left out. Mock videos aren't implemented, so the video
+		// lists stay empty.
+		http.get('/api/home', async () => {
+			await delay(600);
+			const n = 12;
+			type Item = (typeof comics)[number];
+			const visible = (list: Item[]) => list.filter((e) => !e.archived && !e.missing);
+			const desc = (key: (e: Item) => string | null | undefined) => (a: Item, b: Item) =>
+				(key(b) ?? '').localeCompare(key(a) ?? '');
+			const inProgress = (e: Item) =>
+				!!e.lastViewedTime &&
+				(e.lastViewedPosition ?? 0) > 0 &&
+				(e.lastViewedPosition ?? 0) < e.page;
+			const newest = (list: Item[]) =>
+				[...visible(list)].sort(desc((e) => e.updateTime)).slice(0, n);
+			return HttpResponse.json({
+				continueReading: {
+					comics: visible(comics)
+						.filter(inProgress)
+						.sort(desc((e) => e.lastViewedTime))
+						.slice(0, n),
+					videos: [],
+					images: visible(images)
+						.filter(inProgress)
+						.sort(desc((e) => e.lastViewedTime))
+						.slice(0, n)
+				},
+				recent: { comics: newest(comics), videos: [], images: newest(images) },
+				favorites: { comics: newest(comics.filter((e) => e.favorited)), videos: [], images: [] },
+				random: {
+					comics: faker.helpers.arrayElements(visible(comics), n),
+					videos: [],
+					images: faker.helpers.arrayElements(visible(images), n)
+				}
+			});
+		}),
 		http.get('/api/images', async ({ request }) => {
 			await delay(800);
 			const top = new URL(request.url).searchParams.get('top');

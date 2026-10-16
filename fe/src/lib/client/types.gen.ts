@@ -259,6 +259,19 @@ export type HealthResponse = {
     message: string;
 };
 
+export type HomeResponse = {
+    continueReading: HomeSection;
+    recent: HomeSection;
+    favorites: HomeSection;
+    random: HomeSection;
+};
+
+export type HomeSection = {
+    comics?: Array<ComicEntity>;
+    videos?: Array<VideoEntity>;
+    images?: Array<ImageEntity>;
+};
+
 export type ImageDetailResponse = {
     pageDetails: Array<ImagePageDetailResponse>;
 };
@@ -2246,6 +2259,47 @@ export type TriggerBackupResponses = {
 };
 
 export type TriggerBackupResponse = TriggerBackupResponses[keyof TriggerBackupResponses];
+
+export type HomeGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/home';
+};
+
+export type HomeGetErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type HomeGetError = HomeGetErrors[keyof HomeGetErrors];
+
+export type HomeGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: HomeResponse;
+};
+
+export type HomeGetResponse = HomeGetResponses[keyof HomeGetResponses];
 
 export type ClientOptions = {
     baseUrl: 'http://127.0.0.1:8001' | (string & {});

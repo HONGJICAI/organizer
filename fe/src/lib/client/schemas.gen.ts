@@ -626,6 +626,57 @@ export const HealthResponseSchema = {
     title: 'HealthResponse'
 } as const;
 
+export const HomeResponseSchema = {
+    properties: {
+        continueReading: {
+            '$ref': '#/components/schemas/HomeSection'
+        },
+        recent: {
+            '$ref': '#/components/schemas/HomeSection'
+        },
+        favorites: {
+            '$ref': '#/components/schemas/HomeSection'
+        },
+        random: {
+            '$ref': '#/components/schemas/HomeSection'
+        }
+    },
+    type: 'object',
+    required: ['continueReading', 'recent', 'favorites', 'random'],
+    title: 'HomeResponse'
+} as const;
+
+export const HomeSectionSchema = {
+    properties: {
+        comics: {
+            items: {
+                '$ref': '#/components/schemas/ComicEntity'
+            },
+            type: 'array',
+            title: 'Comics',
+            default: []
+        },
+        videos: {
+            items: {
+                '$ref': '#/components/schemas/VideoEntity'
+            },
+            type: 'array',
+            title: 'Videos',
+            default: []
+        },
+        images: {
+            items: {
+                '$ref': '#/components/schemas/ImageEntity'
+            },
+            type: 'array',
+            title: 'Images',
+            default: []
+        }
+    },
+    type: 'object',
+    title: 'HomeSection'
+} as const;
+
 export const ImageDetailResponseSchema = {
     properties: {
         pageDetails: {
