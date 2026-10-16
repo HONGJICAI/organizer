@@ -57,8 +57,18 @@ def _covers_job(job: Job):
     regen.run(job.params["mode"])
 
 
-jobs.register("scan", _scan_job)
-jobs.register("covers", _covers_job, cancel=regen.cancel)
+def _scan_subsumes(a: Dict[str, str], b: Dict[str, str]) -> bool:
+    # A full scan covers any single media type.
+    return a["media_type"] in ("all", b["media_type"])
+
+
+def _covers_subsumes(a: Dict[str, str], b: Dict[str, str]) -> bool:
+    # Rewriting every cover also writes the missing ones.
+    return a["mode"] in ("all", b["mode"])
+
+
+jobs.register("scan", _scan_job, subsumes=_scan_subsumes)
+jobs.register("covers", _covers_job, cancel=regen.cancel, subsumes=_covers_subsumes)
 
 
 def start_scan(media_type: str) -> str:
@@ -228,7 +238,7 @@ def _queue_message(status: str, what: str) -> str:
     return {
         "started": f"{what} started",
         "queued": f"{what} queued behind the running job",
-        "already_queued": f"{what} is already waiting in the queue",
+        "already_queued": f"{what} is already covered by a job waiting in the queue",
     }[status]
 
 

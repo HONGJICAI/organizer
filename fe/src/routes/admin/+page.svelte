@@ -15,6 +15,7 @@
 		Breadcrumb,
 		BreadcrumbItem,
 		Button,
+		Dropdown,
 		Modal,
 		ProgressBar,
 		Tag,
@@ -32,6 +33,14 @@
 	let confirmCovers = $state(false);
 	let startingCovers = $state(false);
 	let jobs = $state<JobsResponse | null>(null);
+	// What "Scan now" covers; a full scan already includes the single types.
+	let scanScope = $state<'all' | 'comics' | 'videos' | 'images'>('all');
+	const scanScopes = [
+		{ id: 'all', text: 'All media' },
+		{ id: 'comics', text: 'Comics' },
+		{ id: 'videos', text: 'Videos' },
+		{ id: 'images', text: 'Images' }
+	];
 	let cancelling = $state<number | null>(null);
 
 	function fmtTime(iso: string | null | undefined): string {
@@ -110,7 +119,7 @@
 
 	async function triggerScan() {
 		triggering = true;
-		const { data, error } = await SystemService.triggerScan({ query: { media_type: 'all' } });
+		const { data, error } = await SystemService.triggerScan({ query: { media_type: scanScope } });
 		triggering = false;
 		if (error || !data) {
 			addNotification(new ErrorNotification({ subtitle: 'Failed to queue scan' }));
@@ -245,7 +254,12 @@
 							<span class="job-label">{jobLabel(job)}</span>
 						</span>
 						<span class="muted">{historyDetail(job)}</span>
-						{#if job.error}<span class="err" title={job.error}>{job.error}</span>{/if}
+						{#if job.error}
+							<!-- A replaced job isn't a failure; only failed jobs show red. -->
+							<span class={job.state === 'failed' ? 'err' : 'muted'} title={job.error}
+								>{job.error}</span
+							>
+						{/if}
 					</li>
 				{/each}
 			</ul>
@@ -316,9 +330,18 @@
 			{/if}
 		{/if}
 
-		<Button icon={Renew} disabled={triggering} on:click={triggerScan}>
-			{scan?.running ? 'Queue another scan' : 'Scan now'}
-		</Button>
+		<div class="scan-actions">
+			<Dropdown
+				size="sm"
+				titleText="Scan"
+				hideLabel
+				items={scanScopes}
+				bind:selectedId={scanScope}
+			/>
+			<Button icon={Renew} disabled={triggering} on:click={triggerScan}>
+				{scan?.running ? 'Queue another scan' : 'Scan now'}
+			</Button>
+		</div>
 	</Tile>
 
 	<Tile class="card">
@@ -535,6 +558,17 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
+	}
+
+	.scan-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		gap: 0.5rem;
+	}
+
+	.scan-actions :global(.bx--dropdown__wrapper) {
+		min-width: 9rem;
 	}
 
 	.job {

@@ -80,7 +80,7 @@ class TestScan:
             assert client.post("/api/system/scan?media_type=comics").json()["status"] == "queued"
             r = client.post("/api/system/scan?media_type=comics").json()
             assert r["status"] == "already_queued"
-            assert r["message"] == "Scan (comics) is already waiting in the queue"
+            assert r["message"] == "Scan (comics) is already covered by a job waiting in the queue"
             release.set()
             self._wait()
 
@@ -302,3 +302,28 @@ class TestJobs:
             assert jobs.wait_idle(5)
         [job] = client.get("/api/system/jobs").json()["history"]
         assert (job["state"], job["error"]) == ("failed", "disk error")
+
+
+class TestScanScopes:
+    def test_full_scan_covers_and_replaces_single_type_scans(self, client):
+        import threading
+        from core.jobs import jobs
+        release = threading.Event()
+        with patch("loader.ComicLoader.work", side_effect=lambda: release.wait(5)) as comic_work, \
+             patch("loader.VideoLoader.work") as video_work:
+            client.post("/api/system/scan?media_type=comics")
+            wait_for_running(client)
+            assert client.post("/api/system/scan?media_type=videos").json()["status"] == "queued"
+            assert client.post("/api/system/scan?media_type=all").json()["status"] == "queued"
+            r = client.post("/api/system/scan?media_type=images").json()
+            assert r["status"] == "already_queued"
+            body = client.get("/api/system/jobs").json()
+            assert [j["params"] for j in body["queued"]] == [{"media_type": "all"}]
+            [replaced] = body["history"]
+            assert (replaced["params"], replaced["state"]) == ({"media_type": "videos"}, "cancelled")
+            assert replaced["error"].startswith("Replaced by job #")
+            release.set()
+            assert jobs.wait_idle(5)
+        # The first comics scan, then the full scan: videos only once.
+        assert comic_work.call_count == 2
+        assert video_work.call_count == 1

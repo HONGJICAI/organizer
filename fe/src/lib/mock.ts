@@ -128,6 +128,7 @@ export async function setupMock(authRequired: boolean) {
 	// running -> phases -> finished lifecycle, including open-timing metrics).
 	const scanState = {
 		running: false,
+		mediaType: 'all',
 		startedAt: null as string | null,
 		finishedAt: null as string | null,
 		processed: 0,
@@ -176,6 +177,7 @@ export async function setupMock(authRequired: boolean) {
 		if (job.kind === 'scan') {
 			Object.assign(scanState, {
 				running: true,
+				mediaType: job.params.media_type,
 				startedAt: job.started_at,
 				finishedAt: null,
 				processed: 0,
@@ -219,12 +221,19 @@ export async function setupMock(authRequired: boolean) {
 		const next = jobQueue.queued.shift();
 		if (next) startJob(next);
 	};
+	// A full scan / full cover run covers a narrower one (api/system.py).
+	const subsumes = (
+		kind: MockJob['kind'],
+		a: Record<string, string>,
+		b: Record<string, string>
+	) => {
+		const key = kind === 'scan' ? 'media_type' : 'mode';
+		return a[key] === 'all' || a[key] === b[key];
+	};
 	const enqueueJob = (kind: MockJob['kind'], params: Record<string, string>) => {
 		tickJobs();
-		const waiting = jobQueue.queued.find(
-			(j) => j.kind === kind && JSON.stringify(j.params) === JSON.stringify(params)
-		);
-		if (waiting) return 'already_queued' as const;
+		const covered = (j: MockJob) => j.kind === kind && subsumes(kind, j.params, params);
+		if (jobQueue.queued.some(covered)) return 'already_queued' as const;
 		const job: MockJob = {
 			id: jobQueue.nextId++,
 			kind,
@@ -237,7 +246,25 @@ export async function setupMock(authRequired: boolean) {
 			cancellable: true
 		};
 		if (jobQueue.running) {
-			jobQueue.queued.push(job);
+			// Waiting jobs this one covers are replaced; it takes the first one's place.
+			const replaces = (j: MockJob) => j.kind === kind && subsumes(kind, params, j.params);
+			const at = jobQueue.queued.findIndex(replaces);
+			if (at === -1) {
+				jobQueue.queued.push(job);
+			} else {
+				const now = new Date().toISOString();
+				for (const old of jobQueue.queued.filter(replaces)) {
+					Object.assign(old, {
+						state: 'cancelled',
+						error: `Replaced by job #${job.id}`,
+						finished_at: now,
+						cancellable: false
+					});
+					jobQueue.history = [old, ...jobQueue.history].slice(0, 20);
+				}
+				jobQueue.queued = jobQueue.queued.filter((j) => !replaces(j));
+				jobQueue.queued.splice(at, 0, job);
+			}
 			return 'queued' as const;
 		}
 		startJob(job);
@@ -247,7 +274,7 @@ export async function setupMock(authRequired: boolean) {
 		({
 			started: `${what} started`,
 			queued: `${what} queued behind the running job`,
-			already_queued: `${what} is already waiting in the queue`
+			already_queued: `${what} is already covered by a job waiting in the queue`
 		})[status];
 
 	const handlers = [
@@ -358,8 +385,12 @@ export async function setupMock(authRequired: boolean) {
 				: null;
 			return HttpResponse.json({
 				running: scanState.running,
-				media_type: scanState.startedAt ? 'all' : null,
-				phase: scanState.running ? 'comics' : null,
+				media_type: scanState.startedAt ? scanState.mediaType : null,
+				phase: scanState.running
+					? scanState.mediaType === 'all'
+						? 'comics'
+						: scanState.mediaType
+					: null,
 				total: scanState.total,
 				processed: scanState.processed,
 				reconciled: scanState.startedAt ? 3 : 0,

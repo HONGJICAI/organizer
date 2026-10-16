@@ -2,10 +2,12 @@
 
 Both read every comic file and hammer the same disk; running them at once
 only slows both down. Jobs run one at a time in submission order on a worker
-thread. A job identical to one still waiting (same kind and parameters) isn't
-added twice, so e.g. the daily scan can't pile up behind a long cover run.
-The job that is running doesn't count: a scan requested mid-scan may see new
-files and gets queued.
+thread. A job already covered by one still waiting isn't added, so e.g. the
+daily scan can't pile up behind a long cover run; a job that covers waiting
+ones replaces them (a full scan makes a waiting comics-only scan redundant).
+"Covers" is per kind (``subsumes``), defaulting to identical parameters. The
+job that is running doesn't count: a scan requested mid-scan may see new files
+and gets queued.
 
 State is in memory only: the queue and the recent history are lost on
 restart (the startup scan queues itself again anyway).
@@ -36,10 +38,23 @@ class Job:
         self.cancel_requested = False
 
 
+Params = Dict[str, str]
+
+
+def _same(a: Params, b: Params) -> bool:
+    return a == b
+
+
 class _Kind:
-    def __init__(self, run: Callable[[Job], None], cancel: Optional[Callable[[], None]]):
+    def __init__(
+        self,
+        run: Callable[[Job], None],
+        cancel: Optional[Callable[[], None]],
+        subsumes: Callable[[Params, Params], bool],
+    ):
         self.run = run
         self.cancel = cancel
+        self.subsumes = subsumes
 
 
 class JobQueue:
@@ -59,21 +74,42 @@ class JobQueue:
             self._idle = threading.Event()
             self._idle.set()
 
-    def register(self, kind: str, run: Callable[[Job], None], cancel: Optional[Callable[[], None]] = None):
-        """``run(job)`` does the work and raises on failure; ``cancel()`` asks a running job to stop."""
-        self._kinds[kind] = _Kind(run, cancel)
+    def register(
+        self,
+        kind: str,
+        run: Callable[[Job], None],
+        cancel: Optional[Callable[[], None]] = None,
+        subsumes: Callable[[Params, Params], bool] = _same,
+    ):
+        """``run(job)`` does the work and raises on failure; ``cancel()`` asks a
+        running job to stop; ``subsumes(a, b)`` says a job with params ``a``
+        makes one with params ``b`` redundant (must hold for equal params)."""
+        self._kinds[kind] = _Kind(run, cancel, subsumes)
 
     def submit(self, kind: str, params: Optional[Dict[str, str]] = None) -> tuple[Job, str]:
         """Queue a job. Returns ``(job, "started" | "queued" | "already_queued")``."""
         params = params or {}
         if kind not in self._kinds:
             raise ValueError(f"Unknown job kind: {kind}")
+        subsumes = self._kinds[kind].subsumes
         with self._lock:
             for waiting in self._queue:
-                if waiting.kind == kind and waiting.params == params:
+                if waiting.kind == kind and subsumes(waiting.params, params):
                     return waiting, "already_queued"
             job = Job(next(self._ids), kind, params)
-            self._queue.append(job)
+            # Waiting jobs this one covers are dropped; it takes the first one's
+            # place in line, so it doesn't lose the turn they had.
+            replaced = [w for w in self._queue if w.kind == kind and subsumes(params, w.params)]
+            if replaced:
+                self._queue.insert(self._queue.index(replaced[0]), job)
+                for old in replaced:
+                    self._queue.remove(old)
+                    old.state = "cancelled"
+                    old.error = f"Replaced by job #{job.id}"
+                    old.finished_at = datetime.now()
+                    self._history.appendleft(old)
+            else:
+                self._queue.append(job)
             starts_now = self._running is None and len(self._queue) == 1
             self._idle.clear()
             if not self._worker_alive:

@@ -129,3 +129,32 @@ def test_history_is_capped(queue, monkeypatch):
         q.submit("ok", {"n": str(i)})
         assert q.wait_idle(5)
     assert [j.params["n"] for j in q.snapshot()["history"]] == ["4", "3", "2"]
+
+
+def test_subsumption_skips_covered_and_replaces_narrower(queue):
+    release = threading.Event()
+    ran = []
+
+    def run(job):
+        ran.append(job.params["scope"])
+        assert release.wait(5)
+
+    queue.register("scan", run, subsumes=lambda a, b: a["scope"] in ("all", b["scope"]))
+    queue.register("other", lambda job: ran.append("other"))
+    wait_running(queue.submit("scan", {"scope": "images"})[0])
+    comics, _ = queue.submit("scan", {"scope": "comics"})
+    queue.submit("other")
+    videos, _ = queue.submit("scan", {"scope": "videos"})
+    # "all" covers both waiting single-type scans: it takes the first one's place.
+    full, status = queue.submit("scan", {"scope": "all"})
+    assert status == "queued"
+    assert [(j.kind, j.params.get("scope")) for j in queue.snapshot()["queued"]] == [
+        ("scan", "all"), ("other", None),
+    ]
+    assert (comics.state, comics.error) == ("cancelled", f"Replaced by job #{full.id}")
+    assert videos.state == "cancelled"
+    # And with "all" waiting, a narrower scan is already covered.
+    assert queue.submit("scan", {"scope": "comics"}) == (full, "already_queued")
+    release.set()
+    assert queue.wait_idle(5)
+    assert ran == ["images", "all", "other"]

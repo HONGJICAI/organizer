@@ -166,6 +166,8 @@ class TestRegenerate:
             r = client.post("/api/system/covers").json()
             assert r == {"status": "queued", "message": "Cover regeneration queued behind the running job"}
             assert client.post("/api/system/covers").json()["status"] == "already_queued"
+            # A full run waiting covers the missing-only one too.
+            assert client.post("/api/system/covers?mode=missing").json()["status"] == "already_queued"
             # Nothing has touched covers while the scan holds the queue.
             assert covers.regen.started_at is None
             release.set()
