@@ -237,6 +237,11 @@ def _get(id: int) -> ImageEntity:
     return entity
 
 
+def all_entities() -> List[ImageEntity]:
+    with _store_lock:
+        return list(_store.values())
+
+
 @cbv(router)
 class ImageCBV:
     @router.get("/api/images", tags=["images"])

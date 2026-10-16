@@ -9,6 +9,7 @@
 		file={data.file}
 		initialOverview={page.url.searchParams.get('overview') === '1'}
 		privateReading={page.url.searchParams.get('private') === '1'}
+		initialPage={Number(page.url.searchParams.get('page')) || 1}
 		onClose={() => {
 			window.close();
 		}}
