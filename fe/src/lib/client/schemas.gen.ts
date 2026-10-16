@@ -957,6 +957,34 @@ export const ProgressResponseSchema = {
     description: 'Response for reading progress update'
 } as const;
 
+export const ScanIssueSchema = {
+    properties: {
+        media: {
+            type: 'string',
+            enum: ['comic', 'video', 'image'],
+            title: 'Media'
+        },
+        level: {
+            type: 'string',
+            enum: ['skipped', 'warning', 'error'],
+            title: 'Level',
+            description: "skipped: found but not imported; warning: scanned, but something's off; error: a phase failed"
+        },
+        path: {
+            type: 'string',
+            title: 'Path',
+            description: 'File or folder concerned; empty for a whole-phase error'
+        },
+        reason: {
+            type: 'string',
+            title: 'Reason'
+        }
+    },
+    type: 'object',
+    required: ['media', 'level', 'path', 'reason'],
+    title: 'ScanIssue'
+} as const;
+
 export const ScanResponseSchema = {
     properties: {
         status: {
@@ -1065,19 +1093,19 @@ export const ScanStatusResponseSchema = {
             ],
             title: 'Last Result'
         },
-        skipped_count: {
+        issue_count: {
             type: 'integer',
-            title: 'Skipped Count',
-            description: "Files the scan found but couldn't import",
+            title: 'Issue Count',
+            description: 'Problems the scan ran into, all levels',
             default: 0
         },
-        skipped: {
+        issues: {
             items: {
-                '$ref': '#/components/schemas/SkippedFile'
+                '$ref': '#/components/schemas/ScanIssue'
             },
             type: 'array',
-            title: 'Skipped',
-            description: 'First skipped files only; `skipped_count` counts all'
+            title: 'Issues',
+            description: 'First issues only; `issue_count` counts all'
         }
     },
     type: 'object',
@@ -1110,22 +1138,6 @@ export const ScanTimingSchema = {
     type: 'object',
     required: ['count', 'avg_ms', 'p95_ms', 'slowest'],
     title: 'ScanTiming'
-} as const;
-
-export const SkippedFileSchema = {
-    properties: {
-        path: {
-            type: 'string',
-            title: 'Path'
-        },
-        reason: {
-            type: 'string',
-            title: 'Reason'
-        }
-    },
-    type: 'object',
-    required: ['path', 'reason'],
-    title: 'SkippedFile'
 } as const;
 
 export const SlowFileSchema = {

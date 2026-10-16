@@ -185,6 +185,11 @@
 	onDestroy(() => clearTimeout(timer));
 
 	let lastStatus = $derived(scan?.last_result?.status as string | undefined);
+	// Per-phase outcome of the last scan: [["images", "error"], ["comics", "done"], ...].
+	let lastPhases = $derived(
+		Object.entries((scan?.last_result?.phases ?? {}) as Record<string, string>)
+	);
+	const issueTag = { skipped: 'red', warning: 'warm-gray', error: 'red' } as const;
 </script>
 
 <Breadcrumb noTrailingSlash>
@@ -273,6 +278,8 @@
 				<Tag type="blue">Running</Tag>
 			{:else if lastStatus === 'error'}
 				<Tag type="red">Last run failed</Tag>
+			{:else if lastStatus === 'partial'}
+				<Tag type="magenta">Last run partly failed</Tag>
 			{:else if lastStatus === 'success'}
 				<Tag type="green">Idle</Tag>
 			{:else}
@@ -295,6 +302,14 @@
 			<dl class="kv">
 				<dt>Last result</dt>
 				<dd>{lastStatus ?? '— never run —'}</dd>
+				{#if lastPhases.length}
+					<dt>Phases</dt>
+					<dd class="phases">
+						{#each lastPhases as [name, outcome] (name)}
+							<Tag type={outcome === 'done' ? 'green' : 'red'} size="sm">{name}</Tag>
+						{/each}
+					</dd>
+				{/if}
 				{#if scan?.last_result?.message}
 					<dt>Message</dt>
 					<dd class="err">{scan.last_result.message}</dd>
@@ -311,22 +326,31 @@
 			<dd>{fmtDuration(scan?.duration_seconds)}</dd>
 			<dt>Missing reconciled</dt>
 			<dd>{scan?.reconciled ?? 0}</dd>
-			<dt>Skipped</dt>
-			<dd class:err={!!scan?.skipped_count}>{scan?.skipped_count ?? 0}</dd>
+			<dt>Issues</dt>
+			<dd class:err={!!scan?.issue_count}>{scan?.issue_count ?? 0}</dd>
 		</dl>
-		{#if scan?.skipped?.length}
-			<h4>Skipped files</h4>
-			<p class="muted note">Found but not imported. They are retried on every scan.</p>
+		{#if scan?.issues?.length}
+			<h4>Issues</h4>
+			<p class="muted note">
+				Skipped files weren't imported and are retried on every scan; warnings didn't stop anything;
+				errors stopped a whole phase.
+			</p>
 			<ul class="failures">
-				{#each scan.skipped as f (f.path)}
+				{#each scan.issues as issue, i (i)}
 					<li>
-						<span title={f.path}>{f.path}</span>
-						<span class="err" title={f.reason}>{f.reason}</span>
+						<span class="issue-head">
+							<Tag type={issueTag[issue.level]} size="sm">{issue.level}</Tag>
+							<Tag type="outline" size="sm">{issue.media}</Tag>
+							{#if issue.path}<span class="issue-path" title={issue.path}>{issue.path}</span>{/if}
+						</span>
+						<span class={issue.level === 'warning' ? 'muted' : 'err'} title={issue.reason}
+							>{issue.reason}</span
+						>
 					</li>
 				{/each}
 			</ul>
-			{#if (scan.skipped_count ?? 0) > scan.skipped.length}
-				<p class="muted">…and {(scan.skipped_count ?? 0) - scan.skipped.length} more</p>
+			{#if (scan.issue_count ?? 0) > scan.issues.length}
+				<p class="muted">…and {(scan.issue_count ?? 0) - scan.issues.length} more</p>
 			{/if}
 		{/if}
 
@@ -569,6 +593,26 @@
 
 	.scan-actions :global(.bx--dropdown__wrapper) {
 		min-width: 9rem;
+	}
+
+	.phases {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+	}
+
+	.issue-head {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		min-width: 0;
+	}
+
+	.issue-path {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.job {

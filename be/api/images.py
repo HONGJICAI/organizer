@@ -29,6 +29,7 @@ import global_data
 from api.comicpage import PAGE_CACHE_CONTROL, page_etag, resize_to_width
 from comicfile import allowImgs, image_info, mediaTypes
 from core.exceptions import abort
+from core.scan_progress import progress
 from loader import ComicLoader
 from model import ComicEntity, ImageEntity
 from schemas.common import PageInfoResponse, ProgressRequest, ProgressResponse
@@ -139,7 +140,12 @@ def _leaf_image_dirs(scan_path: str) -> List[str]:
     folder's basename, not its relative path.
     """
     leaves = []
-    for root, dirs, files in os.walk(scan_path):
+
+    def unreadable(err: OSError):
+        # os.walk skips folders it can't list; make that visible.
+        progress.add_issue("image", "warning", err.filename or scan_path, f"Can't read folder: {err.strerror or err}")
+
+    for root, dirs, files in os.walk(scan_path, onerror=unreadable):
         if dirs:
             continue  # has a subfolder -> not a pure leaf
         exts = [os.path.splitext(f)[1].lower() for f in files]
@@ -153,18 +159,25 @@ def bootstrap():
     new_store: Dict[int, ImageEntity] = {}
     for scan_path in global_data.Config.Image.scan_pathes:
         if not os.path.isdir(scan_path):
+            progress.add_issue("image", "warning", scan_path, "Scan path not found (not mounted?)")
             continue
         try:
             leaves = _leaf_image_dirs(scan_path)
         except OSError as e:
             print(f"Failed to scan {scan_path}: {e}")
+            progress.add_issue("image", "warning", scan_path, f"Can't scan: {e}")
             continue
         for leaf in leaves:
             files = _image_files(leaf)
             if not files:
                 continue
+            try:
+                mtime = datetime.datetime.fromtimestamp(os.stat(leaf).st_mtime)
+            except OSError as e:
+                # Removed or moved mid-scan: skip it rather than fail the scan.
+                progress.add_issue("image", "warning", leaf, f"Folder vanished during scan: {e.strerror or e}")
+                continue
             id = _album_id(leaf, new_store)
-            mtime = datetime.datetime.fromtimestamp(os.stat(leaf).st_mtime)
             # size is not computed here: that means a recursive stat() of every
             # file (see get_dir_size), which makes bootstrap minutes-slow on
             # large/remote folders. The refresh endpoint fills it on demand, and

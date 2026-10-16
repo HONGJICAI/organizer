@@ -267,8 +267,9 @@ class TestComicLoaderWork:
         with Session(task_engine) as s:
             assert [c.name for c in s.exec(select(ComicEntity)).all()] == ["good.zip"]
         snap = progress.snapshot()
-        assert snap["skipped_count"] == 2
-        reasons = {os.path.basename(f["path"]): f["reason"] for f in snap["skipped"]}
+        assert snap["issue_count"] == 2
+        assert {(i["media"], i["level"]) for i in snap["issues"]} == {("comic", "skipped")}
+        reasons = {os.path.basename(f["path"]): f["reason"] for f in snap["issues"]}
         assert reasons["empty.zip"] == "No page images found"
         assert reasons["bad.zip"] == "File is not a zip file"
 
@@ -472,3 +473,37 @@ class TestVideoLoaderGetLength:
         with patch("subprocess.run", side_effect=Exception("no ffprobe")):
             result = VideoLoader.get_video_length("/some/video.mp4")
         assert result == 0
+
+
+class TestScanIssues:
+    def test_missing_scan_path_is_a_warning(self, task_engine, tmp_path, monkeypatch):
+        from core.scan_progress import progress
+        gone = str(tmp_path / "unmounted")
+        monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [gone])
+        progress.start("comics")
+        ComicLoader().work()
+        assert progress.snapshot()["issues"] == [
+            {"media": "comic", "level": "warning", "path": gone, "reason": "Scan path not found (not mounted?)"},
+        ]
+
+    def test_empty_scan_path_is_a_warning(self, task_engine, tmp_path, monkeypatch):
+        from core.scan_progress import progress
+        monkeypatch.setattr(global_data.Config.Video, "scan_pathes", [str(tmp_path)])
+        progress.start("videos")
+        VideoLoader().work()
+        assert progress.snapshot()["issues"] == [
+            {"media": "video", "level": "warning", "path": str(tmp_path), "reason": "No media files found"},
+        ]
+
+    def test_video_without_cover_is_imported_with_a_warning(self, task_engine, tmp_path, monkeypatch):
+        from core.scan_progress import progress
+        (tmp_path / "v.mp4").write_bytes(b"not really a video")
+        monkeypatch.setattr(global_data.Config.Video, "scan_pathes", [str(tmp_path)])
+        progress.start("videos")
+        with patch.object(VideoLoader, "gen_video_cover", side_effect=RuntimeError("ffmpeg missing")):
+            VideoLoader().work()
+        with Session(task_engine) as s:
+            assert len(s.exec(select(VideoEntity)).all()) == 1
+        [issue] = progress.snapshot()["issues"]
+        assert (issue["media"], issue["level"]) == ("video", "warning")
+        assert issue["reason"] == "No cover/duration: ffmpeg missing"

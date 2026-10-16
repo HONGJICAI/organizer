@@ -91,14 +91,16 @@ class TestScan:
         assert r.json()["running"] is False
         assert r.json()["last_result"] is None
 
-    def test_status_lists_skipped_files(self, client):
+    def test_status_lists_issues(self, client):
         from core.scan_progress import progress
         self._reset()
         progress.start("comics")
-        progress.add_skipped("/data/comics/bad.zip", "File is not a zip file")
+        progress.add_issue("comic", "skipped", "/data/comics/bad.zip", "File is not a zip file")
         body = client.get("/api/system/scan").json()
-        assert body["skipped_count"] == 1
-        assert body["skipped"] == [{"path": "/data/comics/bad.zip", "reason": "File is not a zip file"}]
+        assert body["issue_count"] == 1
+        assert body["issues"] == [{
+            "media": "comic", "level": "skipped", "path": "/data/comics/bad.zip", "reason": "File is not a zip file",
+        }]
         self._reset()
 
     def test_status_after_scan(self, client):
@@ -110,15 +112,46 @@ class TestScan:
         assert r.json()["running"] is False
         assert r.json()["last_result"]["status"] == "success"
 
-    def test_status_records_error(self, client):
+    def test_failing_phase_doesnt_stop_the_others(self, client):
         self._reset()
-        with patch("loader.ComicLoader.work", side_effect=RuntimeError("disk error")), \
-             patch("loader.VideoLoader.work"):
+        with patch("api.images.bootstrap", side_effect=RuntimeError("images gone")), \
+             patch("loader.ComicLoader.work") as comics, \
+             patch("loader.VideoLoader.work") as videos:
             client.post("/api/system/scan")
             self._wait()
-        r = client.get("/api/system/scan")
-        assert r.json()["last_result"]["status"] == "error"
-        assert "disk error" in r.json()["last_result"]["message"]
+        comics.assert_called_once()
+        videos.assert_called_once()
+        body = client.get("/api/system/scan").json()
+        assert body["last_result"] == {
+            "status": "partial",
+            "phases": {"images": "error", "comics": "done", "videos": "done"},
+            "message": "images: images gone",
+        }
+        assert body["issues"] == [
+            {"media": "image", "level": "error", "path": "", "reason": "images scan failed: images gone"},
+        ]
+        [job] = client.get("/api/system/jobs").json()["history"]
+        assert (job["state"], job["error"]) == ("failed", "images: images gone")
+
+    def test_status_records_error_when_every_phase_fails(self, client):
+        self._reset()
+        with patch("loader.ComicLoader.work", side_effect=RuntimeError("disk error")), \
+             patch("loader.VideoLoader.work", side_effect=RuntimeError("no videos")):
+            client.post("/api/system/scan?media_type=comics")
+            self._wait()
+            client.post("/api/system/scan?media_type=videos")
+            self._wait()
+        result = client.get("/api/system/scan").json()["last_result"]
+        assert result == {"status": "error", "phases": {"videos": "error"}, "message": "videos: no videos"}
+
+    def test_success_lists_phases(self, client):
+        self._reset()
+        with patch("loader.ComicLoader.work"), patch("loader.VideoLoader.work"):
+            client.post("/api/system/scan?media_type=comics")
+            self._wait()
+        assert client.get("/api/system/scan").json()["last_result"] == {
+            "status": "success", "phases": {"comics": "done"},
+        }
 
     def test_status_exposes_progress_shape(self, client):
         self._reset()
@@ -301,7 +334,7 @@ class TestJobs:
             client.post("/api/system/scan?media_type=comics")
             assert jobs.wait_idle(5)
         [job] = client.get("/api/system/jobs").json()["history"]
-        assert (job["state"], job["error"]) == ("failed", "disk error")
+        assert (job["state"], job["error"]) == ("failed", "comics: disk error")
 
 
 class TestScanScopes:

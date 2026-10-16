@@ -52,8 +52,21 @@ class Loader:
     def load(self, path: str):
         pass
 
+    @property
+    def media(self) -> str:
+        """Issue label for this loader's media: "comic" or "video"."""
+        return self.phase[:-1]
+
+    def _scan_pathes(self) -> List[str]:
+        return []
+
     def work(self):
         progress.set_phase(self.phase, 0)
+        # A missing scan path is usually an unmounted drive; say so, since the
+        # scan would otherwise just find nothing there.
+        for path in self._scan_pathes():
+            if not os.path.isdir(path):
+                progress.add_issue(self.media, "warning", path, "Scan path not found (not mounted?)")
         old_pathes = set(self._load_old())
         all_pathes = set(self._load_all())
         print(f"old: {len(old_pathes)}, all: {len(all_pathes)}")
@@ -61,6 +74,9 @@ class Loader:
         # file appearing, so this must run even when the early-returns below fire.
         progress.add_reconciled(self._reconcile_missing(all_pathes))
         if len(all_pathes) == 0:
+            present = [p for p in self._scan_pathes() if os.path.isdir(p)]
+            if present:
+                progress.add_issue(self.media, "warning", ", ".join(present), "No media files found")
             print("not work due to no file, perhaps specify wrong pathes?")
             return
         new_pathes = list(all_pathes.difference(old_pathes))
@@ -84,7 +100,7 @@ class Loader:
                     # whole scan. Not remembered: the next scan tries again.
                     reason = str(ex) or type(ex).__name__
                     print("skip", path, reason)
-                    progress.add_skipped(path, reason)
+                    progress.add_issue(self.media, "skipped", path, reason)
                     return None
                 finally:
                     bar.update(task, advance=1)
@@ -212,8 +228,11 @@ class ComicLoader(Loader):
 
             return [e.path for e in entities]
 
+    def _scan_pathes(self) -> List[str]:
+        return global_data.Config.Comic.scan_pathes
+
     def _load_all(self) -> List[str]:
-        return scan(self.comic_ext, global_data.Config.Comic.scan_pathes)
+        return scan(self.comic_ext, self._scan_pathes())
 
     def _to_entity(self, path: str):
         """Build the entity for a new comic; raises when it can't be imported."""
@@ -303,8 +322,11 @@ class VideoLoader(Loader):
             print(f"read {len(entities)} entities from db.")
             return [e.path for e in entities]
 
+    def _scan_pathes(self) -> List[str]:
+        return global_data.Config.Video.scan_pathes
+
     def _load_all(self) -> List[str]:
-        return scan(self.video_ext, global_data.Config.Video.scan_pathes)
+        return scan(self.video_ext, self._scan_pathes())
 
     def _to_entity(self, path: str):
         ret = VideoEntity.from_path(pathlib.Path(path), self._get_id())
@@ -313,7 +335,9 @@ class VideoLoader(Loader):
             VideoLoader.gen_video_cover(ret)
             ret.durationInSecond = VideoLoader.get_video_length(path)
         except Exception as ex:
+            # Imported anyway; it just lacks a cover or duration.
             print("skip", ret.path, ex)
+            progress.add_issue("video", "warning", path, f"No cover/duration: {str(ex) or type(ex).__name__}")
 
         return ret
 

@@ -212,7 +212,15 @@ export async function setupMock(authRequired: boolean) {
 		if (job) {
 			const busy = job.kind === 'scan' ? scanState.running : coverState.running;
 			if (busy) return;
-			job.state = job.kind === 'covers' && coverState.cancelled ? 'cancelled' : 'succeeded';
+			// A partly failed scan fails its job, as _scan_job raises on it.
+			const scanFailed = job.kind === 'scan' && scanState.mediaType === 'all';
+			job.state =
+				job.kind === 'covers' && coverState.cancelled
+					? 'cancelled'
+					: scanFailed
+						? 'failed'
+						: 'succeeded';
+			if (scanFailed) job.error = 'images: [Errno 5] Input/output error';
 			job.finished_at = new Date().toISOString();
 			job.cancellable = false;
 			jobQueue.history = [job, ...jobQueue.history].slice(0, 20);
@@ -403,16 +411,54 @@ export async function setupMock(authRequired: boolean) {
 					p95_ms: Math.round(p95 * 10) / 10,
 					slowest
 				},
-				last_result: scanState.finishedAt ? { status: 'success', comics: 'done' } : null,
-				// A couple of files the scan couldn't import, once it has gone far enough.
-				skipped_count: count >= 50 ? 2 : 0,
-				skipped:
-					count >= 50
-						? [
-								{ path: '/data/comics/broken.zip', reason: 'File is not a zip file' },
-								{ path: '/data/comics/docs.rar', reason: 'No page images found' }
-							]
-						: []
+				// The mock's full scans end "partial": the image phase fails, so the
+				// admin page shows per-phase results and every kind of issue.
+				last_result: scanState.finishedAt
+					? scanState.mediaType === 'all'
+						? {
+								status: 'partial',
+								phases: { images: 'error', comics: 'done', videos: 'done' },
+								message: 'images: [Errno 5] Input/output error'
+							}
+						: { status: 'success', phases: { [scanState.mediaType]: 'done' } }
+					: null,
+				// A few problems the scan ran into, once it has gone far enough.
+				...(() => {
+					const issues =
+						count >= 50
+							? [
+									{
+										media: 'comic',
+										level: 'skipped',
+										path: '/data/comics/broken.zip',
+										reason: 'File is not a zip file'
+									},
+									{
+										media: 'comic',
+										level: 'skipped',
+										path: '/data/comics/docs.rar',
+										reason: 'No page images found'
+									},
+									{
+										media: 'video',
+										level: 'warning',
+										path: '/data/videos/clip.mkv',
+										reason: 'No cover/duration: ffprobe failed'
+									},
+									...(scanState.mediaType === 'all' && scanState.finishedAt
+										? [
+												{
+													media: 'image',
+													level: 'error',
+													path: '',
+													reason: 'images scan failed: [Errno 5] Input/output error'
+												}
+											]
+										: [])
+								]
+							: [];
+					return { issue_count: issues.length, issues };
+				})()
 			});
 		}),
 		http.post('/api/system/scan', async ({ request }) => {

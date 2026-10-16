@@ -363,6 +363,19 @@ export type ProgressResponse = {
     lastViewedTime: string;
 };
 
+export type ScanIssue = {
+    media: 'comic' | 'video' | 'image';
+    /**
+     * skipped: found but not imported; warning: scanned, but something's off; error: a phase failed
+     */
+    level: 'skipped' | 'warning' | 'error';
+    /**
+     * File or folder concerned; empty for a whole-phase error
+     */
+    path: string;
+    reason: string;
+};
+
 export type ScanResponse = {
     status: 'started' | 'queued' | 'already_queued';
     message: string;
@@ -383,13 +396,13 @@ export type ScanStatusResponse = {
         [key: string]: unknown;
     } | null;
     /**
-     * Files the scan found but couldn't import
+     * Problems the scan ran into, all levels
      */
-    skipped_count?: number;
+    issue_count?: number;
     /**
-     * First skipped files only; `skipped_count` counts all
+     * First issues only; `issue_count` counts all
      */
-    skipped?: Array<SkippedFile>;
+    issues?: Array<ScanIssue>;
 };
 
 export type ScanTiming = {
@@ -397,11 +410,6 @@ export type ScanTiming = {
     avg_ms: number;
     p95_ms: number;
     slowest: Array<SlowFile>;
-};
-
-export type SkippedFile = {
-    path: string;
-    reason: string;
 };
 
 export type SlowFile = {

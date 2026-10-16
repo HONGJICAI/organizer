@@ -21,27 +21,48 @@ router = APIRouter()
 
 
 def _run_scan(media_type: str):
+    """Scan the requested media, each type in its own phase.
+
+    A failing phase is recorded and the next one still runs, so an unreadable
+    image folder doesn't stop comics and videos from being scanned. The result
+    is "success", "partial" (some phases failed) or "error" (all did), with
+    per-phase outcomes under ``phases`` and the failures joined in ``message``.
+    """
     from loader import ComicLoader, VideoLoader
     from api.images import bootstrap as bootstrap_images
 
-    results = {}
-    try:
-        # Images first: bootstrap is cheap (one readdir per folder) and the
-        # in-memory store is empty until it runs, while comic/video scans can
-        # take a while without leaving the UI empty.
-        if media_type in ("images", "all"):
-            progress.set_phase("images", 0)
-            bootstrap_images()
-            results["images"] = "done"
-        if media_type in ("comics", "all"):
-            ComicLoader().work()
-            results["comics"] = "done"
-        if media_type in ("videos", "all"):
-            VideoLoader().work()
-            results["videos"] = "done"
-        progress.finish({"status": "success", **results})
-    except Exception as e:
-        progress.finish({"status": "error", "message": str(e)})
+    def images():
+        progress.set_phase("images", 0)
+        bootstrap_images()
+
+    # Images first: bootstrap is cheap (one readdir per folder) and the
+    # in-memory store is empty until it runs, while comic/video scans can take
+    # a while without leaving the UI empty.
+    phases = [
+        ("images", "image", images),
+        ("comics", "comic", lambda: ComicLoader().work()),
+        ("videos", "video", lambda: VideoLoader().work()),
+    ]
+    results, errors = {}, {}
+    for name, media, run in phases:
+        if media_type not in (name, "all"):
+            continue
+        try:
+            run()
+            results[name] = "done"
+        except Exception as e:
+            reason = str(e) or type(e).__name__
+            results[name] = "error"
+            errors[name] = reason
+            progress.add_issue(media, "error", "", f"{name} scan failed: {reason}")
+    if not errors:
+        progress.finish({"status": "success", "phases": results})
+        return
+    progress.finish({
+        "status": "partial" if len(errors) < len(results) else "error",
+        "phases": results,
+        "message": "; ".join(f"{name}: {reason}" for name, reason in errors.items()),
+    })
 
 
 def _scan_job(job: Job):
@@ -49,7 +70,7 @@ def _scan_job(job: Job):
     progress.start(media_type)
     _run_scan(media_type)
     result = progress.last_result or {}
-    if result.get("status") == "error":
+    if result.get("status") in ("error", "partial"):
         raise RuntimeError(result.get("message") or "Scan failed")
 
 
@@ -107,8 +128,12 @@ class ScanTiming(BaseModel):
     slowest: List[SlowFile]
 
 
-class SkippedFile(BaseModel):
-    path: str
+class ScanIssue(BaseModel):
+    media: Literal["comic", "video", "image"]
+    level: Literal["skipped", "warning", "error"] = Field(
+        description="skipped: found but not imported; warning: scanned, but something's off; error: a phase failed"
+    )
+    path: str = Field(description="File or folder concerned; empty for a whole-phase error")
     reason: str
 
 
@@ -124,8 +149,8 @@ class ScanStatusResponse(BaseModel):
     duration_seconds: Optional[float] = None
     timing: ScanTiming
     last_result: Optional[dict] = None
-    skipped_count: int = Field(default=0, description="Files the scan found but couldn't import")
-    skipped: List[SkippedFile] = Field(default_factory=list, description="First skipped files only; `skipped_count` counts all")
+    issue_count: int = Field(default=0, description="Problems the scan ran into, all levels")
+    issues: List[ScanIssue] = Field(default_factory=list, description="First issues only; `issue_count` counts all")
 
 
 class DailyScanInfo(BaseModel):
