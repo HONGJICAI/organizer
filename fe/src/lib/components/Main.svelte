@@ -74,9 +74,11 @@
 				>
 					<Information size={16} />
 					{#if config.showPageInfo && info}
-						<span class="viewer-info-name" title={info.name}>{info.name}</span>
-						{#if dims}<span>· {dims.width}×{dims.height} {dims.format}</span>{/if}
-						<span>· {formatBytes(info.size)}</span>
+						<span class="viewer-info-detail">
+							<span class="viewer-info-name" title={info.name}>{info.name}</span>
+							{#if dims}<span>· {dims.width}×{dims.height} {dims.format}</span>{/if}
+							<span>· {formatBytes(info.size)}</span>
+						</span>
 					{/if}
 				</button>
 			{/if}
@@ -86,7 +88,7 @@
 					title="Reading progress isn't being saved. Click to start saving it."
 					onclick={() => (viewerState.privateReading = false)}
 				>
-					<ViewOff size={16} /><span>Private</span>
+					<ViewOff size={16} /><span class="viewer-private-label">Private</span>
 				</button>
 			{/if}
 		</div>
@@ -237,18 +239,48 @@
 		border-color: var(--cds-ui-04, #8d8d8d);
 	}
 
+	.viewer-info-detail {
+		display: inline-flex;
+		gap: 0.25rem;
+		min-width: 0;
+	}
+
 	.viewer-info-name {
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
-	/* On narrow screens the title eats the header; drop it and keep only the
-	   page counter (which doubles as the overview entry point). */
+	/* On narrow screens the header has room for little besides the page
+	   counter (which doubles as the overview entry point): drop the title and
+	   the "Organizer" name (the close button leaves the reader), shrink the
+	   chips to icons, and show the page info in a strip below the header. */
 	@media screen and (max-width: 672px) {
 		.viewer-title,
-		.viewer-info-name {
+		.viewer-private-label {
 			display: none;
+		}
+
+		:global(.bx--header:has(.viewer-center) .bx--header__name) {
+			display: none;
+		}
+
+		.viewer-info {
+			flex-shrink: 0;
+			max-width: none;
+		}
+
+		.viewer-info-detail {
+			position: absolute;
+			top: calc(100% + 0.75rem);
+			left: 50%;
+			transform: translateX(-50%);
+			max-width: calc(100vw - 1rem);
+			padding: 0.25rem 0.625rem;
+			border-radius: 1rem;
+			background: rgba(22, 22, 22, 0.85);
+			color: var(--cds-text-01, #f4f4f4);
+			pointer-events: none;
 		}
 	}
 
