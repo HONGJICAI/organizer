@@ -112,6 +112,12 @@ export async function setupMock(authRequired: boolean) {
 		string,
 		{ added: number; read: number; readDays: number; deleted: number; deletedSize: number }
 	>();
+	// Stable per page, so revisiting a page shows the same numbers. Every 7th
+	// page is a low-resolution PNG, to show what an odd page looks like.
+	const mockPageInfo = (id: number, page: number) =>
+		(id + page) % 7 === 0
+			? { width: 800, height: 1131, format: 'PNG' }
+			: { width: 1600 + (id % 3) * 200, height: 2400 + (id % 3) * 300, format: 'JPEG' };
 	const findComic = (id: string | readonly string[] | undefined) =>
 		id !== undefined ? comics.find((c) => c.id === Number(id)) : undefined;
 	const findImage = (id: string | readonly string[] | undefined) =>
@@ -479,6 +485,14 @@ export async function setupMock(authRequired: boolean) {
 			}));
 			return HttpResponse.json({ pageDetails });
 		}),
+		http.get('/api/comics/:id/pages/:page/info', async ({ params }) => {
+			await delay(150);
+			const comic = findComic(params.id);
+			const page = Number(params.page);
+			if (!comic || page < 1 || page > comic.page)
+				return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			return HttpResponse.json(mockPageInfo(comic.id, page));
+		}),
 		http.put('/api/comics/:id/progress', async ({ params, request }) => {
 			const comic = findComic(params.id);
 			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
@@ -542,6 +556,14 @@ export async function setupMock(authRequired: boolean) {
 				size: faker.number.int({ min: 40_000, max: 1_500_000 })
 			}));
 			return HttpResponse.json({ pageDetails });
+		}),
+		http.get('/api/images/:id/pages/:page/info', async ({ params }) => {
+			await delay(150);
+			const image = findImage(params.id);
+			const page = Number(params.page);
+			if (!image || page < 1 || page > image.page)
+				return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
+			return HttpResponse.json(mockPageInfo(image.id, page));
 		}),
 		http.delete('/api/images/:id', async ({ params }) => {
 			await delay(500);

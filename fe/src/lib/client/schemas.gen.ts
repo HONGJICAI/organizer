@@ -776,6 +776,28 @@ export const LoginResponseSchema = {
     title: 'LoginResponse'
 } as const;
 
+export const PageInfoResponseSchema = {
+    properties: {
+        width: {
+            type: 'integer',
+            title: 'Width'
+        },
+        height: {
+            type: 'integer',
+            title: 'Height'
+        },
+        format: {
+            type: 'string',
+            title: 'Format',
+            description: 'Pillow format name, e.g. JPEG, PNG, WEBP'
+        }
+    },
+    type: 'object',
+    required: ['width', 'height', 'format'],
+    title: 'PageInfoResponse',
+    description: 'Original dimensions and format of one page image'
+} as const;
+
 export const ProgressRequestSchema = {
     properties: {
         position: {

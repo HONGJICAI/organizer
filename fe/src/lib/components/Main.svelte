@@ -60,6 +60,7 @@
 			{/if}
 			{#if viewerState.maxPage > 0 && viewerState.pageDetails.length > 0}
 				{@const info = viewerState.pageDetails[viewerState.page - 1]}
+				{@const dims = viewerState.pageInfos[viewerState.page]}
 				<button
 					class="viewer-info"
 					class:open={config.showPageInfo}
@@ -74,6 +75,7 @@
 					<Information size={16} />
 					{#if config.showPageInfo && info}
 						<span class="viewer-info-name" title={info.name}>{info.name}</span>
+						{#if dims}<span>· {dims.width}×{dims.height} {dims.format}</span>{/if}
 						<span>· {formatBytes(info.size)}</span>
 					{/if}
 				</button>
