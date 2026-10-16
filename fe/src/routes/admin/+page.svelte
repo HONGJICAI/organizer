@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { SystemService } from '$lib/client';
-	import type { CoverRegenStatus, ScanStatusResponse, TasksResponse } from '$lib/client';
+	import type {
+		CoverRegenStatus,
+		JobInfo,
+		JobsResponse,
+		ScanStatusResponse,
+		TasksResponse
+	} from '$lib/client';
 	import { ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
@@ -14,7 +20,7 @@
 		Tag,
 		Tile
 	} from 'carbon-components-svelte';
-	import { Home, Image as ImageIcon, Renew } from 'carbon-icons-svelte';
+	import { Close, Home, Image as ImageIcon, Renew } from 'carbon-icons-svelte';
 
 	let scan = $state<ScanStatusResponse | null>(null);
 	let tasks = $state<TasksResponse | null>(null);
@@ -25,6 +31,8 @@
 	let coversWereRunning = false;
 	let confirmCovers = $state(false);
 	let startingCovers = $state(false);
+	let jobs = $state<JobsResponse | null>(null);
+	let cancelling = $state<number | null>(null);
 
 	function fmtTime(iso: string | null | undefined): string {
 		if (!iso) return '—';
@@ -59,10 +67,20 @@
 		return covers?.running ?? false;
 	}
 
-	// Poll faster while a scan or cover regeneration is in flight, slow to a
-	// heartbeat when idle, so the metrics stay live without hammering the backend.
+	async function loadJobs() {
+		const { data, error } = await SystemService.listJobs();
+		if (!error && data) jobs = data;
+		return !!jobs && (!!jobs.running || jobs.queued.length > 0);
+	}
+
+	// Poll faster while a job runs or waits, slow to a heartbeat when idle, so
+	// the metrics stay live without hammering the backend.
 	async function poll() {
-		const [running, coversRunning] = await Promise.all([loadScan(), loadCovers()]);
+		const [running, coversRunning, busy] = await Promise.all([
+			loadScan(),
+			loadCovers(),
+			loadJobs()
+		]);
 		if ((wasRunning && !running) || (coversWereRunning && !coversRunning)) {
 			// A scan may have imported or reconciled away media, and a cover run
 			// bumps every comic's cover version; drop the cached lists so the next
@@ -71,7 +89,7 @@
 		}
 		wasRunning = running;
 		coversWereRunning = coversRunning;
-		timer = setTimeout(poll, running || coversRunning ? 1000 : 5000);
+		timer = setTimeout(poll, running || coversRunning || busy ? 1000 : 5000);
 	}
 
 	// `missing` only fills in covers whose file doesn't exist; `all` rewrites
@@ -82,14 +100,10 @@
 		const { data, error } = await SystemService.regenerateCovers({ query: { mode } });
 		startingCovers = false;
 		if (error || !data) {
-			addNotification(new ErrorNotification({ subtitle: 'Failed to start cover regeneration' }));
+			addNotification(new ErrorNotification({ subtitle: 'Failed to queue cover regeneration' }));
 			return;
 		}
-		if (data.status === 'started') {
-			addNotification(new SuccessNotification({ subtitle: data.message }));
-		} else {
-			addNotification(new ErrorNotification({ subtitle: data.message }));
-		}
+		addNotification(new SuccessNotification({ subtitle: data.message }));
 		clearTimeout(timer);
 		poll();
 	}
@@ -99,18 +113,60 @@
 		const { data, error } = await SystemService.triggerScan({ query: { media_type: 'all' } });
 		triggering = false;
 		if (error || !data) {
-			addNotification(new ErrorNotification({ subtitle: 'Failed to start scan' }));
+			addNotification(new ErrorNotification({ subtitle: 'Failed to queue scan' }));
 			return;
 		}
-		if (data.status === 'already_running') {
-			addNotification(new SuccessNotification({ subtitle: 'A scan is already running' }));
-		} else {
-			addNotification(new SuccessNotification({ subtitle: 'Scan started' }));
-		}
+		addNotification(new SuccessNotification({ subtitle: data.message }));
 		clearTimeout(timer);
 		poll();
 		loadTasks();
 	}
+
+	async function cancelJob(job: JobInfo) {
+		cancelling = job.id;
+		const { data, error } = await SystemService.cancelJob({ path: { id: job.id } });
+		cancelling = null;
+		if (error || !data) {
+			addNotification(new ErrorNotification({ subtitle: `Couldn't cancel ${jobLabel(job)}` }));
+		} else {
+			addNotification(
+				new SuccessNotification({
+					subtitle:
+						data.status === 'cancelling'
+							? `Stopping ${jobLabel(job)}…`
+							: `Cancelled ${jobLabel(job)}`
+				})
+			);
+		}
+		clearTimeout(timer);
+		poll();
+	}
+
+	function jobLabel(job: JobInfo): string {
+		if (job.kind === 'scan') return `Scan (${job.params.media_type ?? 'all'})`;
+		return job.params.mode === 'missing' ? 'Covers (missing only)' : 'Covers (all)';
+	}
+
+	function jobDuration(job: JobInfo): number | null {
+		if (!job.started_at) return null;
+		const end = job.finished_at ? Date.parse(job.finished_at) : Date.now();
+		return (end - Date.parse(job.started_at)) / 1000;
+	}
+
+	function historyDetail(job: JobInfo): string {
+		const took = jobDuration(job);
+		return took === null
+			? fmtTime(job.finished_at)
+			: `${fmtTime(job.finished_at)} · took ${fmtDuration(took)}`;
+	}
+
+	const stateTag: Record<JobInfo['state'], 'blue' | 'gray' | 'green' | 'red' | 'warm-gray'> = {
+		running: 'blue',
+		queued: 'gray',
+		succeeded: 'green',
+		failed: 'red',
+		cancelled: 'warm-gray'
+	};
 
 	onMount(() => {
 		poll();
@@ -131,6 +187,71 @@
 <h1>System</h1>
 
 <div class="grid">
+	<Tile class="card">
+		<div class="card-head">
+			<h3>Jobs</h3>
+			{#if jobs?.running}
+				<Tag type="blue">Busy</Tag>
+			{:else}
+				<Tag type="gray">Idle</Tag>
+			{/if}
+		</div>
+		<p class="muted note">
+			Scans and cover runs share one queue and run one at a time. Waiting jobs can be cancelled; a
+			running cover run stops after the comic in hand, a running scan can't be stopped.
+		</p>
+		{#if jobs?.running}
+			{@const job = jobs.running}
+			<div class="job">
+				<Tag type="blue" size="sm">Running</Tag>
+				<span class="job-label">{jobLabel(job)}</span>
+				<span class="muted">{fmtDuration(jobDuration(job))}</span>
+				{#if job.cancellable}
+					<Button
+						kind="ghost"
+						size="small"
+						icon={Close}
+						iconDescription="Stop"
+						disabled={cancelling === job.id}
+						on:click={() => cancelJob(job)}
+					/>
+				{/if}
+			</div>
+		{/if}
+		{#each jobs?.queued ?? [] as job (job.id)}
+			<div class="job">
+				<Tag type="gray" size="sm">Queued</Tag>
+				<span class="job-label">{jobLabel(job)}</span>
+				<Button
+					kind="ghost"
+					size="small"
+					icon={Close}
+					iconDescription="Cancel"
+					disabled={cancelling === job.id}
+					on:click={() => cancelJob(job)}
+				/>
+			</div>
+		{/each}
+		{#if !jobs?.running && !jobs?.queued.length}
+			<p class="muted note">Nothing running or waiting.</p>
+		{/if}
+		{#if jobs?.history.length}
+			<h4>Recent</h4>
+			<ul class="failures">
+				{#each jobs.history as job (job.id)}
+					<li>
+						<span class="job">
+							<Tag type={stateTag[job.state]} size="sm">{job.state}</Tag>
+							<span class="job-label">{jobLabel(job)}</span>
+						</span>
+						<span class="muted">{historyDetail(job)}</span>
+						{#if job.error}<span class="err" title={job.error}>{job.error}</span>{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</Tile>
+
 	<Tile class="card">
 		<div class="card-head">
 			<h3>Media scan</h3>
@@ -195,8 +316,8 @@
 			{/if}
 		{/if}
 
-		<Button icon={Renew} disabled={triggering || scan?.running} on:click={triggerScan}>
-			{scan?.running ? 'Scan in progress…' : 'Scan now'}
+		<Button icon={Renew} disabled={triggering} on:click={triggerScan}>
+			{scan?.running ? 'Queue another scan' : 'Scan now'}
 		</Button>
 	</Tile>
 
@@ -235,6 +356,8 @@
 			<h3>Covers</h3>
 			{#if covers?.running}
 				<Tag type="blue">Running</Tag>
+			{:else if covers?.cancelled}
+				<Tag type="warm-gray">Cancelled</Tag>
 			{:else if covers?.failed}
 				<Tag type="red">{covers.failed} failed</Tag>
 			{:else if covers?.finished_at}
@@ -281,15 +404,13 @@
 		<div class="buttons">
 			<Button
 				icon={ImageIcon}
-				disabled={startingCovers || covers?.running || scan?.running}
+				disabled={startingCovers}
 				on:click={() => regenerateCovers('missing')}
 			>
-				{covers?.running ? 'Generating…' : 'Generate missing'}
+				Generate missing
 			</Button>
-			<Button
-				kind="tertiary"
-				disabled={startingCovers || covers?.running || scan?.running}
-				on:click={() => (confirmCovers = true)}>Regenerate all</Button
+			<Button kind="tertiary" disabled={startingCovers} on:click={() => (confirmCovers = true)}
+				>Regenerate all</Button
 			>
 		</div>
 	</Tile>
@@ -414,6 +535,20 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
+	}
+
+	.job {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+		font-size: 0.875rem;
+	}
+
+	.job-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.note {

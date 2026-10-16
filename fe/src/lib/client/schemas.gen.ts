@@ -438,7 +438,7 @@ export const CoverRegenResponseSchema = {
     properties: {
         status: {
             type: 'string',
-            enum: ['started', 'already_running', 'scan_running'],
+            enum: ['started', 'queued', 'already_queued'],
             title: 'Status'
         },
         message: {
@@ -456,6 +456,12 @@ export const CoverRegenStatusSchema = {
         running: {
             type: 'boolean',
             title: 'Running'
+        },
+        cancelled: {
+            type: 'boolean',
+            title: 'Cancelled',
+            description: 'The last run was cancelled before finishing',
+            default: false
         },
         mode: {
             anyOf: [
@@ -752,6 +758,126 @@ export const ImageRenameResponseSchema = {
     title: 'ImageRenameResponse'
 } as const;
 
+export const JobCancelResponseSchema = {
+    properties: {
+        status: {
+            type: 'string',
+            enum: ['cancelled', 'cancelling'],
+            title: 'Status'
+        }
+    },
+    type: 'object',
+    required: ['status'],
+    title: 'JobCancelResponse'
+} as const;
+
+export const JobInfoSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        kind: {
+            type: 'string',
+            enum: ['scan', 'covers'],
+            title: 'Kind'
+        },
+        params: {
+            additionalProperties: {
+                type: 'string'
+            },
+            type: 'object',
+            title: 'Params'
+        },
+        state: {
+            type: 'string',
+            enum: ['queued', 'running', 'succeeded', 'failed', 'cancelled'],
+            title: 'State'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        finished_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Finished At'
+        },
+        error: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error'
+        },
+        cancellable: {
+            type: 'boolean',
+            title: 'Cancellable'
+        }
+    },
+    type: 'object',
+    required: ['id', 'kind', 'params', 'state', 'created_at', 'cancellable'],
+    title: 'JobInfo'
+} as const;
+
+export const JobsResponseSchema = {
+    properties: {
+        running: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/JobInfo'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        },
+        queued: {
+            items: {
+                '$ref': '#/components/schemas/JobInfo'
+            },
+            type: 'array',
+            title: 'Queued'
+        },
+        history: {
+            items: {
+                '$ref': '#/components/schemas/JobInfo'
+            },
+            type: 'array',
+            title: 'History',
+            description: 'Most recent first'
+        }
+    },
+    type: 'object',
+    required: ['queued', 'history'],
+    title: 'JobsResponse',
+    description: 'The heavy-job queue: what runs now, what waits, what ran recently'
+} as const;
+
 export const LoginRequestSchema = {
     properties: {
         password: {
@@ -835,6 +961,7 @@ export const ScanResponseSchema = {
     properties: {
         status: {
             type: 'string',
+            enum: ['started', 'queued', 'already_queued'],
             title: 'Status'
         },
         message: {

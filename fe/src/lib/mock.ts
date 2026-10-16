@@ -123,7 +123,7 @@ export async function setupMock(authRequired: boolean) {
 	const findImage = (id: string | readonly string[] | undefined) =>
 		id !== undefined ? images.find((c) => c.id === Number(id)) : undefined;
 
-	// Mock scan state — `triggerScan` kicks off a short fake run that the
+	// Mock scan state — a queued scan job starts a short fake run that the
 	// admin page's polling watches progress through (mirrors the real
 	// running -> phases -> finished lifecycle, including open-timing metrics).
 	const scanState = {
@@ -139,6 +139,8 @@ export async function setupMock(authRequired: boolean) {
 	// couple of comics fail so the admin page's failure list has content.
 	const coverState = {
 		running: false,
+		cancelled: false,
+		cancelRequested: false,
 		mode: null as string | null,
 		total: 0,
 		processed: 0,
@@ -147,8 +149,151 @@ export async function setupMock(authRequired: boolean) {
 		finishedAt: null as string | null
 	};
 
+	// Mock heavy-job queue (core/jobs.py): one job runs at a time, identical
+	// waiting jobs are deduped, finished ones go to a short history.
+	type MockJob = {
+		id: number;
+		kind: 'scan' | 'covers';
+		params: Record<string, string>;
+		state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+		created_at: string;
+		started_at: string | null;
+		finished_at: string | null;
+		error: string | null;
+		cancellable: boolean;
+	};
+	const jobQueue = {
+		nextId: 1,
+		running: null as MockJob | null,
+		queued: [] as MockJob[],
+		history: [] as MockJob[]
+	};
+	const startJob = (job: MockJob) => {
+		job.state = 'running';
+		job.started_at = new Date().toISOString();
+		job.cancellable = job.kind === 'covers';
+		jobQueue.running = job;
+		if (job.kind === 'scan') {
+			Object.assign(scanState, {
+				running: true,
+				startedAt: job.started_at,
+				finishedAt: null,
+				processed: 0,
+				total: 100,
+				startMs: Date.now()
+			});
+			return;
+		}
+		const mode = job.params.mode;
+		// Mock covers are all "present" except a handful, so missing mode
+		// processes a short run.
+		const live = comics.filter((c) => !c.archived && !c.missing).slice(mode === 'missing' ? -6 : 0);
+		Object.assign(coverState, {
+			running: true,
+			cancelled: false,
+			cancelRequested: false,
+			mode,
+			total: live.length,
+			processed: 0,
+			failures: live.slice(-2).map((c, i) => ({
+				id: c.id,
+				name: c.name,
+				reason: i === 0 ? 'No page could be rendered as a cover' : 'Bad CRC-32 for file 001.jpg'
+			})),
+			startedAt: job.started_at,
+			finishedAt: null
+		});
+	};
+	// Move a finished job to history and start the next one.
+	const tickJobs = () => {
+		const job = jobQueue.running;
+		if (job) {
+			const busy = job.kind === 'scan' ? scanState.running : coverState.running;
+			if (busy) return;
+			job.state = job.kind === 'covers' && coverState.cancelled ? 'cancelled' : 'succeeded';
+			job.finished_at = new Date().toISOString();
+			job.cancellable = false;
+			jobQueue.history = [job, ...jobQueue.history].slice(0, 20);
+			jobQueue.running = null;
+		}
+		const next = jobQueue.queued.shift();
+		if (next) startJob(next);
+	};
+	const enqueueJob = (kind: MockJob['kind'], params: Record<string, string>) => {
+		tickJobs();
+		const waiting = jobQueue.queued.find(
+			(j) => j.kind === kind && JSON.stringify(j.params) === JSON.stringify(params)
+		);
+		if (waiting) return 'already_queued' as const;
+		const job: MockJob = {
+			id: jobQueue.nextId++,
+			kind,
+			params,
+			state: 'queued',
+			created_at: new Date().toISOString(),
+			started_at: null,
+			finished_at: null,
+			error: null,
+			cancellable: true
+		};
+		if (jobQueue.running) {
+			jobQueue.queued.push(job);
+			return 'queued' as const;
+		}
+		startJob(job);
+		return 'started' as const;
+	};
+	const queueMessage = (status: 'started' | 'queued' | 'already_queued', what: string) =>
+		({
+			started: `${what} started`,
+			queued: `${what} queued behind the running job`,
+			already_queued: `${what} is already waiting in the queue`
+		})[status];
+
 	const handlers = [
+		http.get('/api/system/jobs', async () => {
+			await delay(100);
+			tickJobs();
+			return HttpResponse.json({
+				running: jobQueue.running,
+				queued: jobQueue.queued,
+				history: jobQueue.history
+			});
+		}),
+		http.delete('/api/system/jobs/:id', async ({ params }) => {
+			await delay(150);
+			const id = Number(params.id);
+			const idx = jobQueue.queued.findIndex((j) => j.id === id);
+			if (idx !== -1) {
+				const [job] = jobQueue.queued.splice(idx, 1);
+				Object.assign(job, {
+					state: 'cancelled',
+					finished_at: new Date().toISOString(),
+					cancellable: false
+				});
+				jobQueue.history = [job, ...jobQueue.history].slice(0, 20);
+				return HttpResponse.json({ status: 'cancelled' });
+			}
+			const running = jobQueue.running;
+			if (!running || running.id !== id) {
+				return HttpResponse.json({ msg: 'No queued or running job with that id' }, { status: 404 });
+			}
+			if (running.kind !== 'covers') {
+				return HttpResponse.json(
+					{ msg: "This job can't be cancelled while it runs" },
+					{ status: 400 }
+				);
+			}
+			coverState.cancelRequested = true;
+			running.cancellable = false;
+			return HttpResponse.json({ status: 'cancelling' });
+		}),
 		http.get('/api/system/covers', async () => {
+			if (coverState.running && coverState.cancelRequested) {
+				coverState.running = false;
+				coverState.cancelled = true;
+				coverState.finishedAt = new Date().toISOString();
+			}
 			if (coverState.running) {
 				coverState.processed = Math.min(coverState.total, coverState.processed + 9);
 				if (coverState.processed >= coverState.total) {
@@ -158,11 +303,13 @@ export async function setupMock(authRequired: boolean) {
 					for (const c of comics) c.entityUpdateTime = now;
 				}
 			}
+			tickJobs();
 			const failures = coverState.failures.filter(
 				(_, i) => coverState.processed >= ((i + 1) * coverState.total) / 3
 			);
 			return HttpResponse.json({
 				running: coverState.running,
+				cancelled: coverState.cancelled,
 				mode: coverState.mode,
 				total: coverState.total,
 				processed: coverState.processed,
@@ -174,45 +321,13 @@ export async function setupMock(authRequired: boolean) {
 		}),
 		http.post('/api/system/covers', async ({ request }) => {
 			await delay(200);
-			if (scanState.running) {
-				return HttpResponse.json({
-					status: 'scan_running',
-					message: 'Wait for the running scan to finish'
-				});
-			}
-			if (coverState.running) {
-				return HttpResponse.json({
-					status: 'already_running',
-					message: 'Covers are already being regenerated'
-				});
-			}
 			const mode = new URL(request.url).searchParams.get('mode') ?? 'all';
 			if (mode !== 'all' && mode !== 'missing') {
 				return HttpResponse.json({ msg: 'Invalid mode' }, { status: 400 });
 			}
-			// Mock covers are all "present" except a handful, so missing mode
-			// processes a short run.
-			const live = comics
-				.filter((c) => !c.archived && !c.missing)
-				.slice(mode === 'missing' ? -6 : 0);
-			Object.assign(coverState, {
-				running: true,
-				mode,
-				total: live.length,
-				processed: 0,
-				failures: live.slice(-2).map((c, i) => ({
-					id: c.id,
-					name: c.name,
-					reason: i === 0 ? 'No page could be rendered as a cover' : 'Bad CRC-32 for file 001.jpg'
-				})),
-				startedAt: new Date().toISOString(),
-				finishedAt: null
-			});
-			return HttpResponse.json({
-				status: 'started',
-				message:
-					mode === 'missing' ? 'Missing cover generation started' : 'Cover regeneration started'
-			});
+			const status = enqueueJob('covers', { mode });
+			const what = mode === 'missing' ? 'Missing cover generation' : 'Cover regeneration';
+			return HttpResponse.json({ status, message: queueMessage(status, what) });
 		}),
 		http.get('/api/system/scan', async () => {
 			if (scanState.running) {
@@ -222,6 +337,7 @@ export async function setupMock(authRequired: boolean) {
 					scanState.finishedAt = new Date().toISOString();
 				}
 			}
+			tickJobs();
 			const count = scanState.processed;
 			const durations = Array.from({ length: count }, () =>
 				faker.number.float({ min: 5, max: 900 })
@@ -268,21 +384,11 @@ export async function setupMock(authRequired: boolean) {
 						: []
 			});
 		}),
-		http.post('/api/system/scan', async () => {
+		http.post('/api/system/scan', async ({ request }) => {
 			await delay(200);
-			if (scanState.running) {
-				return HttpResponse.json({
-					status: 'already_running',
-					message: 'A scan is already in progress'
-				});
-			}
-			scanState.running = true;
-			scanState.startedAt = new Date().toISOString();
-			scanState.finishedAt = null;
-			scanState.processed = 0;
-			scanState.total = 100;
-			scanState.startMs = Date.now();
-			return HttpResponse.json({ status: 'started', message: 'Scan started for: all' });
+			const mediaType = new URL(request.url).searchParams.get('media_type') ?? 'all';
+			const status = enqueueJob('scan', { media_type: mediaType });
+			return HttpResponse.json({ status, message: queueMessage(status, `Scan (${mediaType})`) });
 		}),
 		http.get('/api/system/tasks', async () => {
 			await delay(200);

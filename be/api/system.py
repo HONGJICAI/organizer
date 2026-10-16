@@ -1,11 +1,12 @@
 """System health and debug endpoints"""
 import os
-import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Literal, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from core.exceptions import abort
+from core.jobs import Job, jobs
 from core.scan_progress import progress
 from covers import regen
 from tasks.backup import backup_database
@@ -14,11 +15,9 @@ from tasks.backup import backup_database
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Scan state — live progress lives in core.scan_progress; this lock only
-# guards the "is a scan already running" gate so concurrent triggers serialize.
+# Heavy jobs — scans and cover runs share core.jobs' single-lane queue; live
+# progress stays in core.scan_progress and covers.regen.
 # ---------------------------------------------------------------------------
-
-_scan_lock = threading.Lock()
 
 
 def _run_scan(media_type: str):
@@ -45,20 +44,31 @@ def _run_scan(media_type: str):
         progress.finish({"status": "error", "message": str(e)})
 
 
-def start_scan(media_type: str) -> bool:
-    """Launch a background scan unless one is already running.
+def _scan_job(job: Job):
+    media_type = job.params["media_type"]
+    progress.start(media_type)
+    _run_scan(media_type)
+    result = progress.last_result or {}
+    if result.get("status") == "error":
+        raise RuntimeError(result.get("message") or "Scan failed")
 
-    Returns True if a scan was started, False if one was already in progress.
-    Shared by the HTTP endpoint, the startup scan, and the daily scheduled scan
-    so they all go through the same lock and never run concurrently.
+
+def _covers_job(job: Job):
+    regen.run(job.params["mode"])
+
+
+jobs.register("scan", _scan_job)
+jobs.register("covers", _covers_job, cancel=regen.cancel)
+
+
+def start_scan(media_type: str) -> str:
+    """Queue a scan: ``"started"``, ``"queued"`` behind another job, or
+    ``"already_queued"`` when the same scan is already waiting.
+
+    Shared by the HTTP endpoint, the startup scan and the daily scan, so scans
+    never overlap each other or a cover run.
     """
-    with _scan_lock:
-        if progress.running:
-            return False
-        progress.start(media_type)
-
-    threading.Thread(target=_run_scan, args=(media_type,), daemon=True).start()
-    return True
+    return jobs.submit("scan", {"media_type": media_type})[1]
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +81,7 @@ class HealthResponse(BaseModel):
 
 
 class ScanResponse(BaseModel):
-    status: str
+    status: Literal["started", "queued", "already_queued"]
     message: str
 
 
@@ -127,6 +137,7 @@ class CoverFailure(BaseModel):
 
 class CoverRegenStatus(BaseModel):
     running: bool
+    cancelled: bool = Field(default=False, description="The last run was cancelled before finishing")
     mode: Optional[Literal["all", "missing"]] = None
     total: int
     processed: int
@@ -136,9 +147,35 @@ class CoverRegenStatus(BaseModel):
     finished_at: Optional[datetime] = None
 
 
+QueueStatus = Literal["started", "queued", "already_queued"]
+
+
 class CoverRegenResponse(BaseModel):
-    status: Literal["started", "already_running", "scan_running"]
+    status: QueueStatus
     message: str
+
+
+class JobInfo(BaseModel):
+    id: int
+    kind: Literal["scan", "covers"]
+    params: Dict[str, str]
+    state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    error: Optional[str] = None
+    cancellable: bool
+
+
+class JobsResponse(BaseModel):
+    """The heavy-job queue: what runs now, what waits, what ran recently"""
+    running: Optional[JobInfo] = None
+    queued: List[JobInfo]
+    history: List[JobInfo] = Field(description="Most recent first")
+
+
+class JobCancelResponse(BaseModel):
+    status: Literal["cancelled", "cancelling"]
 
 
 class TasksResponse(BaseModel):
@@ -162,10 +199,9 @@ def health_check() -> HealthResponse:
 def trigger_scan(
     media_type: Literal["comics", "videos", "images", "all"] = "all",
 ) -> ScanResponse:
-    """Start a background scan to import new media files into the database."""
-    if not start_scan(media_type):
-        return ScanResponse(status="already_running", message="A scan is already in progress")
-    return ScanResponse(status="started", message=f"Scan started for: {media_type}")
+    """Queue a background scan to import new media files into the database."""
+    status = start_scan(media_type)
+    return ScanResponse(status=status, message=_queue_message(status, f"Scan ({media_type})"))
 
 
 @router.get("/api/system/scan", tags=["system"])
@@ -176,21 +212,58 @@ def scan_status() -> ScanStatusResponse:
 
 @router.post("/api/system/covers", tags=["system"])
 def regenerate_covers(mode: Literal["all", "missing"] = "all") -> CoverRegenResponse:
-    """Regenerate live comics' covers in the background: every one, or only those without a cover file."""
-    # A scan writes covers for the comics it imports and hands out ids that
-    # aren't committed yet; wait for it rather than race it.
-    if progress.running:
-        return CoverRegenResponse(status="scan_running", message="Wait for the running scan to finish")
-    if not regen.start(mode):
-        return CoverRegenResponse(status="already_running", message="Covers are already being regenerated")
+    """Queue a cover run: every live comic's cover, or only those without a cover file."""
+    _, status = jobs.submit("covers", {"mode": mode})
     what = "Missing cover generation" if mode == "missing" else "Cover regeneration"
-    return CoverRegenResponse(status="started", message=f"{what} started")
+    return CoverRegenResponse(status=status, message=_queue_message(status, what))
 
 
 @router.get("/api/system/covers", tags=["system"])
 def cover_regen_status() -> CoverRegenStatus:
     """Progress of the running (or most recent) cover regeneration."""
     return CoverRegenStatus(**regen.snapshot())
+
+
+def _queue_message(status: str, what: str) -> str:
+    return {
+        "started": f"{what} started",
+        "queued": f"{what} queued behind the running job",
+        "already_queued": f"{what} is already waiting in the queue",
+    }[status]
+
+
+def _job_info(job: Job) -> JobInfo:
+    return JobInfo(
+        id=job.id, kind=job.kind, params=job.params, state=job.state,
+        created_at=job.created_at, started_at=job.started_at, finished_at=job.finished_at,
+        error=job.error, cancellable=jobs.cancellable(job),
+    )
+
+
+@router.get("/api/system/jobs", tags=["system"])
+def list_jobs() -> JobsResponse:
+    """The running heavy job (scan or cover run), the queue behind it, and recent history."""
+    snap = jobs.snapshot()
+    return JobsResponse(
+        running=_job_info(snap["running"]) if snap["running"] else None,
+        queued=[_job_info(j) for j in snap["queued"]],
+        history=[_job_info(j) for j in snap["history"]],
+    )
+
+
+@router.delete(
+    "/api/system/jobs/{id}",
+    tags=["system"],
+    responses={400: {"model": dict}, 404: {"model": dict}},
+)
+def cancel_job(id: int) -> JobCancelResponse:
+    """Cancel a queued job, or ask a running cover run to stop. Running scans can't be cancelled."""
+    result = jobs.cancel(id)
+    if result is None:
+        abort(404, "No queued or running job with that id")
+    if result == "not_cancellable":
+        abort(400, "This job can't be cancelled while it runs")
+    return JobCancelResponse(status=result)
 
 
 @router.get("/api/system/tasks", tags=["system"])

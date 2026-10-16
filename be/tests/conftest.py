@@ -118,6 +118,17 @@ def image_snapshot_path(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def clear_job_queue():
+    # Let a job a test started finish before the next test, so it can't touch
+    # that test's database or progress state.
+    from core.jobs import jobs
+    jobs.reset()
+    yield
+    jobs.wait_idle(10)
+    jobs.reset()
+
+
+@pytest.fixture(autouse=True)
 def clear_module_caches():
     from core.scan_progress import progress
     comicfile.comic_cache.clear()
@@ -151,14 +162,14 @@ def engine_and_client(tmp_path, monkeypatch):
     from main import app
     app.dependency_overrides[db.get_session] = get_session_override
 
-    # Suppress only the boot scan: swap in a no-op, start the client (which
-    # fires the lifespan thread), then restore the real function so that tests
-    # calling /api/system/scan get the genuine implementation.
+    # Suppress only the boot scan: lifespan queues it via api.system.start_scan,
+    # so swap that for a no-op while the client starts, then restore it so
+    # tests calling /api/system/scan get the genuine implementation.
     import api.system as _sys_mod
-    real_run_scan = _sys_mod._run_scan
-    _sys_mod._run_scan = lambda *a, **kw: None
+    real_start_scan = _sys_mod.start_scan
+    _sys_mod.start_scan = lambda *a, **kw: "started"
     with TestClient(app) as c:
-        _sys_mod._run_scan = real_run_scan
+        _sys_mod.start_scan = real_start_scan
         yield test_engine, c
 
     app.dependency_overrides.clear()
