@@ -53,20 +53,19 @@ export function filterGroups<G extends SizedGroup>(groups: G[], filter: DupFilte
 	return groups.filter((g) => g.exact === (filter === 'exact'));
 }
 
-/** Space freed by deleting every deletable copy except the keeper. */
-export function reclaimable(group: SizedGroup): number {
-	const ids = new Set(deletable(group.items, group.keepId));
-	return group.items.reduce((sum, c) => (ids.has(c.id) ? sum + c.size : sum), 0);
+/** Total size of every copy in the group. */
+export function groupSize(group: SizedGroup): number {
+	return group.items.reduce((sum, c) => sum + c.size, 0);
 }
 
-/** Groups by reclaimable space, largest first; each group's copies largest first. */
-export function sortBySavings<G extends SizedGroup>(groups: G[]): G[] {
+/** Groups by total size, largest first; each group's copies largest first. */
+export function sortBySize<G extends SizedGroup>(groups: G[]): G[] {
 	return groups
 		.map((g) => ({
 			g: { ...g, items: [...g.items].sort((a, b) => b.size - a.size) },
-			saved: reclaimable(g)
+			size: groupSize(g)
 		}))
-		.sort((a, b) => b.saved - a.saved)
+		.sort((a, b) => b.size - a.size)
 		.map(({ g }) => g);
 }
 

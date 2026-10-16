@@ -4,9 +4,9 @@ import {
 	filterGroups,
 	keepOnly,
 	pageMismatch,
-	reclaimable,
+	groupSize,
 	selectedIn,
-	sortBySavings,
+	sortBySize,
 	suggestedSelection
 } from './duplicateSelection';
 
@@ -82,22 +82,22 @@ describe('filterGroups', () => {
 	});
 });
 
-describe('reclaimable', () => {
-	it('sums deletable copies, skipping the keeper and favorites', () => {
-		expect(reclaimable(small)).toBe(3);
-		expect(reclaimable(big)).toBe(20);
+describe('groupSize', () => {
+	it('sums every copy, keeper and favorites included', () => {
+		expect(groupSize(small)).toBe(8);
+		expect(groupSize(big)).toBe(100);
 	});
 });
 
-describe('sortBySavings', () => {
-	it('orders groups by reclaimable space and copies by size', () => {
-		const sorted = sortBySavings([small, big]);
+describe('sortBySize', () => {
+	it('orders groups by total size and copies by size', () => {
+		const sorted = sortBySize([small, big]);
 		expect(sorted.map((g) => g.keepId)).toEqual([4, 1]);
 		expect(sorted[0].items.map((c) => c.id)).toEqual([5, 4, 3]);
 	});
 
 	it('does not mutate the input', () => {
-		sortBySavings([small, big]);
+		sortBySize([small, big]);
 		expect(big.items.map((c) => c.id)).toEqual([3, 4, 5]);
 	});
 });
