@@ -1,11 +1,12 @@
 """System health and debug endpoints"""
 import os
-import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Literal, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from core.exceptions import abort
+from core.jobs import Job, jobs
 from core.scan_progress import progress
 from covers import regen
 from tasks.backup import backup_database
@@ -14,51 +15,91 @@ from tasks.backup import backup_database
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Scan state — live progress lives in core.scan_progress; this lock only
-# guards the "is a scan already running" gate so concurrent triggers serialize.
+# Heavy jobs — scans and cover runs share core.jobs' single-lane queue; live
+# progress stays in core.scan_progress and covers.regen.
 # ---------------------------------------------------------------------------
-
-_scan_lock = threading.Lock()
 
 
 def _run_scan(media_type: str):
+    """Scan the requested media, each type in its own phase.
+
+    A failing phase is recorded and the next one still runs, so an unreadable
+    image folder doesn't stop comics and videos from being scanned. The result
+    is "success", "partial" (some phases failed) or "error" (all did), with
+    per-phase outcomes under ``phases`` and the failures joined in ``message``.
+    """
     from loader import ComicLoader, VideoLoader
     from api.images import bootstrap as bootstrap_images
 
-    results = {}
-    try:
-        # Images first: bootstrap is cheap (one readdir per folder) and the
-        # in-memory store is empty until it runs, while comic/video scans can
-        # take a while without leaving the UI empty.
-        if media_type in ("images", "all"):
-            progress.set_phase("images", 0)
-            bootstrap_images()
-            results["images"] = "done"
-        if media_type in ("comics", "all"):
-            ComicLoader().work()
-            results["comics"] = "done"
-        if media_type in ("videos", "all"):
-            VideoLoader().work()
-            results["videos"] = "done"
-        progress.finish({"status": "success", **results})
-    except Exception as e:
-        progress.finish({"status": "error", "message": str(e)})
+    def images():
+        progress.set_phase("images", 0)
+        bootstrap_images()
+
+    # Images first: bootstrap is cheap (one readdir per folder) and the
+    # in-memory store is empty until it runs, while comic/video scans can take
+    # a while without leaving the UI empty.
+    phases = [
+        ("images", "image", images),
+        ("comics", "comic", lambda: ComicLoader().work()),
+        ("videos", "video", lambda: VideoLoader().work()),
+    ]
+    results, errors = {}, {}
+    for name, media, run in phases:
+        if media_type not in (name, "all"):
+            continue
+        try:
+            run()
+            results[name] = "done"
+        except Exception as e:
+            reason = str(e) or type(e).__name__
+            results[name] = "error"
+            errors[name] = reason
+            progress.add_issue(media, "error", "", f"{name} scan failed: {reason}")
+    if not errors:
+        progress.finish({"status": "success", "phases": results})
+        return
+    progress.finish({
+        "status": "partial" if len(errors) < len(results) else "error",
+        "phases": results,
+        "message": "; ".join(f"{name}: {reason}" for name, reason in errors.items()),
+    })
 
 
-def start_scan(media_type: str) -> bool:
-    """Launch a background scan unless one is already running.
+def _scan_job(job: Job):
+    media_type = job.params["media_type"]
+    progress.start(media_type)
+    _run_scan(media_type)
+    result = progress.last_result or {}
+    if result.get("status") in ("error", "partial"):
+        raise RuntimeError(result.get("message") or "Scan failed")
 
-    Returns True if a scan was started, False if one was already in progress.
-    Shared by the HTTP endpoint, the startup scan, and the daily scheduled scan
-    so they all go through the same lock and never run concurrently.
+
+def _covers_job(job: Job):
+    regen.run(job.params["mode"])
+
+
+def _scan_subsumes(a: Dict[str, str], b: Dict[str, str]) -> bool:
+    # A full scan covers any single media type.
+    return a["media_type"] in ("all", b["media_type"])
+
+
+def _covers_subsumes(a: Dict[str, str], b: Dict[str, str]) -> bool:
+    # Rewriting every cover also writes the missing ones.
+    return a["mode"] in ("all", b["mode"])
+
+
+jobs.register("scan", _scan_job, subsumes=_scan_subsumes)
+jobs.register("covers", _covers_job, cancel=regen.cancel, subsumes=_covers_subsumes)
+
+
+def start_scan(media_type: str) -> str:
+    """Queue a scan: ``"started"``, ``"queued"`` behind another job, or
+    ``"already_queued"`` when the same scan is already waiting.
+
+    Shared by the HTTP endpoint, the startup scan and the daily scan, so scans
+    never overlap each other or a cover run.
     """
-    with _scan_lock:
-        if progress.running:
-            return False
-        progress.start(media_type)
-
-    threading.Thread(target=_run_scan, args=(media_type,), daemon=True).start()
-    return True
+    return jobs.submit("scan", {"media_type": media_type})[1]
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +112,7 @@ class HealthResponse(BaseModel):
 
 
 class ScanResponse(BaseModel):
-    status: str
+    status: Literal["started", "queued", "already_queued"]
     message: str
 
 
@@ -87,8 +128,12 @@ class ScanTiming(BaseModel):
     slowest: List[SlowFile]
 
 
-class SkippedFile(BaseModel):
-    path: str
+class ScanIssue(BaseModel):
+    media: Literal["comic", "video", "image"]
+    level: Literal["skipped", "warning", "error"] = Field(
+        description="skipped: found but not imported; warning: scanned, but something's off; error: a phase failed"
+    )
+    path: str = Field(description="File or folder concerned; empty for a whole-phase error")
     reason: str
 
 
@@ -104,8 +149,8 @@ class ScanStatusResponse(BaseModel):
     duration_seconds: Optional[float] = None
     timing: ScanTiming
     last_result: Optional[dict] = None
-    skipped_count: int = Field(default=0, description="Files the scan found but couldn't import")
-    skipped: List[SkippedFile] = Field(default_factory=list, description="First skipped files only; `skipped_count` counts all")
+    issue_count: int = Field(default=0, description="Problems the scan ran into, all levels")
+    issues: List[ScanIssue] = Field(default_factory=list, description="First issues only; `issue_count` counts all")
 
 
 class DailyScanInfo(BaseModel):
@@ -127,6 +172,7 @@ class CoverFailure(BaseModel):
 
 class CoverRegenStatus(BaseModel):
     running: bool
+    cancelled: bool = Field(default=False, description="The last run was cancelled before finishing")
     mode: Optional[Literal["all", "missing"]] = None
     total: int
     processed: int
@@ -136,9 +182,35 @@ class CoverRegenStatus(BaseModel):
     finished_at: Optional[datetime] = None
 
 
+QueueStatus = Literal["started", "queued", "already_queued"]
+
+
 class CoverRegenResponse(BaseModel):
-    status: Literal["started", "already_running", "scan_running"]
+    status: QueueStatus
     message: str
+
+
+class JobInfo(BaseModel):
+    id: int
+    kind: Literal["scan", "covers"]
+    params: Dict[str, str]
+    state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    error: Optional[str] = None
+    cancellable: bool
+
+
+class JobsResponse(BaseModel):
+    """The heavy-job queue: what runs now, what waits, what ran recently"""
+    running: Optional[JobInfo] = None
+    queued: List[JobInfo]
+    history: List[JobInfo] = Field(description="Most recent first")
+
+
+class JobCancelResponse(BaseModel):
+    status: Literal["cancelled", "cancelling"]
 
 
 class TasksResponse(BaseModel):
@@ -162,10 +234,9 @@ def health_check() -> HealthResponse:
 def trigger_scan(
     media_type: Literal["comics", "videos", "images", "all"] = "all",
 ) -> ScanResponse:
-    """Start a background scan to import new media files into the database."""
-    if not start_scan(media_type):
-        return ScanResponse(status="already_running", message="A scan is already in progress")
-    return ScanResponse(status="started", message=f"Scan started for: {media_type}")
+    """Queue a background scan to import new media files into the database."""
+    status = start_scan(media_type)
+    return ScanResponse(status=status, message=_queue_message(status, f"Scan ({media_type})"))
 
 
 @router.get("/api/system/scan", tags=["system"])
@@ -176,21 +247,58 @@ def scan_status() -> ScanStatusResponse:
 
 @router.post("/api/system/covers", tags=["system"])
 def regenerate_covers(mode: Literal["all", "missing"] = "all") -> CoverRegenResponse:
-    """Regenerate live comics' covers in the background: every one, or only those without a cover file."""
-    # A scan writes covers for the comics it imports and hands out ids that
-    # aren't committed yet; wait for it rather than race it.
-    if progress.running:
-        return CoverRegenResponse(status="scan_running", message="Wait for the running scan to finish")
-    if not regen.start(mode):
-        return CoverRegenResponse(status="already_running", message="Covers are already being regenerated")
+    """Queue a cover run: every live comic's cover, or only those without a cover file."""
+    _, status = jobs.submit("covers", {"mode": mode})
     what = "Missing cover generation" if mode == "missing" else "Cover regeneration"
-    return CoverRegenResponse(status="started", message=f"{what} started")
+    return CoverRegenResponse(status=status, message=_queue_message(status, what))
 
 
 @router.get("/api/system/covers", tags=["system"])
 def cover_regen_status() -> CoverRegenStatus:
     """Progress of the running (or most recent) cover regeneration."""
     return CoverRegenStatus(**regen.snapshot())
+
+
+def _queue_message(status: str, what: str) -> str:
+    return {
+        "started": f"{what} started",
+        "queued": f"{what} queued behind the running job",
+        "already_queued": f"{what} is already covered by a job waiting in the queue",
+    }[status]
+
+
+def _job_info(job: Job) -> JobInfo:
+    return JobInfo(
+        id=job.id, kind=job.kind, params=job.params, state=job.state,
+        created_at=job.created_at, started_at=job.started_at, finished_at=job.finished_at,
+        error=job.error, cancellable=jobs.cancellable(job),
+    )
+
+
+@router.get("/api/system/jobs", tags=["system"])
+def list_jobs() -> JobsResponse:
+    """The running heavy job (scan or cover run), the queue behind it, and recent history."""
+    snap = jobs.snapshot()
+    return JobsResponse(
+        running=_job_info(snap["running"]) if snap["running"] else None,
+        queued=[_job_info(j) for j in snap["queued"]],
+        history=[_job_info(j) for j in snap["history"]],
+    )
+
+
+@router.delete(
+    "/api/system/jobs/{id}",
+    tags=["system"],
+    responses={400: {"model": dict}, 404: {"model": dict}},
+)
+def cancel_job(id: int) -> JobCancelResponse:
+    """Cancel a queued job, or ask a running cover run to stop. Running scans can't be cancelled."""
+    result = jobs.cancel(id)
+    if result is None:
+        abort(404, "No queued or running job with that id")
+    if result == "not_cancellable":
+        abort(400, "This job can't be cancelled while it runs")
+    return JobCancelResponse(status=result)
 
 
 @router.get("/api/system/tasks", tags=["system"])

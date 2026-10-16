@@ -25,10 +25,8 @@ async def daily_scan_loop():
     try:
         while True:
             await asyncio.sleep(_seconds_until(SCAN_HOUR))
-            if start_scan("all"):
-                print("[Task] Daily scan started", flush=True)
-            else:
-                print("[Task] Daily scan skipped — a scan is already running", flush=True)
+            status = start_scan("all")
+            print(f"[Task] Daily scan {status.replace('_', ' ')}", flush=True)
     except asyncio.CancelledError:
         print("[Task] Daily scan task stopped", flush=True)
         raise

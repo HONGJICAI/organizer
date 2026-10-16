@@ -194,12 +194,16 @@ export type CoverFailure = {
 };
 
 export type CoverRegenResponse = {
-    status: 'started' | 'already_running' | 'scan_running';
+    status: 'started' | 'queued' | 'already_queued';
     message: string;
 };
 
 export type CoverRegenStatus = {
     running: boolean;
+    /**
+     * The last run was cancelled before finishing
+     */
+    cancelled?: boolean;
     mode?: ('all' | 'missing') | null;
     total: number;
     processed: number;
@@ -291,6 +295,36 @@ export type ImageRenameResponse = {
     name: string;
 };
 
+export type JobCancelResponse = {
+    status: 'cancelled' | 'cancelling';
+};
+
+export type JobInfo = {
+    id: number;
+    kind: 'scan' | 'covers';
+    params: {
+        [key: string]: string;
+    };
+    state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    created_at: string;
+    started_at?: string | null;
+    finished_at?: string | null;
+    error?: string | null;
+    cancellable: boolean;
+};
+
+/**
+ * The heavy-job queue: what runs now, what waits, what ran recently
+ */
+export type JobsResponse = {
+    running?: JobInfo | null;
+    queued: Array<JobInfo>;
+    /**
+     * Most recent first
+     */
+    history: Array<JobInfo>;
+};
+
 export type LoginRequest = {
     password: string;
 };
@@ -329,8 +363,21 @@ export type ProgressResponse = {
     lastViewedTime: string;
 };
 
+export type ScanIssue = {
+    media: 'comic' | 'video' | 'image';
+    /**
+     * skipped: found but not imported; warning: scanned, but something's off; error: a phase failed
+     */
+    level: 'skipped' | 'warning' | 'error';
+    /**
+     * File or folder concerned; empty for a whole-phase error
+     */
+    path: string;
+    reason: string;
+};
+
 export type ScanResponse = {
-    status: string;
+    status: 'started' | 'queued' | 'already_queued';
     message: string;
 };
 
@@ -349,13 +396,13 @@ export type ScanStatusResponse = {
         [key: string]: unknown;
     } | null;
     /**
-     * Files the scan found but couldn't import
+     * Problems the scan ran into, all levels
      */
-    skipped_count?: number;
+    issue_count?: number;
     /**
-     * First skipped files only; `skipped_count` counts all
+     * First issues only; `issue_count` counts all
      */
-    skipped?: Array<SkippedFile>;
+    issues?: Array<ScanIssue>;
 };
 
 export type ScanTiming = {
@@ -363,11 +410,6 @@ export type ScanTiming = {
     avg_ms: number;
     p95_ms: number;
     slowest: Array<SlowFile>;
-};
-
-export type SkippedFile = {
-    path: string;
-    reason: string;
 };
 
 export type SlowFile = {
@@ -2036,6 +2078,90 @@ export type RegenerateCoversResponses = {
 };
 
 export type RegenerateCoversResponse = RegenerateCoversResponses[keyof RegenerateCoversResponses];
+
+export type ListJobsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/jobs';
+};
+
+export type ListJobsErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ListJobsError = ListJobsErrors[keyof ListJobsErrors];
+
+export type ListJobsResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobsResponse;
+};
+
+export type ListJobsResponse = ListJobsResponses[keyof ListJobsResponses];
+
+export type CancelJobData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/system/jobs/{id}';
+};
+
+export type CancelJobErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type CancelJobError = CancelJobErrors[keyof CancelJobErrors];
+
+export type CancelJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobCancelResponse;
+};
+
+export type CancelJobResponse = CancelJobResponses[keyof CancelJobResponses];
 
 export type TasksStatusData = {
     body?: never;

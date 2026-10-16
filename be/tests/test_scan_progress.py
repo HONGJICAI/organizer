@@ -86,24 +86,24 @@ def test_reset_clears_everything():
     assert snap["started_at"] is None
 
 
-def test_skipped_files_are_listed_and_capped(monkeypatch):
+def test_issues_are_listed_and_capped(monkeypatch):
     import core.scan_progress as sp
-    monkeypatch.setattr(sp, "_SKIPPED_N", 2)
+    monkeypatch.setattr(sp, "_ISSUES_N", 2)
     p = ScanProgress()
     p.start("comics")
     for i in range(3):
-        p.add_skipped(f"/bad{i}.zip", "File is not a zip file")
+        p.add_issue("comic", "skipped", f"/bad{i}.zip", "File is not a zip file")
     snap = p.snapshot()
-    assert snap["skipped_count"] == 3
-    assert snap["skipped"] == [
-        {"path": "/bad0.zip", "reason": "File is not a zip file"},
-        {"path": "/bad1.zip", "reason": "File is not a zip file"},
+    assert snap["issue_count"] == 3
+    assert snap["issues"] == [
+        {"media": "comic", "level": "skipped", "path": "/bad0.zip", "reason": "File is not a zip file"},
+        {"media": "comic", "level": "skipped", "path": "/bad1.zip", "reason": "File is not a zip file"},
     ]
 
 
-def test_start_clears_skipped():
+def test_start_clears_issues():
     p = ScanProgress()
-    p.add_skipped("/bad.zip", "x")
+    p.add_issue("image", "warning", "/x", "y")
     p.start("all")
     snap = p.snapshot()
-    assert (snap["skipped_count"], snap["skipped"]) == (0, [])
+    assert (snap["issue_count"], snap["issues"]) == (0, [])

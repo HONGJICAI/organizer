@@ -766,3 +766,51 @@ class TestPageInfo:
         set_store(make_entity(id=1, path=str(d), page=1))
         monkeypatch.setattr(img_api, "_image_files", lambda path: ["gone.jpg"])
         assert client.get("/api/images/1/pages/1/info").status_code == 404
+
+
+class TestBootstrapIssues:
+    @pytest.fixture(autouse=True)
+    def fresh_progress(self):
+        from core.scan_progress import progress
+        progress.start("images")
+        yield progress
+        progress.reset()
+
+    def issues(self, progress):
+        return [(i["level"], i["path"], i["reason"]) for i in progress.snapshot()["issues"]]
+
+    def test_missing_scan_path(self, fresh_progress, tmp_path, monkeypatch):
+        import global_data
+        gone = str(tmp_path / "unmounted")
+        monkeypatch.setattr(global_data.Config.Image, "scan_pathes", [gone])
+        img_api.bootstrap()
+        assert self.issues(fresh_progress) == [("warning", gone, "Scan path not found (not mounted?)")]
+
+    def test_unreadable_folder(self, fresh_progress, scan_env, monkeypatch):
+        def walk(path, onerror=None):
+            onerror(PermissionError(13, "Permission denied", str(scan_env / "locked")))
+            return iter([])
+
+        monkeypatch.setattr(img_api.os, "walk", walk)
+        img_api.bootstrap()
+        assert self.issues(fresh_progress) == [
+            ("warning", str(scan_env / "locked"), "Can't read folder: Permission denied"),
+        ]
+
+    def test_scan_path_error(self, fresh_progress, scan_env, monkeypatch):
+        monkeypatch.setattr(img_api, "_leaf_image_dirs", lambda path: (_ for _ in ()).throw(OSError("I/O error")))
+        img_api.bootstrap()
+        assert self.issues(fresh_progress) == [("warning", str(scan_env), "Can't scan: I/O error")]
+
+    def test_folder_vanishing_mid_scan(self, fresh_progress, scan_env, monkeypatch):
+        keep = scan_env / "keep"
+        keep.mkdir()
+        (keep / "a.jpg").write_bytes(make_jpeg_bytes())
+        gone = str(scan_env / "gone")
+        monkeypatch.setattr(img_api, "_leaf_image_dirs", lambda path: [gone, str(keep)])
+        monkeypatch.setattr(img_api, "_image_files", lambda path: ["a.jpg"])
+        img_api.bootstrap()
+        assert [e.path for e in img_api._store.values()] == [str(keep)]
+        [(level, path, reason)] = self.issues(fresh_progress)
+        assert (level, path) == ("warning", gone)
+        assert reason.startswith("Folder vanished during scan")

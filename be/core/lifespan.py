@@ -28,8 +28,7 @@ async def lifespan(app: FastAPI):
     load_snapshot()
 
     from api.system import start_scan
-    start_scan("all")
-    print("Background scan started", flush=True)
+    print(f"Startup scan {start_scan('all')}", flush=True)
 
     # Start background tasks and store them in app state
     tasks = []

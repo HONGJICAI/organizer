@@ -1,4 +1,4 @@
-"""Regenerate comic covers in the background (Admin → Covers).
+"""Regenerate comic covers (Admin → Covers), as a job on core.jobs' queue.
 
 Two modes: ``all`` rewrites every live comic's cover; ``missing`` only
 generates covers whose file doesn't exist (quick, e.g. after fixing a reader
@@ -39,6 +39,7 @@ class CoverRegen:
 
     def __init__(self):
         self._lock = threading.Lock()
+        self._cancel = threading.Event()
         self.reset()
 
     def reset(self):
@@ -50,20 +51,16 @@ class CoverRegen:
         self.failures: List[dict] = []
         self.started_at: Optional[datetime] = None
         self.finished_at: Optional[datetime] = None
+        self.cancelled = False
 
-    def start(self, mode: Mode = "all") -> bool:
-        """Start a run in a background thread unless one is already running."""
+    def run(self, mode: Mode = "all"):
+        """Regenerate covers on the calling thread (the job queue's worker)."""
+        self._cancel.clear()
         with self._lock:
-            if self.running:
-                return False
             self.reset()
             self.running = True
             self.mode = mode
             self.started_at = datetime.now()
-        _in_background(lambda: self.run(mode))
-        return True
-
-    def run(self, mode: Mode = "all"):
         try:
             # Workers read comics while this thread commits; without
             # expire_on_commit=False a commit would make them lazy-reload
@@ -78,8 +75,14 @@ class CoverRegen:
                     comics = [c for c in comics if not os.path.exists(_cover_path(c))]
                 with self._lock:
                     self.total = len(comics)
+                # Leaving the pool's block terminates it, so a cancel drops the
+                # comics not yet handed out; finished ones are still committed.
                 with ThreadPool(8) as pool:
                     for i, (comic, reason, pages) in enumerate(pool.imap_unordered(_regenerate, comics), 1):
+                        if self._cancel.is_set():
+                            with self._lock:
+                                self.cancelled = True
+                            break
                         comic.entityUpdateTime = datetime.now()
                         if pages is not None:
                             comic.page = pages
@@ -98,10 +101,15 @@ class CoverRegen:
                 self.running = False
                 self.finished_at = datetime.now()
 
+    def cancel(self):
+        """Ask the running regeneration to stop after the comic in hand."""
+        self._cancel.set()
+
     def snapshot(self) -> dict:
         with self._lock:
             return {
                 "running": self.running,
+                "cancelled": self.cancelled,
                 "mode": self.mode,
                 "total": self.total,
                 "processed": self.processed,
@@ -110,10 +118,6 @@ class CoverRegen:
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
             }
-
-
-def _in_background(target) -> None:
-    threading.Thread(target=target, daemon=True).start()
 
 
 def _cover_path(comic: ComicEntity) -> str:

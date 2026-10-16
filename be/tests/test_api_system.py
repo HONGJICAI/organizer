@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import time
 from unittest.mock import patch
 
 
@@ -15,17 +14,24 @@ class TestHealth:
         assert "message" in r.json()
 
 
+def wait_for_running(client, timeout=5.0):
+    """POST returns before the worker picks the job up; wait for that."""
+    import time
+    deadline = time.time() + timeout
+    while client.get("/api/system/jobs").json()["running"] is None:
+        assert time.time() < deadline, "job never started"
+        time.sleep(0.005)
+
+
 class TestScan:
     def _reset(self):
         from core.scan_progress import progress
         progress.reset()
 
     def _wait(self, timeout=5.0):
-        """Poll until the background scan finishes."""
-        from core.scan_progress import progress
-        deadline = time.time() + timeout
-        while progress.running and time.time() < deadline:
-            time.sleep(0.01)
+        """Wait until the queued scan has run."""
+        from core.jobs import jobs
+        assert jobs.wait_idle(timeout)
 
     def test_starts_scan(self, client):
         self._reset()
@@ -62,13 +68,21 @@ class TestScan:
             mock_comic.assert_not_called()
             mock_video.assert_called_once()
 
-    def test_rejects_concurrent_scan(self, client):
+    def test_queues_behind_running_job_and_dedupes(self, client):
+        import threading
         self._reset()
-        from core.scan_progress import progress
-        progress.start("all")
-        r = client.post("/api/system/scan")
-        assert r.json()["status"] == "already_running"
-        progress.reset()
+        release = threading.Event()
+        with patch("loader.ComicLoader.work", side_effect=lambda: release.wait(5)), \
+             patch("loader.VideoLoader.work"):
+            assert client.post("/api/system/scan?media_type=comics").json()["status"] == "started"
+            wait_for_running(client)
+            # The running scan doesn't count for dedupe; a waiting one does.
+            assert client.post("/api/system/scan?media_type=comics").json()["status"] == "queued"
+            r = client.post("/api/system/scan?media_type=comics").json()
+            assert r["status"] == "already_queued"
+            assert r["message"] == "Scan (comics) is already covered by a job waiting in the queue"
+            release.set()
+            self._wait()
 
     def test_status_idle(self, client):
         self._reset()
@@ -77,14 +91,16 @@ class TestScan:
         assert r.json()["running"] is False
         assert r.json()["last_result"] is None
 
-    def test_status_lists_skipped_files(self, client):
+    def test_status_lists_issues(self, client):
         from core.scan_progress import progress
         self._reset()
         progress.start("comics")
-        progress.add_skipped("/data/comics/bad.zip", "File is not a zip file")
+        progress.add_issue("comic", "skipped", "/data/comics/bad.zip", "File is not a zip file")
         body = client.get("/api/system/scan").json()
-        assert body["skipped_count"] == 1
-        assert body["skipped"] == [{"path": "/data/comics/bad.zip", "reason": "File is not a zip file"}]
+        assert body["issue_count"] == 1
+        assert body["issues"] == [{
+            "media": "comic", "level": "skipped", "path": "/data/comics/bad.zip", "reason": "File is not a zip file",
+        }]
         self._reset()
 
     def test_status_after_scan(self, client):
@@ -96,15 +112,46 @@ class TestScan:
         assert r.json()["running"] is False
         assert r.json()["last_result"]["status"] == "success"
 
-    def test_status_records_error(self, client):
+    def test_failing_phase_doesnt_stop_the_others(self, client):
         self._reset()
-        with patch("loader.ComicLoader.work", side_effect=RuntimeError("disk error")), \
-             patch("loader.VideoLoader.work"):
+        with patch("api.images.bootstrap", side_effect=RuntimeError("images gone")), \
+             patch("loader.ComicLoader.work") as comics, \
+             patch("loader.VideoLoader.work") as videos:
             client.post("/api/system/scan")
             self._wait()
-        r = client.get("/api/system/scan")
-        assert r.json()["last_result"]["status"] == "error"
-        assert "disk error" in r.json()["last_result"]["message"]
+        comics.assert_called_once()
+        videos.assert_called_once()
+        body = client.get("/api/system/scan").json()
+        assert body["last_result"] == {
+            "status": "partial",
+            "phases": {"images": "error", "comics": "done", "videos": "done"},
+            "message": "images: images gone",
+        }
+        assert body["issues"] == [
+            {"media": "image", "level": "error", "path": "", "reason": "images scan failed: images gone"},
+        ]
+        [job] = client.get("/api/system/jobs").json()["history"]
+        assert (job["state"], job["error"]) == ("failed", "images: images gone")
+
+    def test_status_records_error_when_every_phase_fails(self, client):
+        self._reset()
+        with patch("loader.ComicLoader.work", side_effect=RuntimeError("disk error")), \
+             patch("loader.VideoLoader.work", side_effect=RuntimeError("no videos")):
+            client.post("/api/system/scan?media_type=comics")
+            self._wait()
+            client.post("/api/system/scan?media_type=videos")
+            self._wait()
+        result = client.get("/api/system/scan").json()["last_result"]
+        assert result == {"status": "error", "phases": {"videos": "error"}, "message": "videos: no videos"}
+
+    def test_success_lists_phases(self, client):
+        self._reset()
+        with patch("loader.ComicLoader.work"), patch("loader.VideoLoader.work"):
+            client.post("/api/system/scan?media_type=comics")
+            self._wait()
+        assert client.get("/api/system/scan").json()["last_result"] == {
+            "status": "success", "phases": {"comics": "done"},
+        }
 
     def test_status_exposes_progress_shape(self, client):
         self._reset()
@@ -193,7 +240,7 @@ class TestDailyScanLoop:
         from tasks import scan
 
         started = []
-        with patch("api.system.start_scan", side_effect=lambda mt: started.append(mt) or True), \
+        with patch("api.system.start_scan", side_effect=lambda mt: started.append(mt) or "started"), \
              patch("tasks.scan._seconds_until", return_value=0):
             async def run():
                 task = asyncio.create_task(scan.daily_scan_loop())
@@ -208,11 +255,11 @@ class TestDailyScanLoop:
 
         assert started and started[0] == "all"
 
-    def test_skips_when_already_running(self):
+    def test_already_queued(self):
         self._reset()
         from tasks import scan
 
-        with patch("api.system.start_scan", return_value=False) as mock_start, \
+        with patch("api.system.start_scan", return_value="already_queued") as mock_start, \
              patch("tasks.scan._seconds_until", return_value=0):
             async def run():
                 task = asyncio.create_task(scan.daily_scan_loop())
@@ -247,3 +294,69 @@ class TestBackupNow:
         with patch("api.system.backup_database", side_effect=RuntimeError("disk full")):
             r = client.post("/api/debug/backup-now")
         assert r.json()["status"] == "error"
+
+
+class TestJobs:
+    def test_empty(self, client):
+        assert client.get("/api/system/jobs").json() == {"running": None, "queued": [], "history": []}
+
+    def test_cancel_unknown_job(self, client):
+        assert client.delete("/api/system/jobs/999").status_code == 404
+
+    def test_running_scan_cannot_be_cancelled_but_queued_one_can(self, client):
+        import threading
+        from core.jobs import jobs
+        release = threading.Event()
+        with patch("loader.ComicLoader.work", side_effect=lambda: release.wait(5)), \
+             patch("loader.VideoLoader.work"):
+            client.post("/api/system/scan?media_type=comics")
+            wait_for_running(client)
+            client.post("/api/system/covers?mode=missing")
+            body = client.get("/api/system/jobs").json()
+            running, [queued] = body["running"], body["queued"]
+            assert (running["kind"], running["params"], running["cancellable"]) == (
+                "scan", {"media_type": "comics"}, False,
+            )
+            assert (queued["kind"], queued["params"], queued["state"], queued["cancellable"]) == (
+                "covers", {"mode": "missing"}, "queued", True,
+            )
+            assert client.delete(f"/api/system/jobs/{running['id']}").status_code == 400
+            assert client.delete(f"/api/system/jobs/{queued['id']}").json() == {"status": "cancelled"}
+            release.set()
+            assert jobs.wait_idle(5)
+        history = client.get("/api/system/jobs").json()["history"]
+        assert [(j["kind"], j["state"]) for j in history] == [("scan", "succeeded"), ("covers", "cancelled")]
+
+    def test_failed_scan_marks_job_failed(self, client):
+        from core.jobs import jobs
+        with patch("loader.ComicLoader.work", side_effect=RuntimeError("disk error")), \
+             patch("loader.VideoLoader.work"):
+            client.post("/api/system/scan?media_type=comics")
+            assert jobs.wait_idle(5)
+        [job] = client.get("/api/system/jobs").json()["history"]
+        assert (job["state"], job["error"]) == ("failed", "comics: disk error")
+
+
+class TestScanScopes:
+    def test_full_scan_covers_and_replaces_single_type_scans(self, client):
+        import threading
+        from core.jobs import jobs
+        release = threading.Event()
+        with patch("loader.ComicLoader.work", side_effect=lambda: release.wait(5)) as comic_work, \
+             patch("loader.VideoLoader.work") as video_work:
+            client.post("/api/system/scan?media_type=comics")
+            wait_for_running(client)
+            assert client.post("/api/system/scan?media_type=videos").json()["status"] == "queued"
+            assert client.post("/api/system/scan?media_type=all").json()["status"] == "queued"
+            r = client.post("/api/system/scan?media_type=images").json()
+            assert r["status"] == "already_queued"
+            body = client.get("/api/system/jobs").json()
+            assert [j["params"] for j in body["queued"]] == [{"media_type": "all"}]
+            [replaced] = body["history"]
+            assert (replaced["params"], replaced["state"]) == ({"media_type": "videos"}, "cancelled")
+            assert replaced["error"].startswith("Replaced by job #")
+            release.set()
+            assert jobs.wait_idle(5)
+        # The first comics scan, then the full scan: videos only once.
+        assert comic_work.call_count == 2
+        assert video_work.call_count == 1

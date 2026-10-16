@@ -1,6 +1,7 @@
 """POST/GET /api/system/covers: background cover regeneration."""
 import io
 import os
+import threading
 import zipfile
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -11,19 +12,17 @@ from PIL import Image
 import covers
 import global_data
 from conftest import insert_comic, make_zip_comic
+from test_api_system import wait_for_running
+from core.jobs import jobs
 from core.scan_progress import progress
 from loader import ComicLoader
 from model import ComicEntity
 
 
 @pytest.fixture(autouse=True)
-def sync_regen(monkeypatch, client):
-    # The test client's boot scan is stubbed out but still marks a scan as
-    # running, which would refuse every regeneration.
+def reset_regen(client):
     progress.reset()
     covers.regen.reset()
-    # Run inline so tests can assert on the finished result.
-    monkeypatch.setattr(covers, "_in_background", lambda target: target())
     yield
     covers.regen.reset()
 
@@ -53,8 +52,10 @@ def close(a, b, tol=12):
 
 
 def regenerate(client, mode=None):
+    """Queue a cover run, wait for the job queue to finish it, return both responses."""
     r = client.post("/api/system/covers" + (f"?mode={mode}" if mode else ""))
     assert r.status_code == 200
+    assert jobs.wait_idle(10)
     return r.json(), client.get("/api/system/covers").json()
 
 
@@ -62,7 +63,7 @@ class TestRegenerate:
     def test_status_before_any_run(self, client):
         body = client.get("/api/system/covers").json()
         assert body == {
-            "running": False, "mode": None, "total": 0, "processed": 0, "failed": 0,
+            "running": False, "cancelled": False, "mode": None, "total": 0, "processed": 0, "failed": 0,
             "failures": [], "started_at": None, "finished_at": None,
         }
 
@@ -152,14 +153,58 @@ class TestRegenerate:
         assert status["failed"] == 2
         assert len(status["failures"]) == 1
 
-    def test_already_running(self, client):
-        covers.regen.running = True
-        assert client.post("/api/system/covers").json()["status"] == "already_running"
+    def test_queues_behind_a_scan(self, client, session, tmp_path):
+        f = tmp_path / "a.zip"
+        colored_zip(f, [(0, 0, 255)])
+        insert_comic(session, id=1, path=str(f), page=1)
+        release = threading.Event()
+        order = []
+        with patch("loader.ComicLoader.work", side_effect=lambda: order.append("scan") or release.wait(5)), \
+                patch("loader.VideoLoader.work"):
+            assert client.post("/api/system/scan?media_type=comics").json()["status"] == "started"
+            wait_for_running(client)
+            r = client.post("/api/system/covers").json()
+            assert r == {"status": "queued", "message": "Cover regeneration queued behind the running job"}
+            assert client.post("/api/system/covers").json()["status"] == "already_queued"
+            # A full run waiting covers the missing-only one too.
+            assert client.post("/api/system/covers?mode=missing").json()["status"] == "already_queued"
+            # Nothing has touched covers while the scan holds the queue.
+            assert covers.regen.started_at is None
+            release.set()
+            assert jobs.wait_idle(10)
+        status = client.get("/api/system/covers").json()
+        assert (status["processed"], status["failed"]) == (1, 0)
+        kinds = [(j["kind"], j["state"]) for j in client.get("/api/system/jobs").json()["history"]]
+        assert kinds == [("covers", "succeeded"), ("scan", "succeeded")]
 
-    def test_refused_while_scanning(self, client):
-        progress.start("all")
-        assert client.post("/api/system/covers").json()["status"] == "scan_running"
-        assert covers.regen.started_at is None
+    def test_cancel_running_run(self, client, session, tmp_path, monkeypatch):
+        for id in range(1, 6):
+            f = tmp_path / f"{id}.zip"
+            colored_zip(f, [(0, 0, 255)])
+            insert_comic(session, id=id, path=str(f), page=1)
+        started = threading.Event()
+        proceed = threading.Event()
+        real = covers._regenerate
+
+        def slow(comic):
+            started.set()
+            proceed.wait(5)
+            return real(comic)
+
+        monkeypatch.setattr(covers, "_regenerate", slow)
+        job = client.post("/api/system/covers").json()
+        assert job["status"] == "started"
+        assert started.wait(5)
+        [running] = [client.get("/api/system/jobs").json()["running"]]
+        assert running["kind"] == "covers" and running["cancellable"] is True
+        assert client.delete(f"/api/system/jobs/{running['id']}").json() == {"status": "cancelling"}
+        proceed.set()
+        assert jobs.wait_idle(10)
+        status = client.get("/api/system/covers").json()
+        assert status["cancelled"] is True
+        assert status["processed"] < 5
+        [last] = client.get("/api/system/jobs").json()["history"]
+        assert last["state"] == "cancelled"
 
     def test_missing_mode_only_generates_absent_covers(self, client, session, tmp_path):
         for id in (1, 2):
