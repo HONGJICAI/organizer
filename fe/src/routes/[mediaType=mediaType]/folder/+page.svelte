@@ -5,7 +5,6 @@
 		Select,
 		SelectItem,
 		SkeletonPlaceholder,
-		Tile,
 		Toggle
 	} from 'carbon-components-svelte';
 	import { Folder, Home } from 'carbon-icons-svelte';
@@ -117,7 +116,9 @@
 			</BreadcrumbItem>
 			{#each crumbs as crumb, i (crumb.key)}
 				<BreadcrumbItem isCurrentPage={i === crumbs.length - 1}>
-					<button class="crumb" onclick={() => goToDir(crumb.key)}>{crumb.name}</button>
+					<button class="crumb" title={crumb.name} onclick={() => goToDir(crumb.key)}>
+						<span class="crumb-name">{crumb.name}</span>
+					</button>
 				</BreadcrumbItem>
 			{/each}
 		</Breadcrumb>
@@ -129,8 +130,15 @@
 					{/each}
 				</Select>
 			{/if}
-			<Toggle labelText="Reverse" size="sm" bind:toggled={reverse} />
-			<Toggle labelText="Include subfolders" size="sm" bind:toggled={includeSub} />
+			<!-- No Off/On text: it overflows the label's width into the next toggle. -->
+			<Toggle labelText="Reverse" labelA="" labelB="" size="sm" bind:toggled={reverse} />
+			<Toggle
+				labelText="Include subfolders"
+				labelA=""
+				labelB=""
+				size="sm"
+				bind:toggled={includeSub}
+			/>
 		</div>
 	</div>
 
@@ -144,17 +152,16 @@
 		{#if subfolders.length > 0}
 			<div class="folder-grid">
 				{#each subfolders as folder (folder.name)}
-					<Tile class="folder-tile" on:click={() => goToDir(nodeKey(folder))}>
-						<button class="folder-btn" onclick={() => goToDir(nodeKey(folder))}>
-							<Folder size={20} />
-							<span class="folder-name">{folder.name}</span>
-							<span class="folder-count">
-								{folder.totalCount} · {formatSize(folder.totalSize)}
-								{#if folder.unreadCount > 0}<span class="unread">· {folder.unreadCount} unread</span
-									>{/if}
-							</span>
-						</button>
-					</Tile>
+					<button class="folder-tile" title={folder.name} onclick={() => goToDir(nodeKey(folder))}>
+						<Folder size={20} />
+						<span class="folder-name">{folder.name}</span>
+						<span class="folder-meta">
+							{folder.totalCount}
+							{folder.totalCount === 1 ? 'item' : 'items'} · {formatSize(folder.totalSize)}
+							{#if folder.unreadCount > 0}<span class="unread">· {folder.unreadCount} unread</span
+								>{/if}
+						</span>
+					</button>
 				{/each}
 			</div>
 		{/if}
@@ -237,51 +244,75 @@
 	.crumb:hover {
 		text-decoration: underline;
 	}
-	.controls {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		flex-shrink: 0;
-	}
-	.folder-grid {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
-	}
-	:global(.folder-tile) {
-		padding: 0 !important;
-		min-width: 200px;
-		flex: 1 1 200px;
-		max-width: 280px;
-	}
-	.folder-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		width: 100%;
-		padding: 0.75rem;
-		background: none;
-		border: none;
-		cursor: pointer;
-		color: inherit;
-		font: inherit;
-		text-align: left;
-	}
-	.folder-name {
-		flex: 1;
+	/* Long folder names (circle + author + notes) shouldn't push the
+	   breadcrumb across several lines; the full name is in the tooltip. */
+	.crumb-name {
+		display: inline-block;
+		max-width: 20rem;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-size: 0.875rem;
+		vertical-align: bottom;
 	}
-	.folder-count {
-		flex-shrink: 0;
+	.controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 1rem;
+	}
+	/* Equal-width columns that fill the row, one column on a phone. */
+	.folder-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+	/* Icon beside a name of up to two lines, with the counts underneath, so
+	   the counts never eat into the name. */
+	.folder-tile {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		column-gap: 0.625rem;
+		row-gap: 0.25rem;
+		align-items: start;
+		padding: 0.75rem;
+		background: var(--cds-ui-01, #262626);
+		border: none;
+		border-radius: 0.25rem;
+		cursor: pointer;
+		color: var(--cds-text-01, #f4f4f4);
+		font: inherit;
+		text-align: left;
+	}
+	.folder-tile:hover {
+		background: var(--cds-hover-ui, #353535);
+	}
+	.folder-tile:focus-visible {
+		outline: 2px solid var(--cds-focus, #ffffff);
+		outline-offset: -2px;
+	}
+	.folder-name {
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		overflow-wrap: anywhere;
+		font-size: 0.875rem;
+		line-height: 1.25rem;
+	}
+	.folder-meta {
+		grid-column: 2;
 		font-size: 0.75rem;
 		color: var(--cds-text-02, #c6c6c6);
 	}
 	.unread {
 		color: var(--cds-support-04, #4589ff);
+	}
+	@media (max-width: 672px) {
+		.crumb-name {
+			max-width: 12rem;
+		}
 	}
 	.card-flexbox {
 		display: flex;

@@ -2,6 +2,21 @@ import { faker } from '@faker-js/faker';
 import { delay, http, HttpResponse } from 'msw';
 import { authState } from '$lib/auth.svelte';
 
+// Real libraries often name author folders after the circle too, e.g.
+// "[Circle Name (Author)] 作品集": give some authors a long folder name like
+// that so the folder view's layout gets exercised.
+const authorFolders = new Map<string, string>();
+const authorFolder = (author: string) => {
+	let folder = authorFolders.get(author);
+	if (!folder) {
+		folder = faker.datatype.boolean(0.4)
+			? `[${faker.company.name()} (${author})] ${faker.helpers.arrayElement(['作品集', 'Collection', '同人誌まとめ 2019-2024'])}`
+			: author;
+		authorFolders.set(author, folder);
+	}
+	return folder;
+};
+
 const genMockComics = (number: number) =>
 	faker.helpers.uniqueArray(faker.number.int, number).map((id) => {
 		const page = faker.number.int({ min: 1, max: 100 });
@@ -14,7 +29,7 @@ const genMockComics = (number: number) =>
 			name,
 			// group by author so the folder view has a natural tree (faker's
 			// limited name pool means several authors get multiple works)
-			path: `/data/comics/${author}/${name}`,
+			path: `/data/comics/${authorFolder(author)}/${name}`,
 			updateTime: faker.date.past().toISOString(),
 			archived: faker.datatype.boolean(0.1),
 			favorited: faker.datatype.boolean(0.2),
