@@ -32,6 +32,7 @@
 		NewTab,
 		Save,
 		Search as SearchIcon,
+		TagEdit,
 		TrashCan,
 		UpdateNow
 	} from 'carbon-icons-svelte';
@@ -40,6 +41,8 @@
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { goto } from '$app/navigation';
+	import { kindColor, kindLabel, tagKinds, type TagKind } from '$lib/tagIndex';
+	import { loadTags, setTagKind, tagState } from '$lib/tags.svelte';
 
 	interface Props {
 		open?: boolean;
@@ -63,6 +66,18 @@
 	let videofile = $derived(file.type === MediaType.Video ? (file as Video) : null);
 	let adapter = $derived(adapters[file.type]);
 	let separateToTagsFrom = $derived(adapter.tagSource(file));
+	// Tag classification: the tag whose kind picker is open, if any.
+	loadTags();
+	let classifying = $state<string | null>(null);
+	let savingKind = $state(false);
+	async function classify(tag: string, kind: TagKind | null) {
+		savingKind = true;
+		// An alias is classified through its primary tag.
+		const error = await setTagKind([tagState.index.canonical(tag)], kind);
+		savingKind = false;
+		if (error) addNotification(new ErrorNotification({ subtitle: error }));
+		else classifying = null;
+	}
 	let permanent = $state(false);
 	let openDeleteModal = $state(false);
 	let sendingDelete = $state(false);
@@ -233,8 +248,26 @@
 	<div>
 		<p>Tags</p>
 		{#each separateFilename(separateToTagsFrom ?? '') as tag}
+			{@const kind = tagState.index.kind(tag)}
+			{@const primary = tagState.index.canonical(tag)}
 			<span class="tag-wrap">
-				<Tag type="teal" title={tag} on:click={() => onClickTag(tag)} interactive={true}>{tag}</Tag>
+				<Tag
+					type={kindColor[kind ?? 'none']}
+					title={`${tag}${kind ? ` · ${kindLabel[kind]}` : ''}${primary !== tag ? ` · alias of ${primary}` : ''}`}
+					on:click={() => onClickTag(primary)}
+					interactive={true}>{tag}</Tag
+				>
+				<button
+					type="button"
+					class="tag-global"
+					class:active={classifying === tag}
+					title={`Classify "${tag}"`}
+					aria-label={`Classify "${tag}"`}
+					aria-expanded={classifying === tag}
+					onclick={() => (classifying = classifying === tag ? null : tag)}
+				>
+					<TagEdit size={16} />
+				</button>
 				<button
 					type="button"
 					class="tag-global"
@@ -246,6 +279,31 @@
 				</button>
 			</span>
 		{/each}
+		{#if classifying}
+			{@const current = tagState.index.kind(classifying)}
+			{@const primary = tagState.index.canonical(classifying)}
+			<div class="classify">
+				<span class="classify-label"
+					>“{primary}”{primary !== classifying ? ` (via alias “${classifying}”)` : ''} is</span
+				>
+				{#each tagKinds as kind (kind)}
+					<Button
+						size="small"
+						kind={current === kind ? 'primary' : 'tertiary'}
+						disabled={savingKind}
+						on:click={() => classify(classifying ?? '', kind)}>{kindLabel[kind]}</Button
+					>
+				{/each}
+				{#if current}
+					<Button
+						size="small"
+						kind="ghost"
+						disabled={savingKind}
+						on:click={() => classify(classifying ?? '', null)}>Unclassify</Button
+					>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	<p>Actions:</p>
@@ -437,8 +495,22 @@
 		color: var(--cds-text-03, #8d8d8d);
 	}
 
-	.tag-global:hover {
+	.tag-global:hover,
+	.tag-global.active {
 		color: var(--cds-text-01, #f4f4f4);
+	}
+
+	.classify {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0.5rem 0;
+	}
+
+	.classify-label {
+		font-size: 0.875rem;
+		overflow-wrap: anywhere;
 	}
 
 	p {

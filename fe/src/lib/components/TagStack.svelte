@@ -13,10 +13,11 @@
 		onClickTag?: (tag: string) => void;
 		title: string;
 		skeleton?: boolean;
+		defaultOpen?: boolean;
 	}
 
-	let { tag2countMap, onClickTag, title = 'Tags', skeleton }: Props = $props();
-	let open = $state(true);
+	let { tag2countMap, onClickTag, title = 'Tags', skeleton, defaultOpen = true }: Props = $props();
+	let open = $state(defaultOpen);
 	const showMoreNumber = 20;
 	let currentShowNumber = $state(20);
 	let orderedTag2countMap = $derived(

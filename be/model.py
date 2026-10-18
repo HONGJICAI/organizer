@@ -95,3 +95,17 @@ class ActivityEvent(SQLModel, table=True):
     entityId: int
     time: NaiveDatetime = Field(default_factory=datetime.now, index=True)
     data: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+
+
+class TagInfo(SQLModel, table=True):
+    """What a file-name tag (as the frontend splits names) stands for.
+
+    Only tags someone classified have a row. ``kind`` says what the tag is;
+    ``canonical`` makes the tag an alias of another one (e.g. an author's
+    romanized name pointing at the original), and an alias takes its kind from
+    there. Aliases always point at a tag that isn't itself an alias.
+    """
+    name: str = Field(primary_key=True)
+    kind: Optional[str] = Field(default=None)  # author | circle | language | ignored
+    canonical: Optional[str] = Field(default=None, index=True)
+    updateTime: NaiveDatetime = Field(default_factory=datetime.now)

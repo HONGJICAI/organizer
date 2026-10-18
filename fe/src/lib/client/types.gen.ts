@@ -501,6 +501,47 @@ export type SlowFile = {
     ms: number;
 };
 
+/**
+ * What a file-name tag (as the frontend splits names) stands for.
+ *
+ * Only tags someone classified have a row. ``kind`` says what the tag is;
+ * ``canonical`` makes the tag an alias of another one (e.g. an author's
+ * romanized name pointing at the original), and an alias takes its kind from
+ * there. Aliases always point at a tag that isn't itself an alias.
+ */
+export type TagInfo = {
+    name: string;
+    kind?: string | null;
+    canonical?: string | null;
+    updateTime?: string;
+};
+
+/**
+ * Set the kind of some tags
+ */
+export type TagKindRequest = {
+    names: Array<string>;
+    /**
+     * null unclassifies: the tags lose their kind and stop being aliases
+     */
+    kind?: ('author' | 'circle' | 'language' | 'ignored') | null;
+};
+
+/**
+ * Make tags aliases of one primary tag
+ */
+export type TagMergeRequest = {
+    primary: string;
+    aliases: Array<string>;
+};
+
+export type TagUpdateResponse = {
+    /**
+     * Every classified tag after the change
+     */
+    tags: Array<TagInfo>;
+};
+
 export type TasksResponse = {
     daily_scan: DailyScanInfo;
     backup: BackupInfo;
@@ -2494,6 +2535,129 @@ export type HomeGetResponses = {
 };
 
 export type HomeGetResponse = HomeGetResponses[keyof HomeGetResponses];
+
+export type TagGetAllData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/tags';
+};
+
+export type TagGetAllErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type TagGetAllError = TagGetAllErrors[keyof TagGetAllErrors];
+
+export type TagGetAllResponses = {
+    /**
+     * Successful Response
+     */
+    200: Array<TagInfo>;
+};
+
+export type TagGetAllResponse = TagGetAllResponses[keyof TagGetAllResponses];
+
+export type TagSetKindData = {
+    body: TagKindRequest;
+    path?: never;
+    query?: never;
+    url: '/api/tags/kind';
+};
+
+export type TagSetKindErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type TagSetKindError = TagSetKindErrors[keyof TagSetKindErrors];
+
+export type TagSetKindResponses = {
+    /**
+     * Successful Response
+     */
+    200: TagUpdateResponse;
+};
+
+export type TagSetKindResponse = TagSetKindResponses[keyof TagSetKindResponses];
+
+export type TagMergeData = {
+    body: TagMergeRequest;
+    path?: never;
+    query?: never;
+    url: '/api/tags/merge';
+};
+
+export type TagMergeErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type TagMergeError = TagMergeErrors[keyof TagMergeErrors];
+
+export type TagMergeResponses = {
+    /**
+     * Successful Response
+     */
+    200: TagUpdateResponse;
+};
+
+export type TagMergeResponse = TagMergeResponses[keyof TagMergeResponses];
 
 export type ClientOptions = {
     baseUrl: 'http://127.0.0.1:8001' | (string & {});

@@ -1356,6 +1356,118 @@ export const SlowFileSchema = {
     title: 'SlowFile'
 } as const;
 
+export const TagInfoSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        kind: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Kind'
+        },
+        canonical: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Canonical'
+        },
+        updateTime: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updatetime'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'TagInfo',
+    description: `What a file-name tag (as the frontend splits names) stands for.
+
+Only tags someone classified have a row. \`\`kind\`\` says what the tag is;
+\`\`canonical\`\` makes the tag an alias of another one (e.g. an author's
+romanized name pointing at the original), and an alias takes its kind from
+there. Aliases always point at a tag that isn't itself an alias.`
+} as const;
+
+export const TagKindRequestSchema = {
+    properties: {
+        names: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Names'
+        },
+        kind: {
+            anyOf: [
+                {
+                    type: 'string',
+                    enum: ['author', 'circle', 'language', 'ignored']
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Kind',
+            description: 'null unclassifies: the tags lose their kind and stop being aliases'
+        }
+    },
+    type: 'object',
+    required: ['names'],
+    title: 'TagKindRequest',
+    description: 'Set the kind of some tags'
+} as const;
+
+export const TagMergeRequestSchema = {
+    properties: {
+        primary: {
+            type: 'string',
+            title: 'Primary'
+        },
+        aliases: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Aliases'
+        }
+    },
+    type: 'object',
+    required: ['primary', 'aliases'],
+    title: 'TagMergeRequest',
+    description: 'Make tags aliases of one primary tag'
+} as const;
+
+export const TagUpdateResponseSchema = {
+    properties: {
+        tags: {
+            items: {
+                '$ref': '#/components/schemas/TagInfo'
+            },
+            type: 'array',
+            title: 'Tags',
+            description: 'Every classified tag after the change'
+        }
+    },
+    type: 'object',
+    required: ['tags'],
+    title: 'TagUpdateResponse'
+} as const;
+
 export const TasksResponseSchema = {
     properties: {
         daily_scan: {
