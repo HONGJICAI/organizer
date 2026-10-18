@@ -379,7 +379,7 @@ export async function setupMock(authRequired: boolean) {
 		tags.set(name, { name, kind, canonical, updateTime: now() });
 	const mockAuthors = [...new Set(comics.map((c) => c.name.match(/^\[([^\]]+)\]/)?.[1]))]
 		.filter((a): a is string => !!a && /^[A-Z][a-z]+$/.test(a))
-		.slice(0, 6);
+		.slice(0, 12);
 	mockAuthors.forEach((a) => seedTag(a, 'author'));
 	['DL版', '無修正', 'v2', 'Scan', '汉化组', '.zip', '.rar', '.cbz'].forEach((t) =>
 		seedTag(t, 'ignored')
@@ -685,20 +685,25 @@ export async function setupMock(authRequired: boolean) {
 		}),
 		http.post('/api/comics/move/suggest', async ({ request }) => {
 			await delay(150);
-			const body = (await request.json()) as { ids: number[]; name: string };
+			const body = (await request.json()) as { groups?: { ids: number[]; name: string }[] };
+			if (!body.groups?.length || body.groups.some((g) => !g.ids?.length))
+				return HttpResponse.json({ msg: 'Invalid request' }, { status: 400 });
 			// Mirrors mover.suggest_target, with the artist folder at its default.
-			const folder = body.name
-				.trim()
-				.replace(/[/\\:*?"<>|]/g, '_')
-				.replace(/[. ]+$/, '');
-			if (!folder) return HttpResponse.json({ target: '' });
-			const counts = new Map<string, number>();
-			for (const c of comics.filter((x) => body.ids.includes(x.id))) {
-				const parent = c.path.slice(0, c.path.lastIndexOf('/'));
-				if (parent.split('/').pop() === folder) counts.set(parent, (counts.get(parent) ?? 0) + 1);
-			}
-			const best = [...counts].sort((a, b) => b[1] - a[1])[0];
-			return HttpResponse.json({ target: best ? best[0] : `/data/comics/artist/${folder}` });
+			const suggest = ({ ids, name }: { ids: number[]; name: string }) => {
+				const folder = name
+					.trim()
+					.replace(/[/\\:*?"<>|]/g, '_')
+					.replace(/[. ]+$/, '');
+				if (!folder) return '';
+				const counts = new Map<string, number>();
+				for (const c of comics.filter((x) => ids.includes(x.id))) {
+					const parent = c.path.slice(0, c.path.lastIndexOf('/'));
+					if (parent.split('/').pop() === folder) counts.set(parent, (counts.get(parent) ?? 0) + 1);
+				}
+				const best = [...counts].sort((x, y) => y[1] - x[1])[0];
+				return best ? best[0] : `/data/comics/artist/${folder}`;
+			};
+			return HttpResponse.json({ targets: body.groups.map(suggest) });
 		}),
 		http.post('/api/comics/move/preview', async ({ request }) => {
 			await delay(400);

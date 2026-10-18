@@ -419,7 +419,7 @@ export const ComicMoveResponseSchema = {
     description: 'Response for a queued move'
 } as const;
 
-export const ComicMoveSuggestRequestSchema = {
+export const ComicMoveSuggestGroupSchema = {
     properties: {
         ids: {
             items: {
@@ -437,22 +437,42 @@ export const ComicMoveSuggestRequestSchema = {
     },
     type: 'object',
     required: ['ids', 'name'],
+    title: 'ComicMoveSuggestGroup',
+    description: 'Comics to gather under one name'
+} as const;
+
+export const ComicMoveSuggestRequestSchema = {
+    properties: {
+        groups: {
+            items: {
+                '$ref': '#/components/schemas/ComicMoveSuggestGroup'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Groups'
+        }
+    },
+    type: 'object',
+    required: ['groups'],
     title: 'ComicMoveSuggestRequest',
-    description: 'Request a target folder for gathering comics under one name'
+    description: 'Request target folders for several groups at once'
 } as const;
 
 export const ComicMoveSuggestionSchema = {
     properties: {
-        target: {
-            type: 'string',
-            title: 'Target',
-            description: "A folder with this name already holding some of the comics, else <artist folder>/<name>; empty when the name can't be a folder name"
+        targets: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Targets',
+            description: "Per group: a folder with its name already holding some of its comics, else <artist folder>/<name>; empty when the name can't be a folder name"
         }
     },
     type: 'object',
-    required: ['target'],
+    required: ['targets'],
     title: 'ComicMoveSuggestion',
-    description: 'Suggested target folder'
+    description: 'Suggested target folders, in the order of the groups'
 } as const;
 
 export const ComicPageDetailResponseSchema = {

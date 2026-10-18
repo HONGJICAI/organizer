@@ -187,9 +187,9 @@ export type ComicMoveResponse = {
 };
 
 /**
- * Request a target folder for gathering comics under one name
+ * Comics to gather under one name
  */
-export type ComicMoveSuggestRequest = {
+export type ComicMoveSuggestGroup = {
     ids: Array<number>;
     /**
      * Folder name, e.g. the author tag
@@ -198,13 +198,20 @@ export type ComicMoveSuggestRequest = {
 };
 
 /**
- * Suggested target folder
+ * Request target folders for several groups at once
+ */
+export type ComicMoveSuggestRequest = {
+    groups: Array<ComicMoveSuggestGroup>;
+};
+
+/**
+ * Suggested target folders, in the order of the groups
  */
 export type ComicMoveSuggestion = {
     /**
-     * A folder with this name already holding some of the comics, else <artist folder>/<name>; empty when the name can't be a folder name
+     * Per group: a folder with its name already holding some of its comics, else <artist folder>/<name>; empty when the name can't be a folder name
      */
-    target: string;
+    targets: Array<string>;
 };
 
 /**
