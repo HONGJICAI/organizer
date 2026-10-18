@@ -163,7 +163,7 @@
 	<strong>Keep</strong> tag marks the suggested copy (favorited, then most pages, then largest), and
 	<em>Select suggested</em> selects every other copy. Groups are sorted by their total size; counts and
 	deletion only cover the groups the filter shows. Comics opened from here are read privately: their
-	reading progress isn't saved unless you turn it on from the reader's header.
+	reading progress isn't saved unless you turn private reading off from the reader's header.
 </p>
 
 <div class="controls">

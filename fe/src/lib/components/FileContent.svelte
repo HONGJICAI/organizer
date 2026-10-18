@@ -15,7 +15,8 @@
 		onClose: () => void;
 		// Open straight into the page overview (e.g. from the duplicate finder).
 		initialOverview?: boolean;
-		// Don't save reading progress until the user turns it on from the header.
+		// Don't save this file's reading progress (even if the session-wide
+		// private reading is off) until the user turns it off from the header.
 		privateReading?: boolean;
 		// 1-based page to open at (e.g. "Continue reading" on the home page).
 		initialPage?: number;
@@ -29,7 +30,7 @@
 	}: Props = $props();
 
 	// Set before any effect runs so the first page report already sees it.
-	viewerState.privateReading = privateReading;
+	viewerState.privateReading = privateReading || viewerState.privateSession;
 
 	const isScroll = $derived(config.viewMode === ViewMode.Scroll);
 
@@ -95,7 +96,7 @@
 			viewerState.active = false;
 			viewerState.overviewOpen = false;
 			reporter.flush();
-			viewerState.privateReading = false;
+			viewerState.privateReading = viewerState.privateSession;
 			mounted = false;
 			viewerState.pageDetails = [];
 			viewerState.pageInfos = {};
