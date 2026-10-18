@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { buildFolderTree, findNode, nodeKey, collectFiles, type FolderNode } from './folderTree';
+import {
+	buildFolderTree,
+	findNode,
+	folderKey,
+	nodeKey,
+	collectFiles,
+	type FolderNode
+} from './folderTree';
 import type { MediaFile } from './model.svelte';
 
 /** Minimal stub — buildFolderTree only reads path / name / viewed / size. */
@@ -132,5 +139,22 @@ describe('collectFiles', () => {
 		]);
 		expect(collectFiles(tree)).toHaveLength(3);
 		expect(collectFiles(findNode(tree, 'A')!)).toHaveLength(2);
+	});
+});
+
+describe('folderKey', () => {
+	const files = [file('/data/comics/a/x.zip'), file('/data/comics/b/c/y.zip')];
+
+	it('matches the key of the node in the tree', () => {
+		const tree = buildFolderTree(files);
+		expect(folderKey(files, '/data/comics/b/c')).toBe('b/c');
+		expect(findNode(tree, 'b/c')?.segments.join('/')).toBe('b/c');
+		expect(folderKey(files, '/data/comics/new')).toBe('new');
+		expect(folderKey(files, '/data/comics')).toBe('');
+	});
+
+	it('is undefined outside the tree', () => {
+		expect(folderKey(files, '/elsewhere/a')).toBeUndefined();
+		expect(folderKey(files, '/data')).toBeUndefined();
 	});
 });

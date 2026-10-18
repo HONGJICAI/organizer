@@ -306,6 +306,155 @@ export const ComicMonthStatsSchema = {
     title: 'ComicMonthStats'
 } as const;
 
+export const ComicMovePlanItemSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        source: {
+            type: 'string',
+            title: 'Source'
+        },
+        destination: {
+            type: 'string',
+            title: 'Destination'
+        },
+        status: {
+            type: 'string',
+            enum: ['move', 'same', 'conflict', 'missing', 'notfound'],
+            title: 'Status',
+            description: 'move: will be moved; same: already in the target folder; conflict: destination taken (see reason); missing: file not on disk; notfound: no comic with this id'
+        },
+        crossDevice: {
+            type: 'boolean',
+            title: 'Crossdevice',
+            description: 'Source and target are on different filesystems: copied then deleted instead of renamed',
+            default: false
+        },
+        reason: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Reason'
+        }
+    },
+    type: 'object',
+    required: ['id', 'name', 'source', 'destination', 'status'],
+    title: 'ComicMovePlanItem',
+    description: 'What moving one comic would do'
+} as const;
+
+export const ComicMovePreviewSchema = {
+    properties: {
+        target: {
+            type: 'string',
+            title: 'Target',
+            description: 'The normalized target folder'
+        },
+        items: {
+            items: {
+                '$ref': '#/components/schemas/ComicMovePlanItem'
+            },
+            type: 'array',
+            title: 'Items'
+        }
+    },
+    type: 'object',
+    required: ['target', 'items'],
+    title: 'ComicMovePreview',
+    description: 'Response for the move preview'
+} as const;
+
+export const ComicMoveRequestSchema = {
+    properties: {
+        ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Ids'
+        },
+        target: {
+            type: 'string',
+            title: 'Target',
+            description: 'Absolute folder path inside a comic scan folder; created if missing'
+        }
+    },
+    type: 'object',
+    required: ['ids', 'target'],
+    title: 'ComicMoveRequest',
+    description: 'Request to move comics into one folder'
+} as const;
+
+export const ComicMoveResponseSchema = {
+    properties: {
+        jobId: {
+            type: 'integer',
+            title: 'Jobid'
+        },
+        status: {
+            type: 'string',
+            enum: ['started', 'queued', 'already_queued'],
+            title: 'Status'
+        },
+        message: {
+            type: 'string',
+            title: 'Message'
+        }
+    },
+    type: 'object',
+    required: ['jobId', 'status', 'message'],
+    title: 'ComicMoveResponse',
+    description: 'Response for a queued move'
+} as const;
+
+export const ComicMoveSuggestRequestSchema = {
+    properties: {
+        ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Ids'
+        },
+        name: {
+            type: 'string',
+            title: 'Name',
+            description: 'Folder name, e.g. the author tag'
+        }
+    },
+    type: 'object',
+    required: ['ids', 'name'],
+    title: 'ComicMoveSuggestRequest',
+    description: 'Request a target folder for gathering comics under one name'
+} as const;
+
+export const ComicMoveSuggestionSchema = {
+    properties: {
+        target: {
+            type: 'string',
+            title: 'Target',
+            description: "A folder with this name already holding some of the comics, else <artist folder>/<name>; empty when the name can't be a folder name"
+        }
+    },
+    type: 'object',
+    required: ['target'],
+    title: 'ComicMoveSuggestion',
+    description: 'Suggested target folder'
+} as const;
+
 export const ComicPageDetailResponseSchema = {
     properties: {
         name: {
@@ -830,7 +979,7 @@ export const JobInfoSchema = {
         },
         kind: {
             type: 'string',
-            enum: ['scan', 'covers'],
+            enum: ['scan', 'covers', 'move'],
             title: 'Kind'
         },
         params: {

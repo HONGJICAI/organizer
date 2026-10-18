@@ -50,6 +50,11 @@ export async function setupMock(authRequired: boolean) {
 	authState.required = authRequired;
 
 	const comics = genMockComics(100);
+	// Leave a third unsorted in an inbox on another "share", so the move page has
+	// comics to gather (and some cross-drive copies to warn about).
+	comics.forEach((c, i) => {
+		if (i % 3 === 0) c.path = `/data/comics/inbox/${c.name}`;
+	});
 	// Seed duplicates for the duplicate finder: re-tag a few comics as other
 	// releases of the same work (different group/edition tags and archive type).
 	const releaseTags = ['[汉化组] ', '(C99) ', '【DL版】', '[Scan] '];
@@ -154,7 +159,7 @@ export async function setupMock(authRequired: boolean) {
 	// waiting jobs are deduped, finished ones go to a short history.
 	type MockJob = {
 		id: number;
-		kind: 'scan' | 'covers';
+		kind: 'scan' | 'covers' | 'move';
 		params: Record<string, string>;
 		state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 		created_at: string;
@@ -169,11 +174,24 @@ export async function setupMock(authRequired: boolean) {
 		queued: [] as MockJob[],
 		history: [] as MockJob[]
 	};
+	// Mock comic move (mover.py): takes a couple of seconds, then the records
+	// point at the target folder.
+	const moveState = { until: 0 };
+	const finishMove = (job: MockJob) => {
+		const ids = new Set(job.params.ids.split(',').map(Number));
+		for (const c of comics) {
+			if (ids.has(c.id)) c.path = `${job.params.target}/${c.path.split('/').pop()}`;
+		}
+	};
 	const startJob = (job: MockJob) => {
 		job.state = 'running';
 		job.started_at = new Date().toISOString();
 		job.cancellable = job.kind === 'covers';
 		jobQueue.running = job;
+		if (job.kind === 'move') {
+			moveState.until = Date.now() + 2000;
+			return;
+		}
 		if (job.kind === 'scan') {
 			Object.assign(scanState, {
 				running: true,
@@ -210,8 +228,14 @@ export async function setupMock(authRequired: boolean) {
 	const tickJobs = () => {
 		const job = jobQueue.running;
 		if (job) {
-			const busy = job.kind === 'scan' ? scanState.running : coverState.running;
+			const busy =
+				job.kind === 'scan'
+					? scanState.running
+					: job.kind === 'move'
+						? Date.now() < moveState.until
+						: coverState.running;
 			if (busy) return;
+			if (job.kind === 'move') finishMove(job);
 			// A partly failed scan fails its job, as _scan_job raises on it.
 			const scanFailed = job.kind === 'scan' && scanState.mediaType === 'all';
 			job.state =
@@ -235,6 +259,7 @@ export async function setupMock(authRequired: boolean) {
 		a: Record<string, string>,
 		b: Record<string, string>
 	) => {
+		if (kind === 'move') return a.ids === b.ids && a.target === b.target;
 		const key = kind === 'scan' ? 'media_type' : 'mode';
 		return a[key] === 'all' || a[key] === b[key];
 	};
@@ -284,6 +309,46 @@ export async function setupMock(authRequired: boolean) {
 			queued: `${what} queued behind the running job`,
 			already_queued: `${what} is already covered by a job waiting in the queue`
 		})[status];
+
+	// Mirrors mover.plan: the top folder under /data/comics stands for the
+	// drive/share, so moving out of "inbox" counts as a cross-drive copy.
+	const planMove = (ids: number[], rawTarget: string) => {
+		const target = rawTarget.trim().replace(/\/+$/, '');
+		if (!target.startsWith('/')) return { msg: 'Target must be an absolute folder path' };
+		if (!target.startsWith('/data/comics/'))
+			return { msg: 'Target must be inside a comic scan folder (/data/comics)' };
+		const share = (p: string) => p.split('/')[3];
+		const taken = new Set<string>();
+		const items = [...new Set(ids)].map((id) => {
+			const c = comics.find((x) => x.id === id);
+			if (!c) return { id, name: '', source: '', destination: '', status: 'notfound' as const };
+			const destination = `${target}/${c.path.split('/').pop()}`;
+			const item = {
+				id,
+				name: c.name,
+				source: c.path,
+				destination,
+				status: 'move' as 'move' | 'same' | 'conflict' | 'missing',
+				crossDevice: false,
+				reason: null as string | null
+			};
+			if (c.missing) item.status = 'missing';
+			else if (c.path.slice(0, c.path.lastIndexOf('/')) === target) item.status = 'same';
+			else if (taken.has(destination)) {
+				item.status = 'conflict';
+				item.reason = 'Another selected comic has the same name';
+			} else if (comics.some((x) => x.path === destination)) {
+				item.status = 'conflict';
+				item.reason = 'A file with this name is already there';
+			}
+			if (item.status === 'move') {
+				taken.add(destination);
+				item.crossDevice = share(c.path) !== share(target);
+			}
+			return item;
+		});
+		return { target, items };
+	};
 
 	const handlers = [
 		http.get('/api/system/jobs', async () => {
@@ -520,6 +585,53 @@ export async function setupMock(authRequired: boolean) {
 				return { id, status: 'absent' };
 			});
 			return HttpResponse.json({ results });
+		}),
+		http.post('/api/comics/move/suggest', async ({ request }) => {
+			await delay(150);
+			const body = (await request.json()) as { ids: number[]; name: string };
+			// Mirrors mover.suggest_target, with the artist folder at its default.
+			const folder = body.name
+				.trim()
+				.replace(/[/\\:*?"<>|]/g, '_')
+				.replace(/[. ]+$/, '');
+			if (!folder) return HttpResponse.json({ target: '' });
+			const counts = new Map<string, number>();
+			for (const c of comics.filter((x) => body.ids.includes(x.id))) {
+				const parent = c.path.slice(0, c.path.lastIndexOf('/'));
+				if (parent.split('/').pop() === folder) counts.set(parent, (counts.get(parent) ?? 0) + 1);
+			}
+			const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+			return HttpResponse.json({ target: best ? best[0] : `/data/comics/artist/${folder}` });
+		}),
+		http.post('/api/comics/move/preview', async ({ request }) => {
+			await delay(400);
+			const body = (await request.json()) as { ids: number[]; target: string };
+			const plan = planMove(body.ids, body.target);
+			return 'msg' in plan
+				? HttpResponse.json(plan, { status: 400 })
+				: HttpResponse.json({ target: plan.target, items: plan.items });
+		}),
+		http.post('/api/comics/move', async ({ request }) => {
+			await delay(300);
+			const body = (await request.json()) as { ids: number[]; target: string };
+			const plan = planMove(body.ids, body.target);
+			if ('msg' in plan) return HttpResponse.json(plan, { status: 400 });
+			const ids = plan.items.filter((i) => i.status === 'move').map((i) => i.id);
+			if (!ids.length) return HttpResponse.json({ msg: 'Nothing to move' }, { status: 400 });
+			const params = { target: plan.target, ids: ids.join(','), count: String(ids.length) };
+			const status = enqueueJob('move', params);
+			const job = [jobQueue.running, ...jobQueue.queued].find(
+				(j) => j?.kind === 'move' && subsumes('move', j.params, params)
+			);
+			return HttpResponse.json({
+				jobId: job?.id ?? 0,
+				status,
+				message: {
+					started: `Moving ${ids.length} comic(s)`,
+					queued: `Moving ${ids.length} comic(s) after the running job`,
+					already_queued: 'The same move is already waiting in the queue'
+				}[status]
+			});
 		}),
 		// Registered before /api/comics/:id so the literal path wins.
 		http.get('/api/comics/stats', async ({ request }) => {

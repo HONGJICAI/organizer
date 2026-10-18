@@ -131,3 +131,15 @@ export function collectFiles(node: FolderNode): MediaFile[] {
 	}
 	return out;
 }
+
+/**
+ * The `?dir=` key of the folder at absolute path `dir` in the tree built from
+ * `files`, or undefined when `dir` lies outside it.
+ */
+export function folderKey(files: MediaFile[], dir: string): string | undefined {
+	const prefixLen = commonPrefixLength(files.map((f) => splitPath(f.path).slice(0, -1)));
+	const segs = splitPath(dir);
+	const prefix = files.length ? splitPath(files[0].path).slice(0, prefixLen) : [];
+	if (segs.length < prefixLen || prefix.some((s, i) => segs[i] !== s)) return undefined;
+	return segs.slice(prefixLen).join('/');
+}

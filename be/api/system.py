@@ -15,7 +15,7 @@ from tasks.backup import backup_database
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Heavy jobs — scans and cover runs share core.jobs' single-lane queue; live
+# Heavy jobs — scans, cover runs and comic moves (mover.py) share core.jobs' single-lane queue; live
 # progress stays in core.scan_progress and covers.regen.
 # ---------------------------------------------------------------------------
 
@@ -38,9 +38,19 @@ def _run_scan(media_type: str):
     # Images first: bootstrap is cheap (one readdir per folder) and the
     # in-memory store is empty until it runs, while comic/video scans can take
     # a while without leaving the UI empty.
+    def comics():
+        import mover
+        for path in mover.unmounted_paths():
+            progress.add_issue(
+                "comic", "warning", path,
+                "Not on a mounted drive: files here live inside the container and are lost "
+                "when it is recreated; moves into it are refused. Mount a volume here (see compose.yaml).",
+            )
+        ComicLoader().work()
+
     phases = [
         ("images", "image", images),
-        ("comics", "comic", lambda: ComicLoader().work()),
+        ("comics", "comic", comics),
         ("videos", "video", lambda: VideoLoader().work()),
     ]
     results, errors = {}, {}
@@ -192,7 +202,7 @@ class CoverRegenResponse(BaseModel):
 
 class JobInfo(BaseModel):
     id: int
-    kind: Literal["scan", "covers"]
+    kind: Literal["scan", "covers", "move"]
     params: Dict[str, str]
     state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     created_at: datetime
@@ -277,7 +287,7 @@ def _job_info(job: Job) -> JobInfo:
 
 @router.get("/api/system/jobs", tags=["system"])
 def list_jobs() -> JobsResponse:
-    """The running heavy job (scan or cover run), the queue behind it, and recent history."""
+    """The running heavy job (scan, cover run or comic move), the queue behind it, and recent history."""
     snap = jobs.snapshot()
     return JobsResponse(
         running=_job_info(snap["running"]) if snap["running"] else None,

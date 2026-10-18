@@ -1,4 +1,4 @@
-"""Single-lane queue for heavy background jobs (media scans, cover runs).
+"""Single-lane queue for heavy background jobs (media scans, cover runs, comic moves).
 
 Both read every comic file and hammer the same disk; running them at once
 only slows both down. Jobs run one at a time in submission order on a worker

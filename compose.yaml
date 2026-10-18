@@ -3,12 +3,25 @@ services:
     image: ghcr.io/hongjicai/organizer:latest
     ports:
       - "81:80"
+    # Media folders must be mounted: anything the app writes to a path inside
+    # /data that isn't on a mounted volume (e.g. a "Move to folder" target)
+    # lives in the container and is lost when it is recreated. The app refuses
+    # such move targets and flags unmounted comic folders in Admin -> Scan.
     volumes:
-      - ${COMIC_PATH}:/data/comics
-      - ${VIDEO_PATH}:/data/videos
+      # The main comic drive. Author folders from "Move to folder" go to
+      # /data/comics/artist/<name> on it (COMIC_ARTIST_PATH to change).
+      - ${COMIC_PATH:?Set COMIC_PATH in .env to your main comic folder}:/data/comics
+      # More drives or network shares: mount them *inside* /data/comics so
+      # they're scanned too. Moving between them copies, then deletes.
+      # - /mnt/nas2/manga:/data/comics/nas2
+      # - /mnt/gdrive/manga:/data/comics/gdrive
+      - ${VIDEO_PATH:?Set VIDEO_PATH in .env to your video folder}:/data/videos
       - ${IMAGE_PATH}:/data/images
       - ${LIKED_PATH}:/data/liked
       - ./config:/config
+    environment:
+      # Optional, see .env.example; empty means /data/comics/artist.
+      COMIC_ARTIST_PATH: ${COMIC_ARTIST_PATH:-}
     restart: unless-stopped
     # Uncomment to let Watchtower (below) auto-update only this container.
     # labels:

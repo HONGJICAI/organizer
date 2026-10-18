@@ -15,12 +15,18 @@ import duplicates
 import stats
 import events
 import global_data
+import mover
 import util
 from core.exceptions import abort
 from loader import ComicLoader
 from model import ComicEntity
 from schemas.comic import (
     ComicDetailResponse,
+    ComicMovePreview,
+    ComicMoveRequest,
+    ComicMoveResponse,
+    ComicMoveSuggestion,
+    ComicMoveSuggestRequest,
     DuplicateGroup,
     DuplicatesResponse,
     ComicPageDetailResponse,
@@ -143,6 +149,64 @@ class ComicCBV:
             )
         return DuplicatesResponse(groups=groups)
 
+    @router.post(
+        "/api/comics/move/suggest",
+        tags=["comics"],
+        responses={
+            200: {"model": ComicMoveSuggestion},
+            400: {"model": dict},
+        },
+    )
+    def move_suggest(self, req: ComicMoveSuggestRequest) -> ComicMoveSuggestion:
+        """Default target for gathering the comics into a folder named ``name``."""
+        return ComicMoveSuggestion(target=mover.suggest_target(self.session, req.ids, req.name))
+
+    @router.post(
+        "/api/comics/move/preview",
+        tags=["comics"],
+        responses={
+            200: {"model": ComicMovePreview},
+            400: {"model": dict},
+        },
+    )
+    def move_preview(self, req: ComicMoveRequest) -> ComicMovePreview:
+        """What moving the comics into ``target`` would do; nothing is changed."""
+        target = self.__move_target(req.target)
+        return ComicMovePreview(target=target, items=mover.plan(self.session, req.ids, target))
+
+    @router.post(
+        "/api/comics/move",
+        tags=["comics"],
+        responses={
+            200: {"model": ComicMoveResponse},
+            400: {"model": dict},
+        },
+    )
+    def move(self, req: ComicMoveRequest) -> ComicMoveResponse:
+        """Queue a job moving the comics into ``target``, keeping their records.
+
+        Comics that can't be moved (see the preview) are left alone; the job
+        fails listing them when there are any.
+        """
+        target = self.__move_target(req.target)
+        items = mover.plan(self.session, req.ids, target)
+        ids = [i.id for i in items if i.status == "move"]
+        if not ids:
+            abort(400, "Nothing to move")
+        job, status = mover.submit(ids, target)
+        message = {
+            "started": f"Moving {len(ids)} comic(s)",
+            "queued": f"Moving {len(ids)} comic(s) after the running job",
+            "already_queued": "The same move is already waiting in the queue",
+        }[status]
+        return ComicMoveResponse(jobId=job.id, status=status, message=message)
+
+    def __move_target(self, target: str) -> str:
+        try:
+            return mover.check_target(self.session, target)
+        except mover.MoveError as e:
+            abort(400, str(e))
+
     def __get(self, id: int) -> ComicEntity:
         statement = select(ComicEntity).where(ComicEntity.id == id)
         comic_entity = self.session.exec(statement).first()
@@ -255,11 +319,7 @@ class ComicCBV:
         new_comic = self.session.exec(new_comic_statement).first()
         if new_comic is not None:
             abort(400, "Comic with same name/path already exists")
-        from cachetools.keys import hashkey
-        cache_key = hashkey(comic.path)
-        if cache_key in comicfile.comic_cache:
-            comicfile.comic_cache[cache_key].close()
-            del comicfile.comic_cache[cache_key]
+        mover.evict(comic.path)
         os.rename(comic.path, new_path)
         comic.name = new_name
         comic.path = new_path
