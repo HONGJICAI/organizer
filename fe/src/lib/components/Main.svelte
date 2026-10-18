@@ -16,13 +16,14 @@
 	import Close from 'carbon-icons-svelte/lib/Close.svelte';
 	import SearchIcon from 'carbon-icons-svelte/lib/Search.svelte';
 	import ViewOff from 'carbon-icons-svelte/lib/ViewOff.svelte';
+	import View from 'carbon-icons-svelte/lib/View.svelte';
 	import Information from 'carbon-icons-svelte/lib/Information.svelte';
 	import { config, savePrefs } from '$lib/config.svelte';
 	import { formatBytes } from '$lib/stats';
 	import { goto } from '$app/navigation';
 	import SettingsModal from './SettingsModal.svelte';
 	import { notifications } from '$lib/state.svelte';
-	import { viewerState } from '$lib/viewerState.svelte';
+	import { setPrivateReading, viewerState } from '$lib/viewerState.svelte';
 	import { authState } from '$lib/auth.svelte';
 	import Logout from 'carbon-icons-svelte/lib/Logout.svelte';
 	interface Props {
@@ -82,13 +83,22 @@
 					{/if}
 				</button>
 			{/if}
-			{#if viewerState.privateReading}
+			{#if viewerState.maxPage > 0}
 				<button
 					class="viewer-private"
-					title="Reading progress isn't being saved. Click to start saving it."
-					onclick={() => (viewerState.privateReading = false)}
+					class:on={viewerState.privateReading}
+					title={viewerState.privateReading
+						? "Reading progress isn't being saved. Click to start saving it."
+						: 'Read privately: stop saving reading progress for this session.'}
+					aria-label="Private reading"
+					aria-pressed={viewerState.privateReading}
+					onclick={() => setPrivateReading(!viewerState.privateReading)}
 				>
-					<ViewOff size={16} /><span class="viewer-private-label">Private</span>
+					{#if viewerState.privateReading}
+						<ViewOff size={16} /><span class="viewer-private-label">Private</span>
+					{:else}
+						<View size={16} />
+					{/if}
 				</button>
 			{/if}
 		</div>
@@ -96,6 +106,14 @@
 
 	<HeaderUtilities>
 		{#if !viewerState.active}
+			<HeaderGlobalAction
+				aria-label={viewerState.privateSession
+					? 'Private reading on: progress is not saved. Click to turn off.'
+					: 'Private reading off. Click to stop saving progress for this session.'}
+				icon={viewerState.privateSession ? ViewOff : View}
+				isActive={viewerState.privateSession}
+				on:click={() => setPrivateReading(!viewerState.privateSession)}
+			/>
 			<HeaderGlobalAction aria-label="Search" icon={SearchIcon} on:click={() => goto('/search')} />
 		{/if}
 		<HeaderGlobalAction aria-label="Settings" icon={SettingsAdjust} on:click={onClickSettings} />
@@ -207,13 +225,19 @@
 		align-items: center;
 		gap: 0.25rem;
 		font-size: 0.75rem;
-		color: var(--cds-text-01, #f4f4f4);
+		color: var(--cds-text-02, #c6c6c6);
 		background: none;
-		padding: 0.125rem 0.5rem;
-		border: 1px solid var(--cds-ui-04, #8d8d8d);
+		padding: 0.125rem 0.375rem;
+		border: 1px solid transparent;
 		border-radius: 1rem;
 		pointer-events: auto;
 		cursor: pointer;
+	}
+
+	.viewer-private.on {
+		color: var(--cds-text-01, #f4f4f4);
+		padding: 0.125rem 0.5rem;
+		border-color: var(--cds-ui-04, #8d8d8d);
 	}
 
 	.viewer-info {
