@@ -116,7 +116,8 @@ export class ComicsService {
     
     /**
      * Comiccbv.Move Suggest
-     * Default target for gathering the comics into a folder named ``name``.
+     * Default targets for gathering each group into a folder named after it
+     * (one request for a whole table of authors).
      */
     public static comicMoveSuggest<ThrowOnError extends boolean = false>(options: Options<ComicMoveSuggestData, ThrowOnError>) {
         return (options.client ?? _heyApiClient).post<ComicMoveSuggestResponse, ComicMoveSuggestError, ThrowOnError>({

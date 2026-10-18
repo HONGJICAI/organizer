@@ -2,31 +2,46 @@
 	import { ComicsService, SystemService } from '$lib/client';
 	import type { ComicMovePlanItem } from '$lib/client';
 	import { errorMessage } from '$lib/mediaAdapters';
-	import { ErrorNotification, SuccessNotification, type MediaFile } from '$lib/model.svelte';
-	import { addNotification } from '$lib/state.svelte';
+	import type { MediaFile } from '$lib/model.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
-	import { hasTag } from '$lib/moveTarget';
 	import { folderKey } from '$lib/folderTree';
+	import {
+		authorGroups,
+		sortGroups,
+		tagGroup,
+		type GroupComic,
+		type MoveGroup
+	} from '$lib/moveGroups';
 	import { loadTags, tagState } from '$lib/tags.svelte';
-	import AuthorsOverview from '$lib/components/AuthorsOverview.svelte';
-	import { goto, invalidate } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
 		Breadcrumb,
 		BreadcrumbItem,
 		Button,
 		Checkbox,
+		DataTable,
+		DataTableSkeleton,
 		InlineLoading,
 		InlineNotification,
 		Link,
 		Modal,
-		Search,
-		SkeletonPlaceholder,
+		Pagination,
 		Tag,
-		TextInput
+		TextInput,
+		Toggle,
+		Toolbar,
+		ToolbarBatchActions,
+		ToolbarContent,
+		ToolbarSearch
 	} from 'carbon-components-svelte';
-	import { FolderMoveTo, Home, View } from 'carbon-icons-svelte';
+	import { FolderMoveTo, Home } from 'carbon-icons-svelte';
 	import { onDestroy } from 'svelte';
+
+	// One table: a row per author (or any tag searched for), expanded into its
+	// comics with where each goes. Targets come from the backend's suggestion
+	// and can be edited per row; an expanded row previews its move as it
+	// changes. Moves are one queued job per row.
 
 	let { data } = $props();
 	let mediaType = $derived(page.params.mediaType);
@@ -51,69 +66,208 @@
 			cancelled = true;
 		};
 	});
-
-	let tagInput = $state(page.url.searchParams.get('tag') ?? '');
-	let tag = $derived(page.url.searchParams.get('tag') ?? '');
-	// A classified tag gathers its aliases too, under the primary name.
 	loadTags();
-	let tagNames = $derived(tag ? tagState.index.names(tag) : []);
-	let folderTag = $derived(tag ? tagState.index.canonical(tag) : '');
-	// Archived comics are records of deleted files: nothing to move.
-	let matches = $derived(files.filter((f) => !f.archived && hasTag(f.name, tagNames)));
-	let excluded = $state(new Set<number>());
-	let selected = $derived(matches.filter((f) => !excluded.has(f.id)));
-	let target = $state('');
-	let preview = $state<ComicMovePlanItem[] | null>(null);
-	let previewTarget = $state('');
-	let previewing = $state(false);
-	let previewError = $state('');
-	let confirmOpen = $state(false);
-	let runningJob = $state<number | null>(null);
-	// Outcome of the last move, kept on the page until the next preview or tag.
-	let result = $state<{
-		ok: boolean;
-		count: number;
-		target: string;
-		error: string | null;
-	} | null>(null);
-	// The target in the folder view, once the reloaded list knows it.
-	let resultFolderKey = $derived(
-		result
-			? folderKey(
-					files.filter((f) => !f.archived),
-					result.target
-				)
-			: undefined
+
+	// ?tag= (e.g. from the comic list) searches for and opens that row.
+	let urlTag = $derived(page.url.searchParams.get('tag')?.trim() ?? '');
+	let search = $state('');
+	let showDone = $state(false);
+	let pageNo = $state(1);
+	let pageSize = $state(50);
+	let selectedRowIds = $state<string[]>([]);
+	let expandedRowIds = $state<string[]>([]);
+
+	const authors = $derived(authorGroups(files, tagState.index));
+	// A searched tag that isn't an author gets a row of its own.
+	const extra = $derived.by(() => {
+		const t = search.trim();
+		if (!t || authors.some((g) => g.names.includes(t))) return null;
+		return tagGroup(files, tagState.index, t);
+	});
+	const groups = $derived(sortGroups(extra ? [extra, ...authors] : [...authors]));
+	const byKey = $derived(new Map(groups.map((g) => [g.key, g])));
+
+	// Per row, keyed by the row's primary tag.
+	let suggested = $state<Record<string, string>>({});
+	let edited = $state<Record<string, string>>({});
+	let picked = $state<Record<string, number[]>>({});
+	let previews = $state<
+		Record<string, { items?: ComicMovePlanItem[]; target?: string; error?: string }>
+	>({});
+	let results = $state<
+		Record<
+			string,
+			{ state: 'queued' | 'moving' | 'done' | 'failed'; jobId: number; error?: string }
+		>
+	>({});
+
+	const target = (key: string) => edited[key] ?? suggested[key] ?? '';
+	const chosen = (g: MoveGroup) => picked[g.key] ?? g.pending;
+	const chosenOf = (key: string) => {
+		const g = byKey.get(key);
+		return g ? chosen(g) : [];
+	};
+	const crossCount = (key: string) =>
+		previews[key]?.items?.filter((i) => i.status === 'move' && i.crossDevice).length ?? 0;
+	const busy = (key: string) => ['queued', 'moving'].includes(results[key]?.state ?? '');
+
+	const visible = $derived(
+		groups.filter((g) => {
+			const q = search.trim().toLowerCase();
+			if (q && !g.names.some((n) => n.toLowerCase().includes(q))) return false;
+			return showDone || chosen(g).length > 0 || g === extra || results[g.key] !== undefined;
+		})
 	);
-
-	// A new tag starts over: everything selected, the suggested target, no preview.
+	const doneCount = $derived(groups.filter((g) => !g.pending.length).length);
+	const rows = $derived(
+		visible.slice((pageNo - 1) * pageSize, pageNo * pageSize).map((g) => ({
+			id: g.key,
+			name: g.key,
+			comics: g.comics.length,
+			move: chosen(g).length,
+			target: target(g.key),
+			status: ''
+		}))
+	);
+	const workKeys = $derived(
+		visible.filter((g) => chosen(g).length && !busy(g.key)).map((g) => g.key)
+	);
+	const sumChosen = (keys: string[]) => keys.reduce((n, k) => n + chosenOf(k).length, 0);
 	$effect(() => {
-		tagInput = tag;
-		excluded = new Set();
-		preview = null;
-		previewError = '';
-		result = null;
+		void search;
+		void showDone;
+		pageNo = 1;
 	});
-	// Suggested target from the backend: a folder named after the tag that
-	// already holds some of these comics, else <artist folder>/<tag>.
+
+	// Follow ?tag=: search for it, and open its row once that exists.
+	let openedUrlTag: string | null = null;
 	$effect(() => {
-		const ids = matches.map((f) => f.id);
-		const name = folderTag;
-		if (!dataLoaded || !ids.length) return;
-		let stale = false;
-		ComicsService.comicMoveSuggest({ body: { ids, name } }).then(({ data }) => {
-			if (!stale && data) target = data.target;
+		search = urlTag;
+	});
+	$effect(() => {
+		if (!urlTag || openedUrlTag === urlTag || !dataLoaded) return;
+		const key = tagState.index.canonical(urlTag);
+		if (byKey.has(key)) {
+			openedUrlTag = urlTag;
+			expandedRowIds = [key];
+		}
+	});
+
+	// Suggested targets for every row, fetched in one request whenever rows
+	// without one show up.
+	$effect(() => {
+		const missing = groups.filter((g) => !(g.key in suggested));
+		if (!missing.length) return;
+		for (const g of missing) suggested[g.key] = '';
+		ComicsService.comicMoveSuggest({
+			body: { groups: missing.map((g) => ({ ids: g.comics.map((c) => c.id), name: g.key })) }
+		}).then(({ data }) => {
+			data?.targets.forEach((t, i) => (suggested[missing[i].key] = t));
 		});
-		return () => {
-			stale = true;
-		};
 	});
 
-	const toMove = $derived(preview?.filter((i) => i.status === 'move') ?? []);
-	const crossCount = $derived(toMove.filter((i) => i.crossDevice).length);
-	const count = (status: ComicMovePlanItem['status']) =>
-		preview?.filter((i) => i.status === status).length ?? 0;
-	const statusTag: Record<
+	// Expanded rows preview their move whenever the target or the comics'
+	// paths change (debounced while typing a target).
+	const previewed: Record<string, string> = {};
+	const timers = new Map<string, ReturnType<typeof setTimeout>>();
+	$effect(() => {
+		for (const key of expandedRowIds) {
+			const g = byKey.get(key);
+			if (!g) continue;
+			const ids = g.comics.map((c) => c.id);
+			const to = target(key);
+			const sig = `${to}\n${g.comics.map((c) => c.path).join('\n')}`;
+			if (!to || previewed[key] === sig) continue;
+			previewed[key] = sig;
+			clearTimeout(timers.get(key));
+			timers.set(
+				key,
+				setTimeout(async () => {
+					const { data, error } = await ComicsService.comicMovePreview({
+						body: { ids, target: to }
+					});
+					if (previewed[key] !== sig) return;
+					previews[key] = data
+						? { items: data.items, target: data.target }
+						: { error: errorMessage(error) };
+				}, 400)
+			);
+		}
+	});
+
+	// Carbon's Checkbox also fires `check` on mount, so this must be idempotent.
+	function toggle(g: MoveGroup, id: number, on: boolean) {
+		const now = chosen(g);
+		if (on === now.includes(id)) return;
+		picked[g.key] = on ? [...now, id] : now.filter((x) => x !== id);
+	}
+
+	// --- Moving ---------------------------------------------------------------
+	let confirmKeys = $state<string[]>([]);
+	let confirmOpen = $state(false);
+	const confirmCross = $derived(confirmKeys.reduce((n, k) => n + crossCount(k), 0));
+	let summary = $state<{ moved: number; failed: string[] } | null>(null);
+
+	function ask(keys: string[]) {
+		confirmKeys = keys.filter((k) => chosenOf(k).length && target(k));
+		if (confirmKeys.length) confirmOpen = true;
+	}
+
+	async function move() {
+		confirmOpen = false;
+		summary = null;
+		const keys = confirmKeys;
+		selectedRowIds = [];
+		for (const key of keys) {
+			const { data, error } = await ComicsService.comicMove({
+				body: { ids: chosenOf(key), target: target(key) }
+			});
+			results[key] = data
+				? { state: 'queued', jobId: data.jobId }
+				: { state: 'failed', jobId: 0, error: errorMessage(error) };
+		}
+		poll(keys);
+	}
+
+	let pollTimer: ReturnType<typeof setTimeout> | undefined;
+	onDestroy(() => {
+		clearTimeout(pollTimer);
+		timers.forEach(clearTimeout);
+	});
+
+	// Follow the jobs until none is waiting or running. History keeps the last
+	// 20 jobs, so one that dropped out of it counts as done.
+	async function poll(keys: string[]) {
+		const { data } = await SystemService.listJobs();
+		if (data) {
+			for (const key of keys) {
+				const r = results[key];
+				if (!r || r.state === 'failed' || r.state === 'done') continue;
+				const finished = data.history.find((j) => j.id === r.jobId);
+				if (data.running?.id === r.jobId) r.state = 'moving';
+				else if (finished)
+					results[key] =
+						finished.state === 'succeeded'
+							? { ...r, state: 'done' }
+							: { ...r, state: 'failed', error: finished.error ?? finished.state };
+				else if (!data.queued.some((j) => j.id === r.jobId)) r.state = 'done';
+			}
+		}
+		if (keys.some((k) => busy(k))) {
+			pollTimer = setTimeout(() => poll(keys), 1500);
+			return;
+		}
+		const failed = keys
+			.filter((k) => results[k]?.state === 'failed')
+			.map((k) => `${k}: ${results[k].error}`);
+		summary = { moved: keys.length - failed.length, failed };
+		// Moved comics are pending no more; drop picks made before the move.
+		for (const key of keys) delete picked[key];
+		refreshMediaFiles(mediaType);
+		invalidate(`app:media:${mediaType}`);
+	}
+
+	const planTag: Record<
 		ComicMovePlanItem['status'],
 		{ type: 'green' | 'gray' | 'red' | 'magenta'; label: string }
 	> = {
@@ -123,76 +277,33 @@
 		missing: { type: 'magenta', label: 'File missing' },
 		notfound: { type: 'magenta', label: 'Not found' }
 	};
-
-	function applyTag() {
-		const t = tagInput.trim();
-		goto(t ? `?tag=${encodeURIComponent(t)}` : '?', { keepFocus: true });
-	}
-
-	function toggle(id: number, checked: boolean) {
-		const next = new Set(excluded);
-		if (checked) next.delete(id);
-		else next.add(id);
-		excluded = next;
-		preview = null;
-	}
-
-	async function runPreview() {
-		previewing = true;
-		previewError = '';
-		result = null;
-		const { data, error } = await ComicsService.comicMovePreview({
-			body: { ids: selected.map((f) => f.id), target }
-		});
-		previewing = false;
-		if (error || !data) {
-			preview = null;
-			previewError = errorMessage(error);
-			return;
-		}
-		preview = data.items;
-		previewTarget = data.target;
-	}
-
-	async function move() {
-		confirmOpen = false;
-		const { data, error } = await ComicsService.comicMove({
-			body: { ids: toMove.map((i) => i.id), target: previewTarget }
-		});
-		if (error || !data) {
-			addNotification(new ErrorNotification({ subtitle: errorMessage(error) }));
-			return;
-		}
-		addNotification(new SuccessNotification({ subtitle: data.message }));
-		runningJob = data.jobId;
-		movingCount = toMove.length;
-		poll();
-	}
-
-	// Follow the job until it lands in the history, then reload the list so
-	// the comics show their new paths.
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	let movingCount = 0;
-	async function poll() {
-		const { data } = await SystemService.listJobs();
-		const done = data?.history.find((j) => j.id === runningJob);
-		if (!done) {
-			timer = setTimeout(poll, 1000);
-			return;
-		}
-		runningJob = null;
-		result = {
-			ok: done.state === 'succeeded',
-			count: movingCount,
-			target: done.params.target ?? previewTarget,
-			error: done.error ?? null
-		};
-		preview = null;
-		refreshMediaFiles(mediaType);
-		invalidate(`app:media:${mediaType}`);
-	}
-	onDestroy(() => clearTimeout(timer));
+	const folderHref = (key: string) => {
+		const k = folderKey(
+			files.filter((f) => !f.archived),
+			previews[key]?.target ?? target(key)
+		);
+		return k === undefined ? undefined : `/${mediaType}/folder?dir=${encodeURIComponent(k)}`;
+	};
 </script>
+
+{#snippet comicState(c: GroupComic, item: ComicMovePlanItem | undefined, previewed: boolean)}
+	{#if c.otherAuthors.length}
+		<Tag size="sm" type="outline" title="Several authors: pick where it goes"
+			>also {c.otherAuthors.join(', ')}</Tag
+		>
+	{/if}
+	{#if item}
+		<Tag size="sm" type={planTag[item.status].type} title={item.reason ?? ''}
+			>{planTag[item.status].label}</Tag
+		>
+		{#if item.crossDevice}<Tag size="sm" type="warm-gray">Copy</Tag>{/if}
+		{#if item.reason}<span class="muted">{item.reason}</span>{/if}
+	{:else if c.inPlace}
+		<Tag size="sm" type="gray">Already there</Tag>
+	{:else if !previewed}
+		<span class="muted">…</span>
+	{/if}
+{/snippet}
 
 <Breadcrumb noTrailingSlash>
 	<BreadcrumbItem href="/{mediaType}">
@@ -204,156 +315,217 @@
 
 {#if mediaType !== 'comic'}
 	<p class="hint">Only comics can be moved for now.</p>
+{:else if !dataLoaded && !files.length}
+	<DataTableSkeleton rows={8} columns={5} />
 {:else}
 	<p class="hint">
-		Gather every comic with a tag (e.g. an author's <code>[name]</code>) into one folder. Comics
-		keep their favorite, reading progress and cover: the record follows the file. The folder must be
-		inside a comic scan folder and is created if needed. The suggestion is a folder named after the
-		tag that already holds some of the comics, else one in the artist folder (<code
-			>COMIC_ARTIST_PATH</code
-		>, by default <code>artist/</code> in the comic folder). Moving within one drive is a quick rename;
-		between drives or network shares the files are copied, then the originals deleted.
+		Gather each author's comics into one folder. Authors come from
+		<Link href="/{mediaType}/tag?view=classify">Tags → Classify</Link>; search to gather any other
+		tag.
 	</p>
+	<details class="how">
+		<summary>How it works</summary>
+		<p>
+			Comics keep their favorite, progress and cover: the record follows the file. A row's folder is
+			the one already named after it, else one in the artist folder (<code>COMIC_ARTIST_PATH</code
+			>); expand a row to edit it and see where each comic goes. Within one drive a move is a
+			rename; between drives or shares the files are copied, then deleted (marked <em>Copy</em>).
+			Each row is its own background job (Admin → Jobs); comics that conflict are skipped.
+		</p>
+	</details>
 
-	<div class="controls">
-		<div class="tag-search">
-			<Search
-				placeholder="Tag, e.g. an author name"
-				bind:value={tagInput}
-				on:change={applyTag}
-				on:clear={() => goto('?')}
-			/>
-		</div>
+	{#if summary}
+		<InlineNotification
+			kind={summary.failed.length ? 'warning' : 'success'}
+			title={summary.failed.length ? 'Moved with problems' : 'Moved'}
+			subtitle={`${summary.moved} row(s) done.${summary.failed.length ? ' ' + summary.failed.join('; ') : ''}`}
+			on:close={() => (summary = null)}
+		/>
+	{/if}
+
+	<div class="above">
+		<Toggle
+			size="sm"
+			labelText="Show organized authors ({doneCount})"
+			labelA=""
+			labelB=""
+			bind:toggled={showDone}
+		/>
 	</div>
 
-	<!-- Only the first load shows a skeleton: a reload after a move keeps the
-	     page (and its result banners) in place. -->
-	{#if !dataLoaded && !files.length}
-		<SkeletonPlaceholder style="width: 100%; height: 12rem" />
-	{:else if !tag}
-		<AuthorsOverview
-			{files}
-			{mediaType}
-			onDone={() => {
-				refreshMediaFiles(mediaType);
-				invalidate(`app:media:${mediaType}`);
-			}}
-		/>
-	{:else if matches.length === 0}
-		<p class="muted">No comic has the tag “{tag}”.</p>
-	{:else}
-		<h4>{selected.length} of {matches.length} comics with “{folderTag}” selected</h4>
-		{#if tagNames.length > 1}
-			<p class="muted">Including its aliases: {tagNames.slice(1).join(', ')}.</p>
-		{/if}
-		<ul class="comics">
-			{#each matches as f (f.id)}
-				<li>
-					<Checkbox
-						checked={!excluded.has(f.id)}
-						on:check={(e) => toggle(f.id, e.detail)}
-						labelText={f.name}
-					/>
-					<span class="path" title={f.path}>{f.path}</span>
-				</li>
-			{/each}
-		</ul>
-
-		<div class="controls">
-			<div class="target">
-				<TextInput
-					labelText="Target folder"
-					bind:value={target}
-					on:input={() => (preview = null)}
-					placeholder="/data/comics/…"
-				/>
-			</div>
-			<Button
-				kind="tertiary"
-				icon={View}
-				disabled={!selected.length || !target.trim() || previewing || runningJob !== null}
-				on:click={runPreview}>Preview</Button
-			>
-			{#if previewing}<InlineLoading description="Checking…" />{/if}
-		</div>
-
-		{#if result}
-			<div class="result">
-				<InlineNotification
-					kind={result.ok ? 'success' : 'error'}
-					title={result.ok ? 'Moved' : 'Move finished with problems'}
-					subtitle={result.ok
-						? `${result.count} comic(s) now in ${result.target}.`
-						: (result.error ?? 'The move job failed.')}
-					on:close={() => (result = null)}
-				/>
-				{#if resultFolderKey !== undefined}
-					<Link href="/{mediaType}/folder?dir={encodeURIComponent(resultFolderKey)}"
-						>Open the folder</Link
+	<DataTable
+		expandable
+		selectable
+		batchSelection
+		size="medium"
+		class="move-table"
+		nonSelectableRowIds={visible.filter((g) => !chosen(g).length || busy(g.key)).map((g) => g.key)}
+		headers={[
+			{ key: 'name', value: 'Author / tag' },
+			{ key: 'comics', value: 'Comics' },
+			{ key: 'move', value: 'To move' },
+			{ key: 'target', value: 'Target folder' },
+			{ key: 'status', value: 'Status' }
+		]}
+		{rows}
+		bind:selectedRowIds
+		bind:expandedRowIds
+	>
+		<svelte:fragment slot="cell" let:row let:cell>
+			{@const g = byKey.get(row.id)}
+			{#if cell.key === 'name'}
+				<span class="name">{cell.value}</span>
+				{#if g && !g.isAuthor}<Tag size="sm" type="outline">tag</Tag>{/if}
+				{#if g && g.names.length > 1}
+					<span class="muted" title={g.names.slice(1).join(', ')}>
+						+{g.names.length - 1} alias{g.names.length > 2 ? 'es' : ''}</span
 					>
 				{/if}
-			</div>
-		{/if}
-
-		{#if previewError}
-			<InlineNotification
-				kind="error"
-				title="Can't move there"
-				subtitle={previewError}
-				hideCloseButton
-			/>
-		{/if}
-
-		{#if preview}
-			<p class="summary">
-				Into <code>{previewTarget}</code>: {toMove.length} to move{#if count('same')}, {count(
-						'same'
-					)}
-					already there{/if}{#if count('conflict')}, {count('conflict')} with conflicts (skipped){/if}{#if count('missing') + count('notfound')},
-					{count('missing') + count('notfound')} unavailable{/if}.
-			</p>
-			{#if crossCount}
-				<InlineNotification
-					kind="warning"
-					title="Different drive"
-					subtitle="{crossCount} comic(s) are on another drive or share than the target: they'll be copied and then deleted, which can take a while over the network."
-					hideCloseButton
-				/>
+			{:else if cell.key === 'target'}
+				<span class="path" title={cell.value}>{cell.value || '…'}</span>
+			{:else if cell.key === 'move'}
+				{cell.value || '—'}
+			{:else if cell.key === 'status'}
+				{@const r = results[row.id]}
+				{#if r?.state === 'queued'}
+					<InlineLoading description="Queued" />
+				{:else if r?.state === 'moving'}
+					<InlineLoading description="Moving…" />
+				{:else if r?.state === 'failed'}
+					<Tag size="sm" type="red" title={r.error}>Failed</Tag>
+				{:else if r?.state === 'done' && !row.move}
+					<Tag size="sm" type="green">Moved</Tag>
+				{:else if row.move}
+					<span>{row.move} to move</span>
+					{#if crossCount(row.id)}<Tag size="sm" type="warm-gray">{crossCount(row.id)} copy</Tag
+						>{/if}
+				{:else}
+					<span class="muted">✓ Organized</span>
+				{/if}
+			{:else}
+				{cell.value}
 			{/if}
-			<ul class="plan">
-				{#each preview as item (item.id)}
-					<li>
-						<Tag size="sm" type={statusTag[item.status].type}>{statusTag[item.status].label}</Tag>
-						{#if item.crossDevice}<Tag size="sm" type="warm-gray">Copy</Tag>{/if}
-						<span class="name">{item.name || `#${item.id}`}</span>
-						{#if item.reason}<span class="muted">— {item.reason}</span>{/if}
-					</li>
-				{/each}
-			</ul>
-			<div class="controls">
-				<Button
-					icon={FolderMoveTo}
-					disabled={!toMove.length || runningJob !== null}
-					on:click={() => (confirmOpen = true)}>Move {toMove.length} comic(s)</Button
+		</svelte:fragment>
+
+		<svelte:fragment slot="expanded-row" let:row>
+			{@const g = byKey.get(row.id)}
+			{#if g}
+				{@const p = previews[g.key]}
+				{@const plan = new Map((p?.items ?? []).map((i) => [i.id, i]))}
+				<div class="detail">
+					<div class="target-row">
+						<TextInput
+							size="sm"
+							labelText="Target folder"
+							value={target(g.key)}
+							on:input={(e) => (edited[g.key] = String(e.detail ?? ''))}
+						/>
+						{#if g.key in edited && edited[g.key] !== suggested[g.key]}
+							<Button size="small" kind="ghost" on:click={() => delete edited[g.key]}
+								>Use suggestion</Button
+							>
+						{/if}
+					</div>
+					{#if p?.error}
+						<InlineNotification
+							lowContrast
+							kind="error"
+							title="Can't move there"
+							subtitle={p.error}
+							hideCloseButton
+						/>
+					{/if}
+					<table class="comics">
+						<tbody>
+							{#each g.comics as c (c.id)}
+								{@const item = plan.get(c.id)}
+								<tr>
+									<td class="check">
+										<Checkbox
+											hideLabel
+											labelText={`Move ${c.name}`}
+											checked={chosen(g).includes(c.id)}
+											disabled={busy(g.key)}
+											on:check={(e) => toggle(g, c.id, e.detail)}
+										/>
+									</td>
+									<td>
+										<div class="comic-name">{c.name}</div>
+										<div class="muted path" title={c.folder}>{c.folder}</div>
+										<!-- On a phone the state column is hidden and shows here. -->
+										<div class="state-inline">{@render comicState(c, item, !!p)}</div>
+									</td>
+									<td class="state">{@render comicState(c, item, !!p)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+					<div class="actions">
+						<Button
+							size="small"
+							icon={FolderMoveTo}
+							disabled={!chosen(g).length || !target(g.key) || busy(g.key)}
+							on:click={() => ask([g.key])}
+							>Move {chosen(g).length} comic{chosen(g).length === 1 ? '' : 's'}</Button
+						>
+						{#if results[g.key]?.state === 'done' && folderHref(g.key)}
+							<Link href={folderHref(g.key)}>Open the folder</Link>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		</svelte:fragment>
+
+		<Toolbar>
+			<ToolbarBatchActions>
+				<Button icon={FolderMoveTo} on:click={() => ask(selectedRowIds)}
+					>Move selected ({sumChosen(selectedRowIds)} comics)</Button
 				>
-				{#if runningJob !== null}<InlineLoading description="Moving… (see Admin → Jobs)" />{/if}
-			</div>
-		{/if}
+			</ToolbarBatchActions>
+			<ToolbarContent>
+				<ToolbarSearch persistent bind:value={search} placeholder="Search authors or any tag" />
+				<Button icon={FolderMoveTo} disabled={!workKeys.length} on:click={() => ask(workKeys)}
+					>Gather all ({sumChosen(workKeys)})</Button
+				>
+			</ToolbarContent>
+		</Toolbar>
+	</DataTable>
+	{#if visible.length > pageSize}
+		<Pagination
+			bind:page={pageNo}
+			bind:pageSize
+			totalItems={visible.length}
+			pageSizes={[50, 100, 200]}
+		/>
+	{/if}
+	{#if !visible.length}
+		<p class="hint empty">
+			{#if search.trim()}
+				No author or tag matches “{search.trim()}”.
+			{:else if authors.length}
+				Every author is organized. Turn on “Show organized” to see them.
+			{:else}
+				No authors yet: mark tags as authors under
+				<Link href="/{mediaType}/tag?view=classify">Tags → Classify</Link>, or search for a tag.
+			{/if}
+		</p>
 	{/if}
 {/if}
 
 <Modal
 	bind:open={confirmOpen}
-	modalHeading="Move {toMove.length} comic(s)?"
+	modalHeading="Move {sumChosen(confirmKeys)} comic{sumChosen(confirmKeys) === 1 ? '' : 's'}?"
 	primaryButtonText="Move"
 	secondaryButtonText="Cancel"
 	on:click:button--secondary={() => (confirmOpen = false)}
 	on:submit={move}
 >
 	<p>
-		The files will be moved into <code>{previewTarget}</code>.{crossCount
-			? ` ${crossCount} of them are copied across drives first.`
-			: ''} The move runs as a background job, after any scan or cover run in progress.
+		{confirmKeys.length === 1
+			? `Into ${target(confirmKeys[0])}.`
+			: `${confirmKeys.length} rows, each into its own folder.`}
+		{confirmCross ? `${confirmCross} are copied across drives first.` : ''}
+		Each row is a background job, after any scan or cover run in progress; comics that conflict are skipped.
 	</p>
 </Modal>
 
@@ -363,64 +535,113 @@
 		align-items: center;
 		gap: 0.25rem;
 	}
-	.hint {
+	.how {
+		margin: -0.5rem 0 1rem;
+		font-size: 0.875rem;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+	.how summary {
+		cursor: pointer;
+		color: var(--cds-link-01, #78a9ff);
+	}
+	.how p {
 		max-width: 60rem;
-		margin: 0.5rem 0 1rem;
+		margin-top: 0.5rem;
+	}
+	.hint {
+		margin: 0.25rem 0 1rem;
 		color: var(--cds-text-02, #c6c6c6);
 		font-size: 0.875rem;
 	}
-	.controls {
+	.empty {
+		margin-top: 1rem;
+	}
+	.name {
+		overflow-wrap: break-word;
+		margin-right: 0.25rem;
+	}
+	.muted {
+		color: var(--cds-text-03, #8d8d8d);
+		font-size: 0.75rem;
+	}
+	.path {
+		display: inline-block;
+		max-width: 24rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		vertical-align: bottom;
+	}
+	.above {
+		margin-bottom: 0.5rem;
+	}
+	/* On a phone, drop the Comics and Target columns (the target shows when a
+	   row is expanded) so names don't break mid-word. Columns: expand,
+	   checkbox, name, comics, to move, target, status. */
+	@media (max-width: 672px) {
+		:global(.move-table th:nth-child(4)),
+		:global(.move-table td:nth-child(4)),
+		:global(.move-table th:nth-child(6)),
+		:global(.move-table td:nth-child(6)) {
+			display: none;
+		}
+	}
+	.detail {
+		padding: 0.5rem 0 1rem;
+	}
+	.target-row {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: flex-end;
-		gap: 1rem;
-		margin: 1rem 0;
+		gap: 0.5rem;
+		max-width: 48rem;
+		margin-bottom: 0.75rem;
 	}
-	.tag-search {
-		width: 24rem;
-		max-width: 100%;
+	/* Fixed layout so long folder paths truncate instead of widening the page. */
+	.comics {
+		width: 100%;
+		border-collapse: collapse;
+		table-layout: fixed;
 	}
-	.target {
-		flex: 1 1 24rem;
-		min-width: 0;
+	/* Inside the DataTable, Carbon's fixed row height would clip a comic
+	   whose name or tags wrap. */
+	.comics tr,
+	.comics td {
+		height: auto;
+		background: transparent;
 	}
-	.comics,
-	.plan {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		margin: 0.5rem 0;
+	.comics td {
+		padding: 0.375rem 0.5rem 0.375rem 0;
+		vertical-align: top;
+		border-top: 1px solid var(--cds-ui-03, #393939);
 	}
-	.comics li {
-		min-width: 0;
+	.comics .check {
+		width: 2rem;
+	}
+	.comic-name {
+		overflow-wrap: anywhere;
 	}
 	.comics .path {
-		display: block;
-		/* Line up under the checkbox label. */
-		padding-left: 1.625rem;
+		max-width: 100%;
 	}
-	.path,
-	.muted {
-		font-size: 0.75rem;
-		color: var(--cds-text-03, #8d8d8d);
-		overflow-wrap: anywhere;
+	.state {
+		width: 40%;
 	}
-	.plan li {
+	.state-inline {
+		display: none;
+		margin-top: 0.25rem;
+	}
+	@media (max-width: 672px) {
+		.comics td.state {
+			display: none;
+		}
+		.state-inline {
+			display: block;
+		}
+	}
+	.actions {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-	.result {
-		margin: 1rem 0;
-	}
-	.result :global(.bx--inline-notification) {
-		max-width: 48rem;
-		margin-bottom: 0.25rem;
-	}
-	.summary {
-		margin: 1rem 0 0.5rem;
-		color: var(--cds-text-02, #c6c6c6);
+		gap: 1rem;
+		margin-top: 0.75rem;
 	}
 </style>

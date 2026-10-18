@@ -372,37 +372,47 @@ class TestHelpers:
 # Suggested target and the artist folder
 # ---------------------------------------------------------------------------
 
+def suggest(client, ids, name):
+    r = client.post("/api/comics/move/suggest", json={"groups": [{"ids": ids, "name": name}]})
+    assert r.status_code == 200
+    return r.json()["targets"][0]
+
+
 class TestSuggest:
     def test_artist_folder_by_default(self, client, session, root):
         add_zip(session, root, 1, "inbox/[Alice] One.zip")
-        r = client.post("/api/comics/move/suggest", json={"ids": [1], "name": " Alice "})
-        assert r.status_code == 200
-        assert r.json() == {"target": str(root / "artist" / "Alice")}
+        assert suggest(client, [1], " Alice ") == str(root / "artist" / "Alice")
 
     def test_configured_artist_folder(self, client, session, root, monkeypatch, tmp_path):
         add_zip(session, root, 1, "inbox/[A] One.zip")
         monkeypatch.setattr(global_data.Config.Comic, "artist_path", str(tmp_path / "authors"))
-        r = client.post("/api/comics/move/suggest", json={"ids": [1], "name": "A/B"})
-        assert r.json()["target"] == str(tmp_path / "authors" / "A_B")
+        assert suggest(client, [1], "A/B") == str(tmp_path / "authors" / "A_B")
 
     def test_prefers_existing_folder_of_that_name(self, client, session, root):
         add_zip(session, root, 1, "inbox/[Alice] One.zip")
         add_zip(session, root, 2, "old/Alice/[Alice] Two.zip")
         add_zip(session, root, 3, "nas/Alice/[Alice] Three.zip")
         add_zip(session, root, 4, "nas/Alice/[Alice] Four.zip")
-        r = client.post(
-            "/api/comics/move/suggest", json={"ids": [1, 2, 3, 4, 99], "name": "Alice"}
-        )
-        assert r.json()["target"] == str(root / "nas" / "Alice")
+        assert suggest(client, [1, 2, 3, 4, 99], "Alice") == str(root / "nas" / "Alice")
 
     def test_unusable_name(self, client, session, root):
         add_zip(session, root, 1, "inbox/one.zip")
-        r = client.post("/api/comics/move/suggest", json={"ids": [1], "name": " .. "})
-        assert r.json()["target"] == ""
+        assert suggest(client, [1], " .. ") == ""
 
-    def test_empty_ids(self, client):
-        r = client.post("/api/comics/move/suggest", json={"ids": [], "name": "A"})
-        assert r.status_code == 400
+    def test_several_groups_in_order(self, client, session, root):
+        add_zip(session, root, 1, "inbox/[A] One.zip")
+        add_zip(session, root, 2, "B/[B] Two.zip")
+        r = client.post(
+            "/api/comics/move/suggest",
+            json={"groups": [{"ids": [1], "name": "A"}, {"ids": [2], "name": "B"}]},
+        )
+        assert r.json() == {"targets": [str(root / "artist" / "A"), str(root / "B")]}
+
+    @pytest.mark.parametrize(
+        "body", [{"groups": []}, {"groups": [{"ids": [], "name": "A"}]}, {"ids": [1], "name": "A"}]
+    )
+    def test_bad_request(self, client, body):
+        assert client.post("/api/comics/move/suggest", json=body).status_code == 400
 
 
 class TestUnmountedWarning:

@@ -158,8 +158,11 @@ class ComicCBV:
         },
     )
     def move_suggest(self, req: ComicMoveSuggestRequest) -> ComicMoveSuggestion:
-        """Default target for gathering the comics into a folder named ``name``."""
-        return ComicMoveSuggestion(target=mover.suggest_target(self.session, req.ids, req.name))
+        """Default targets for gathering each group into a folder named after it
+        (one request for a whole table of authors)."""
+        return ComicMoveSuggestion(
+            targets=[mover.suggest_target(self.session, g.ids, g.name) for g in req.groups]
+        )
 
     @router.post(
         "/api/comics/move/preview",

@@ -33,17 +33,22 @@ class ComicMoveRequest(BaseModel):
     target: str = Field(description="Absolute folder path inside a comic scan folder; created if missing")
 
 
-class ComicMoveSuggestRequest(BaseModel):
-    """Request a target folder for gathering comics under one name"""
+class ComicMoveSuggestGroup(BaseModel):
+    """Comics to gather under one name"""
     ids: List[int] = Field(min_length=1)
     name: str = Field(description="Folder name, e.g. the author tag")
 
 
+class ComicMoveSuggestRequest(BaseModel):
+    """Request target folders for several groups at once"""
+    groups: List[ComicMoveSuggestGroup] = Field(min_length=1)
+
+
 class ComicMoveSuggestion(BaseModel):
-    """Suggested target folder"""
-    target: str = Field(
-        description="A folder with this name already holding some of the comics, else <artist folder>/<name>; "
-        "empty when the name can't be a folder name"
+    """Suggested target folders, in the order of the groups"""
+    targets: List[str] = Field(
+        description="Per group: a folder with its name already holding some of its comics, else "
+        "<artist folder>/<name>; empty when the name can't be a folder name"
     )
 
 
