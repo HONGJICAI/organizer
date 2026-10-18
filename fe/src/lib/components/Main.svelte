@@ -104,28 +104,42 @@
 		</div>
 	{/if}
 
+	<!-- Header buttons take their hover tooltip (and aria-label) from
+	     iconDescription; the rightmost one aligns it to the end so it stays on
+	     screen. -->
 	<HeaderUtilities>
 		{#if !viewerState.active}
 			<HeaderGlobalAction
-				aria-label={viewerState.privateSession
-					? 'Private reading on: progress is not saved. Click to turn off.'
-					: 'Private reading off. Click to stop saving progress for this session.'}
+				iconDescription={viewerState.privateSession ? 'Private reading on' : 'Private reading off'}
 				icon={viewerState.privateSession ? ViewOff : View}
 				isActive={viewerState.privateSession}
 				on:click={() => setPrivateReading(!viewerState.privateSession)}
 			/>
-			<HeaderGlobalAction aria-label="Search" icon={SearchIcon} on:click={() => goto('/search')} />
+			<HeaderGlobalAction
+				iconDescription="Search"
+				icon={SearchIcon}
+				on:click={() => goto('/search')}
+			/>
 		{/if}
-		<HeaderGlobalAction aria-label="Settings" icon={SettingsAdjust} on:click={onClickSettings} />
+		<HeaderGlobalAction
+			iconDescription="Settings"
+			icon={SettingsAdjust}
+			on:click={onClickSettings}
+		/>
 		{#if authState.required}
 			<HeaderGlobalAction
-				aria-label="Logout"
+				iconDescription="Logout"
 				icon={Logout}
 				on:click={() => authState.clearToken()}
 			/>
 		{/if}
 		{#if viewerState.active}
-			<HeaderGlobalAction aria-label="Close" icon={Close} on:click={() => viewerState.onClose()} />
+			<HeaderGlobalAction
+				iconDescription="Close"
+				tooltipAlignment="end"
+				icon={Close}
+				on:click={() => viewerState.onClose()}
+			/>
 		{:else}
 			<HeaderAction bind:isOpen={isOpen2} icon={Menu} closeIcon={Menu}>
 				<HeaderPanelLinks>
