@@ -1,7 +1,7 @@
 """Pydantic models for comic-related requests and responses"""
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from model import ComicEntity
 
@@ -25,6 +25,42 @@ class ComicRenameRequest(BaseModel):
 class ComicRenameResponse(BaseModel):
     """Response for comic rename operation"""
     name: str
+
+
+class ComicMoveRequest(BaseModel):
+    """Request to move comics into one folder"""
+    ids: List[int] = Field(min_length=1)
+    target: str = Field(description="Absolute folder path inside a comic scan folder; created if missing")
+
+
+class ComicMovePlanItem(BaseModel):
+    """What moving one comic would do"""
+    id: int
+    name: str
+    source: str
+    destination: str
+    status: Literal["move", "same", "conflict", "missing", "notfound"] = Field(
+        description="move: will be moved; same: already in the target folder; conflict: destination taken "
+        "(see reason); missing: file not on disk; notfound: no comic with this id"
+    )
+    crossDevice: bool = Field(
+        default=False,
+        description="Source and target are on different filesystems: copied then deleted instead of renamed",
+    )
+    reason: Optional[str] = None
+
+
+class ComicMovePreview(BaseModel):
+    """Response for the move preview"""
+    target: str = Field(description="The normalized target folder")
+    items: List[ComicMovePlanItem]
+
+
+class ComicMoveResponse(BaseModel):
+    """Response for a queued move"""
+    jobId: int
+    status: Literal["started", "queued", "already_queued"]
+    message: str
 
 
 class DuplicateGroup(BaseModel):

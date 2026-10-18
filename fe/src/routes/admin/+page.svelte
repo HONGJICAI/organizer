@@ -153,6 +153,10 @@
 
 	function jobLabel(job: JobInfo): string {
 		if (job.kind === 'scan') return `Scan (${job.params.media_type ?? 'all'})`;
+		if (job.kind === 'move') {
+			const folder = (job.params.target ?? '').split(/[/\\]/).pop();
+			return `Move ${job.params.count ?? ''} comic(s) → ${folder}`;
+		}
 		return job.params.mode === 'missing' ? 'Covers (missing only)' : 'Covers (all)';
 	}
 
@@ -211,8 +215,9 @@
 			{/if}
 		</div>
 		<p class="muted note">
-			Scans and cover runs share one queue and run one at a time. Waiting jobs can be cancelled; a
-			running cover run stops after the comic in hand, a running scan can't be stopped.
+			Scans, cover runs and comic moves share one queue and run one at a time. Waiting jobs can be
+			cancelled; a running cover run stops after the comic in hand, a running scan or move can't be
+			stopped.
 		</p>
 		{#if jobs?.running}
 			{@const job = jobs.running}

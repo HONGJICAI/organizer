@@ -28,6 +28,7 @@
 		UpdateNow,
 		Recycle,
 		Filter,
+		FolderMoveTo,
 		Search as SearchIcon
 	} from 'carbon-icons-svelte';
 	import { page } from '$app/state';
@@ -224,6 +225,14 @@
 				kind="ghost"
 				on:click={() => goto(`/search?q=${encodeURIComponent(searchStr)}`)}
 			/>
+			{#if page.params.mediaType === 'comic' && searchStr.trim()}
+				<Button
+					icon={FolderMoveTo}
+					iconDescription="Move this tag's comics to a folder"
+					kind="ghost"
+					on:click={() => goto(`/comic/move?tag=${encodeURIComponent(searchStr.trim())}`)}
+				/>
+			{/if}
 			{#if config.OrderByPosition === 'NextToSearchBar' && orderByOptions}
 				<Select bind:selected={orderBy} labelText="Order By">
 					{#each orderByOptions as { value, text }}

@@ -15,7 +15,7 @@ from tasks.backup import backup_database
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Heavy jobs — scans and cover runs share core.jobs' single-lane queue; live
+# Heavy jobs — scans, cover runs and comic moves (mover.py) share core.jobs' single-lane queue; live
 # progress stays in core.scan_progress and covers.regen.
 # ---------------------------------------------------------------------------
 
@@ -192,7 +192,7 @@ class CoverRegenResponse(BaseModel):
 
 class JobInfo(BaseModel):
     id: int
-    kind: Literal["scan", "covers"]
+    kind: Literal["scan", "covers", "move"]
     params: Dict[str, str]
     state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     created_at: datetime
@@ -277,7 +277,7 @@ def _job_info(job: Job) -> JobInfo:
 
 @router.get("/api/system/jobs", tags=["system"])
 def list_jobs() -> JobsResponse:
-    """The running heavy job (scan or cover run), the queue behind it, and recent history."""
+    """The running heavy job (scan, cover run or comic move), the queue behind it, and recent history."""
     snap = jobs.snapshot()
     return JobsResponse(
         running=_job_info(snap["running"]) if snap["running"] else None,

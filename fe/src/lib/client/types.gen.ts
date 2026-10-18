@@ -137,6 +137,56 @@ export type ComicMonthStats = {
 };
 
 /**
+ * What moving one comic would do
+ */
+export type ComicMovePlanItem = {
+    id: number;
+    name: string;
+    source: string;
+    destination: string;
+    /**
+     * move: will be moved; same: already in the target folder; conflict: destination taken (see reason); missing: file not on disk; notfound: no comic with this id
+     */
+    status: 'move' | 'same' | 'conflict' | 'missing' | 'notfound';
+    /**
+     * Source and target are on different filesystems: copied then deleted instead of renamed
+     */
+    crossDevice?: boolean;
+    reason?: string | null;
+};
+
+/**
+ * Response for the move preview
+ */
+export type ComicMovePreview = {
+    /**
+     * The normalized target folder
+     */
+    target: string;
+    items: Array<ComicMovePlanItem>;
+};
+
+/**
+ * Request to move comics into one folder
+ */
+export type ComicMoveRequest = {
+    ids: Array<number>;
+    /**
+     * Absolute folder path inside a comic scan folder; created if missing
+     */
+    target: string;
+};
+
+/**
+ * Response for a queued move
+ */
+export type ComicMoveResponse = {
+    jobId: number;
+    status: 'started' | 'queued' | 'already_queued';
+    message: string;
+};
+
+/**
  * Response for comic page details
  */
 export type ComicPageDetailResponse = {
@@ -314,7 +364,7 @@ export type JobCancelResponse = {
 
 export type JobInfo = {
     id: number;
-    kind: 'scan' | 'covers';
+    kind: 'scan' | 'covers' | 'move';
     params: {
         [key: string]: string;
     };
@@ -713,6 +763,88 @@ export type ComicFindDuplicatesResponses = {
 };
 
 export type ComicFindDuplicatesResponse = ComicFindDuplicatesResponses[keyof ComicFindDuplicatesResponses];
+
+export type ComicMovePreviewData = {
+    body: ComicMoveRequest;
+    path?: never;
+    query?: never;
+    url: '/api/comics/move/preview';
+};
+
+export type ComicMovePreviewErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicMovePreviewError = ComicMovePreviewErrors[keyof ComicMovePreviewErrors];
+
+export type ComicMovePreviewResponses = {
+    /**
+     * Successful Response
+     */
+    200: ComicMovePreview;
+};
+
+export type ComicMovePreviewResponse = ComicMovePreviewResponses[keyof ComicMovePreviewResponses];
+
+export type ComicMoveData = {
+    body: ComicMoveRequest;
+    path?: never;
+    query?: never;
+    url: '/api/comics/move';
+};
+
+export type ComicMoveErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicMoveError = ComicMoveErrors[keyof ComicMoveErrors];
+
+export type ComicMoveResponses = {
+    /**
+     * Successful Response
+     */
+    200: ComicMoveResponse;
+};
+
+export type ComicMoveResponse2 = ComicMoveResponses[keyof ComicMoveResponses];
 
 export type ComicDeleteData = {
     body?: never;
