@@ -586,6 +586,23 @@ export async function setupMock(authRequired: boolean) {
 			});
 			return HttpResponse.json({ results });
 		}),
+		http.post('/api/comics/move/suggest', async ({ request }) => {
+			await delay(150);
+			const body = (await request.json()) as { ids: number[]; name: string };
+			// Mirrors mover.suggest_target, with the artist folder at its default.
+			const folder = body.name
+				.trim()
+				.replace(/[/\\:*?"<>|]/g, '_')
+				.replace(/[. ]+$/, '');
+			if (!folder) return HttpResponse.json({ target: '' });
+			const counts = new Map<string, number>();
+			for (const c of comics.filter((x) => body.ids.includes(x.id))) {
+				const parent = c.path.slice(0, c.path.lastIndexOf('/'));
+				if (parent.split('/').pop() === folder) counts.set(parent, (counts.get(parent) ?? 0) + 1);
+			}
+			const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+			return HttpResponse.json({ target: best ? best[0] : `/data/comics/artist/${folder}` });
+		}),
 		http.post('/api/comics/move/preview', async ({ request }) => {
 			await delay(400);
 			const body = (await request.json()) as { ids: number[]; target: string };

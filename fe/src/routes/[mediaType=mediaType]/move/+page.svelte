@@ -5,7 +5,7 @@
 	import { ErrorNotification, SuccessNotification, type MediaFile } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
-	import { defaultTarget, hasTag } from '$lib/moveTarget';
+	import { hasTag } from '$lib/moveTarget';
 	import { goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
@@ -69,12 +69,19 @@
 		preview = null;
 		previewError = '';
 	});
+	// Suggested target from the backend: a folder named after the tag that
+	// already holds some of these comics, else <artist folder>/<tag>.
 	$effect(() => {
-		if (dataLoaded)
-			target = defaultTarget(
-				matches.map((f) => f.path),
-				tag
-			);
+		const ids = matches.map((f) => f.id);
+		const name = tag;
+		if (!dataLoaded || !ids.length) return;
+		let stale = false;
+		ComicsService.comicMoveSuggest({ body: { ids, name } }).then(({ data }) => {
+			if (!stale && data) target = data.target;
+		});
+		return () => {
+			stale = true;
+		};
 	});
 
 	const toMove = $derived(preview?.filter((i) => i.status === 'move') ?? []);
@@ -175,7 +182,10 @@
 	<p class="hint">
 		Gather every comic with a tag (e.g. an author's <code>[name]</code>) into one folder. Comics
 		keep their favorite, reading progress and cover: the record follows the file. The folder must be
-		inside a comic scan folder and is created if needed. Moving within one drive is a quick rename;
+		inside a comic scan folder and is created if needed. The suggestion is a folder named after the
+		tag that already holds some of the comics, else one in the artist folder (<code
+			>COMIC_ARTIST_PATH</code
+		>, by default <code>artist/</code> in the comic folder). Moving within one drive is a quick rename;
 		between drives or network shares the files are copied, then the originals deleted.
 	</p>
 

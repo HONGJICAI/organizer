@@ -93,6 +93,41 @@ def check_target(session: Session, target: str) -> str:
     return target
 
 
+def folder_name(name: str) -> str:
+    """A folder name from a tag: path separators and characters Windows/SMB
+    shares reject become ``_``; trailing dots and spaces (also rejected) go."""
+    cleaned = "".join("_" if c in '/\\:*?"<>|' or ord(c) < 32 else c for c in name.strip())
+    return cleaned.rstrip(". ")
+
+
+def suggest_target(session: Session, ids: Iterable[int], name: str) -> str:
+    """Where to gather ``ids`` under the name ``name``: a folder of that name
+    already holding some of them (the most common one), else
+    ``<artist root>/<name>``. Empty when ``name`` makes no folder name."""
+    folder = folder_name(name)
+    if not folder:
+        return ""
+    counts: Dict[str, int] = {}
+    for id in dict.fromkeys(ids):
+        comic = session.get(ComicEntity, id)
+        if comic is None:
+            continue
+        parent = os.path.dirname(os.path.normpath(comic.path))
+        if os.path.basename(parent) == folder:
+            counts[parent] = counts.get(parent, 0) + 1
+    if counts:
+        return max(counts, key=counts.__getitem__)
+    return os.path.join(os.path.normpath(global_data.Config.Comic.artist_root()), folder)
+
+
+def unmounted_paths() -> List[str]:
+    """Comic scan folders and the artist folder that sit in the container's
+    own filesystem (see ``in_container_fs``): media there is lost with the
+    container, and moves into them are refused."""
+    paths = list(global_data.Config.Comic.scan_pathes) + [global_data.Config.Comic.artist_root()]
+    return [p for p in dict.fromkeys(os.path.normpath(p) for p in paths) if in_container_fs(p)]
+
+
 def plan(session: Session, ids: Iterable[int], target: str) -> List[ComicMovePlanItem]:
     """What moving ``ids`` into ``target`` (already checked) would do."""
     items: List[ComicMovePlanItem] = []

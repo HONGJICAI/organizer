@@ -25,6 +25,8 @@ from schemas.comic import (
     ComicMovePreview,
     ComicMoveRequest,
     ComicMoveResponse,
+    ComicMoveSuggestion,
+    ComicMoveSuggestRequest,
     DuplicateGroup,
     DuplicatesResponse,
     ComicPageDetailResponse,
@@ -146,6 +148,18 @@ class ComicCBV:
                 )
             )
         return DuplicatesResponse(groups=groups)
+
+    @router.post(
+        "/api/comics/move/suggest",
+        tags=["comics"],
+        responses={
+            200: {"model": ComicMoveSuggestion},
+            400: {"model": dict},
+        },
+    )
+    def move_suggest(self, req: ComicMoveSuggestRequest) -> ComicMoveSuggestion:
+        """Default target for gathering the comics into a folder named ``name``."""
+        return ComicMoveSuggestion(target=mover.suggest_target(self.session, req.ids, req.name))
 
     @router.post(
         "/api/comics/move/preview",

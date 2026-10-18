@@ -419,6 +419,42 @@ export const ComicMoveResponseSchema = {
     description: 'Response for a queued move'
 } as const;
 
+export const ComicMoveSuggestRequestSchema = {
+    properties: {
+        ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Ids'
+        },
+        name: {
+            type: 'string',
+            title: 'Name',
+            description: 'Folder name, e.g. the author tag'
+        }
+    },
+    type: 'object',
+    required: ['ids', 'name'],
+    title: 'ComicMoveSuggestRequest',
+    description: 'Request a target folder for gathering comics under one name'
+} as const;
+
+export const ComicMoveSuggestionSchema = {
+    properties: {
+        target: {
+            type: 'string',
+            title: 'Target',
+            description: "A folder with this name already holding some of the comics, else <artist folder>/<name>; empty when the name can't be a folder name"
+        }
+    },
+    type: 'object',
+    required: ['target'],
+    title: 'ComicMoveSuggestion',
+    description: 'Suggested target folder'
+} as const;
+
 export const ComicPageDetailResponseSchema = {
     properties: {
         name: {

@@ -24,6 +24,13 @@ class Config:
         # Where image-album -> comic conversions are written. Unset means
         # "<first scan path>/converted", so the output is still picked up by scans.
         convert_path = os.environ.get("COMIC_CONVERT_PATH")
+        # Where "Move to folder" suggests author folders (<artist_path>/<name>).
+        # Unset means "<first scan path>/artist". Should be on a mounted drive.
+        artist_path = os.environ.get("COMIC_ARTIST_PATH")
+
+        @classmethod
+        def artist_root(cls) -> str:
+            return cls.artist_path or os.path.join(cls.scan_pathes[0], "artist")
 
     class Video:
         scan_pathes = [os.environ.get("VIDEO_SCAN_PATH", "/data/videos")]

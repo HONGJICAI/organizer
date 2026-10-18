@@ -187,6 +187,27 @@ export type ComicMoveResponse = {
 };
 
 /**
+ * Request a target folder for gathering comics under one name
+ */
+export type ComicMoveSuggestRequest = {
+    ids: Array<number>;
+    /**
+     * Folder name, e.g. the author tag
+     */
+    name: string;
+};
+
+/**
+ * Suggested target folder
+ */
+export type ComicMoveSuggestion = {
+    /**
+     * A folder with this name already holding some of the comics, else <artist folder>/<name>; empty when the name can't be a folder name
+     */
+    target: string;
+};
+
+/**
  * Response for comic page details
  */
 export type ComicPageDetailResponse = {
@@ -763,6 +784,47 @@ export type ComicFindDuplicatesResponses = {
 };
 
 export type ComicFindDuplicatesResponse = ComicFindDuplicatesResponses[keyof ComicFindDuplicatesResponses];
+
+export type ComicMoveSuggestData = {
+    body: ComicMoveSuggestRequest;
+    path?: never;
+    query?: never;
+    url: '/api/comics/move/suggest';
+};
+
+export type ComicMoveSuggestErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicMoveSuggestError = ComicMoveSuggestErrors[keyof ComicMoveSuggestErrors];
+
+export type ComicMoveSuggestResponses = {
+    /**
+     * Successful Response
+     */
+    200: ComicMoveSuggestion;
+};
+
+export type ComicMoveSuggestResponse = ComicMoveSuggestResponses[keyof ComicMoveSuggestResponses];
 
 export type ComicMovePreviewData = {
     body: ComicMoveRequest;

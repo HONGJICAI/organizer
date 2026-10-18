@@ -342,3 +342,60 @@ class TestHelpers:
 
     def test_inside_mixed_paths(self):
         assert not mover._inside("relative", "/abs")
+
+
+# ---------------------------------------------------------------------------
+# Suggested target and the artist folder
+# ---------------------------------------------------------------------------
+
+class TestSuggest:
+    def test_artist_folder_by_default(self, client, session, root):
+        add_zip(session, root, 1, "inbox/[Alice] One.zip")
+        r = client.post("/api/comics/move/suggest", json={"ids": [1], "name": " Alice "})
+        assert r.status_code == 200
+        assert r.json() == {"target": str(root / "artist" / "Alice")}
+
+    def test_configured_artist_folder(self, client, session, root, monkeypatch, tmp_path):
+        add_zip(session, root, 1, "inbox/[A] One.zip")
+        monkeypatch.setattr(global_data.Config.Comic, "artist_path", str(tmp_path / "authors"))
+        r = client.post("/api/comics/move/suggest", json={"ids": [1], "name": "A/B"})
+        assert r.json()["target"] == str(tmp_path / "authors" / "A_B")
+
+    def test_prefers_existing_folder_of_that_name(self, client, session, root):
+        add_zip(session, root, 1, "inbox/[Alice] One.zip")
+        add_zip(session, root, 2, "old/Alice/[Alice] Two.zip")
+        add_zip(session, root, 3, "nas/Alice/[Alice] Three.zip")
+        add_zip(session, root, 4, "nas/Alice/[Alice] Four.zip")
+        r = client.post(
+            "/api/comics/move/suggest", json={"ids": [1, 2, 3, 4, 99], "name": "Alice"}
+        )
+        assert r.json()["target"] == str(root / "nas" / "Alice")
+
+    def test_unusable_name(self, client, session, root):
+        add_zip(session, root, 1, "inbox/one.zip")
+        r = client.post("/api/comics/move/suggest", json={"ids": [1], "name": " .. "})
+        assert r.json()["target"] == ""
+
+    def test_empty_ids(self, client):
+        r = client.post("/api/comics/move/suggest", json={"ids": [], "name": "A"})
+        assert r.status_code == 400
+
+
+class TestUnmountedWarning:
+    def test_scan_warns_about_unmounted_paths(self, client, root, monkeypatch):
+        from core.jobs import jobs as queue
+        from core.scan_progress import progress
+        import loader
+
+        monkeypatch.setattr(loader.ComicLoader, "work", lambda self: None)
+        monkeypatch.setattr(mover, "in_container_fs", lambda p: p.endswith("artist"))
+        r = client.post("/api/system/scan", params={"media_type": "comics"})
+        assert r.status_code == 200
+        assert queue.wait_idle(10)
+        issues = progress.snapshot()["issues"]
+        assert [(i["level"], i["path"]) for i in issues] == [("warning", str(root / "artist"))]
+        assert "Not on a mounted drive" in issues[0]["reason"]
+
+    def test_folder_name(self):
+        assert mover.folder_name(' A:B*C?"D<E>F|G\x01 ') == "A_B_C__D_E_F_G_"
+        assert mover.folder_name("Name. .") == "Name"
