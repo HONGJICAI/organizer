@@ -1,5 +1,4 @@
-"""Tag classification: which file-name tags are authors, circles, languages
-or noise, and which are aliases of each other.
+"""Tag classification: which file-name tags are authors, languages or noise, and which are aliases of each other.
 
 Tags themselves are split from file names by the frontend; this only stores
 what the user decided about them (see ``model.TagInfo``).
@@ -18,7 +17,7 @@ from model import TagInfo
 
 router = APIRouter()
 
-TagKind = Literal["author", "circle", "language", "ignored"]
+TagKind = Literal["author", "language", "ignored"]
 
 
 class TagKindRequest(BaseModel):

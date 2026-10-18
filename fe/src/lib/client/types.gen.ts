@@ -524,7 +524,7 @@ export type TagKindRequest = {
     /**
      * null unclassifies: the tags lose their kind and stop being aliases
      */
-    kind?: ('author' | 'circle' | 'language' | 'ignored') | null;
+    kind?: ('author' | 'language' | 'ignored') | null;
 };
 
 /**

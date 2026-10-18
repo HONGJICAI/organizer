@@ -106,6 +106,6 @@ class TagInfo(SQLModel, table=True):
     there. Aliases always point at a tag that isn't itself an alias.
     """
     name: str = Field(primary_key=True)
-    kind: Optional[str] = Field(default=None)  # author | circle | language | ignored
+    kind: Optional[str] = Field(default=None)  # author | language | ignored
     canonical: Optional[str] = Field(default=None, index=True)
     updateTime: NaiveDatetime = Field(default_factory=datetime.now)

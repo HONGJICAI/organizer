@@ -184,9 +184,7 @@
 			tagState.index
 		)
 	);
-	let classified = $derived(
-		tagGroups.author.size + tagGroups.circle.size + tagGroups.language.size > 0
-	);
+	let classified = $derived(tagGroups.author.size + tagGroups.language.size > 0);
 	let searchedTagMap = $derived(
 		countTags(
 			searchFiles.map((c) => adapters[c.type].tagSource(c)),
@@ -221,9 +219,6 @@
 		{:else}
 			{#if tagGroups.author.size}
 				<TagStack tag2countMap={tagGroups.author} {onClickTag} title="Authors" />
-			{/if}
-			{#if tagGroups.circle.size}
-				<TagStack tag2countMap={tagGroups.circle} {onClickTag} title="Circles" />
 			{/if}
 			<TagStack
 				tag2countMap={tagGroups.other}

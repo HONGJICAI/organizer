@@ -6,7 +6,7 @@ const index = new TagIndex([
 	{ name: 'アリス', kind: 'author', canonical: null },
 	{ name: 'Alice', kind: null, canonical: 'アリス' },
 	{ name: 'Bob', kind: 'author', canonical: null },
-	{ name: 'Carol', kind: 'circle', canonical: null }
+	{ name: 'Carol', kind: 'language', canonical: null }
 ]);
 
 const file = (id: number, name: string, path: string, archived = false) => ({

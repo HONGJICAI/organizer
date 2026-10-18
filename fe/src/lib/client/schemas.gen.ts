@@ -1415,7 +1415,7 @@ export const TagKindRequestSchema = {
             anyOf: [
                 {
                     type: 'string',
-                    enum: ['author', 'circle', 'language', 'ignored']
+                    enum: ['author', 'language', 'ignored']
                 },
                 {
                     type: 'null'

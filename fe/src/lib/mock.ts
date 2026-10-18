@@ -369,7 +369,7 @@ export async function setupMock(authRequired: boolean) {
 	// tags and an alias so the grouped views have content.
 	type TagRow = {
 		name: string;
-		kind: 'author' | 'circle' | 'language' | 'ignored' | null;
+		kind: 'author' | 'language' | 'ignored' | null;
 		canonical: string | null;
 		updateTime: string;
 	};

@@ -22,7 +22,7 @@
 	import { loadTags, mergeTags, setTagKind, tagState } from '$lib/tags.svelte';
 
 	// Manual tag classification: every tag of the list with its count, marked
-	// as author / circle / language / ignored, or merged as aliases.
+	// as author / language / ignored, or merged as aliases.
 
 	interface Props {
 		files: MediaFile[];
@@ -140,9 +140,9 @@
 </script>
 
 <p class="hint">
-	Mark tags as authors, circles or languages, or ignore noise such as release notes: the comic
-	list's tag sidebar groups them, and Move to folder can gather every author. Merge tags that name
-	the same thing (e.g. an author's romanized name) to make them aliases of one primary tag.
+	Mark tags as authors or languages, or ignore noise such as release notes: the comic list's tag
+	sidebar groups them, and Move to folder can gather every author. Merge tags that name the same
+	thing (e.g. an author's romanized name) to make them aliases of one primary tag.
 	{#if live.length}
 		<strong>{Math.round((withAuthor / live.length) * 100)}%</strong> of the {live.length} items have
 		an author tag.

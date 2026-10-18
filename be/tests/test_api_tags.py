@@ -24,8 +24,8 @@ class TestSetKind:
         r = client.post("/api/tags/kind", json={"names": [" Alice ", "Bob", "Bob"], "kind": "author"})
         assert r.status_code == 200
         assert {t["name"] for t in r.json()["tags"]} == {"Alice", "Bob"}
-        client.post("/api/tags/kind", json={"names": ["Bob"], "kind": "circle"})
-        assert tags(client) == {"Alice": ("author", None), "Bob": ("circle", None)}
+        client.post("/api/tags/kind", json={"names": ["Bob"], "kind": "language"})
+        assert tags(client) == {"Alice": ("author", None), "Bob": ("language", None)}
 
     def test_alias_becomes_standalone(self, client):
         client.post("/api/tags/merge", json={"primary": "アリス", "aliases": ["Alice"]})
@@ -47,7 +47,7 @@ class TestSetKind:
         assert client.post("/api/tags/kind", json={"names": [], "kind": "author"}).status_code == 400
 
     def test_bad_kind(self, client):
-        r = client.post("/api/tags/kind", json={"names": ["a"], "kind": "parody"})
+        r = client.post("/api/tags/kind", json={"names": ["a"], "kind": "circle"})
         assert r.status_code == 400
 
 
@@ -59,10 +59,10 @@ class TestMerge:
         assert tags(client) == {"アリス": ("author", None), "Alice": (None, "アリス")}
 
     def test_primary_keeps_its_kind(self, client):
-        client.post("/api/tags/kind", json={"names": ["アリス"], "kind": "circle"})
+        client.post("/api/tags/kind", json={"names": ["アリス"], "kind": "ignored"})
         client.post("/api/tags/kind", json={"names": ["Alice"], "kind": "author"})
         client.post("/api/tags/merge", json={"primary": "アリス", "aliases": ["Alice"]})
-        assert tags(client)["アリス"] == ("circle", None)
+        assert tags(client)["アリス"] == ("ignored", None)
 
     def test_unclassified_merge(self, client):
         client.post("/api/tags/merge", json={"primary": "A", "aliases": ["B"]})

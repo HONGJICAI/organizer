@@ -4,11 +4,10 @@ import { separateFilename } from '$lib/utility';
 // What the user decided about file-name tags (api/tags.py): a kind, and
 // aliases pointing at a primary tag. Tags without a row are unclassified.
 
-export type TagKind = 'author' | 'circle' | 'language' | 'ignored';
-export const tagKinds: TagKind[] = ['author', 'circle', 'language', 'ignored'];
+export type TagKind = 'author' | 'language' | 'ignored';
+export const tagKinds: TagKind[] = ['author', 'language', 'ignored'];
 export const kindLabel: Record<TagKind, string> = {
 	author: 'Author',
-	circle: 'Circle',
 	language: 'Language',
 	ignored: 'Ignored'
 };
@@ -16,7 +15,6 @@ export const kindLabel: Record<TagKind, string> = {
 export const kindColor: Record<TagKind | 'none', 'purple' | 'magenta' | 'cyan' | 'gray' | 'teal'> =
 	{
 		author: 'purple',
-		circle: 'magenta',
 		language: 'cyan',
 		ignored: 'gray',
 		none: 'teal'
@@ -91,7 +89,6 @@ export function countTags(sources: string[], index: TagIndex): Map<string, numbe
 
 export interface TagGroups {
 	author: Map<string, number>;
-	circle: Map<string, number>;
 	language: Map<string, number>;
 	other: Map<string, number>;
 }
@@ -99,7 +96,6 @@ export interface TagGroups {
 export function groupTags(counts: Map<string, number>, index: TagIndex): TagGroups {
 	const groups: TagGroups = {
 		author: new Map(),
-		circle: new Map(),
 		language: new Map(),
 		other: new Map()
 	};

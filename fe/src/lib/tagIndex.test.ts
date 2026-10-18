@@ -4,7 +4,6 @@ import { TagIndex, countTags, groupTags, matchesKeywords, primaryTags } from './
 const index = new TagIndex([
 	{ name: 'アリス', kind: 'author', canonical: null },
 	{ name: 'Alice', kind: null, canonical: 'アリス' },
-	{ name: 'Bob Circle (Carol)', kind: 'circle', canonical: null },
 	{ name: 'Chinese', kind: 'language', canonical: null },
 	{ name: 'DL版', kind: 'ignored', canonical: null },
 	{ name: 'Merged', kind: null, canonical: null },
@@ -22,7 +21,7 @@ describe('TagIndex', () => {
 		expect(index.namesIgnoringCase('alice')).toEqual(['アリス', 'Alice']);
 		expect(index.namesIgnoringCase('nobody')).toEqual(['nobody']);
 		expect(index.row('DL版')?.kind).toBe('ignored');
-		expect(index.size).toBe(7);
+		expect(index.size).toBe(6);
 	});
 });
 
@@ -49,7 +48,7 @@ describe('counting and grouping', () => {
 		const groups = groupTags(countTags(sources, index), index);
 		expect([...groups.author.keys()]).toEqual(['アリス']);
 		// "[Circle (Author)]" is one tag: brackets aren't split further.
-		expect([...groups.circle.keys()]).toEqual(['Bob Circle (Carol)']);
+		expect(groups.other.has('Bob Circle (Carol)')).toBe(true);
 		expect([...groups.language.keys()]).toEqual(['Chinese']);
 		expect(groups.other.has('Four')).toBe(true);
 		expect(groups.other.has('Merged')).toBe(true);
