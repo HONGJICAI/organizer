@@ -6,6 +6,7 @@
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { hasTag } from '$lib/moveTarget';
+	import { folderKey } from '$lib/folderTree';
 	import { goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
@@ -15,6 +16,7 @@
 		Checkbox,
 		InlineLoading,
 		InlineNotification,
+		Link,
 		Modal,
 		Search,
 		SkeletonPlaceholder,
@@ -61,6 +63,22 @@
 	let previewError = $state('');
 	let confirmOpen = $state(false);
 	let runningJob = $state<number | null>(null);
+	// Outcome of the last move, kept on the page until the next preview or tag.
+	let result = $state<{
+		ok: boolean;
+		count: number;
+		target: string;
+		error: string | null;
+	} | null>(null);
+	// The target in the folder view, once the reloaded list knows it.
+	let resultFolderKey = $derived(
+		result
+			? folderKey(
+					files.filter((f) => !f.archived),
+					result.target
+				)
+			: undefined
+	);
 
 	// A new tag starts over: everything selected, the suggested target, no preview.
 	$effect(() => {
@@ -68,6 +86,7 @@
 		excluded = new Set();
 		preview = null;
 		previewError = '';
+		result = null;
 	});
 	// Suggested target from the backend: a folder named after the tag that
 	// already holds some of these comics, else <artist folder>/<tag>.
@@ -115,6 +134,7 @@
 	async function runPreview() {
 		previewing = true;
 		previewError = '';
+		result = null;
 		const { data, error } = await ComicsService.comicMovePreview({
 			body: { ids: selected.map((f) => f.id), target }
 		});
@@ -139,12 +159,14 @@
 		}
 		addNotification(new SuccessNotification({ subtitle: data.message }));
 		runningJob = data.jobId;
+		movingCount = toMove.length;
 		poll();
 	}
 
 	// Follow the job until it lands in the history, then reload the list so
 	// the comics show their new paths.
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let movingCount = 0;
 	async function poll() {
 		const { data } = await SystemService.listJobs();
 		const done = data?.history.find((j) => j.id === runningJob);
@@ -153,14 +175,12 @@
 			return;
 		}
 		runningJob = null;
-		if (done.state === 'succeeded') {
-			addNotification(new SuccessNotification({ subtitle: 'Move finished' }));
-		} else {
-			const what = done.state === 'cancelled' ? 'Move cancelled' : 'Move finished with problems';
-			addNotification(
-				new ErrorNotification({ subtitle: done.error ? `${what}: ${done.error}` : what })
-			);
-		}
+		result = {
+			ok: done.state === 'succeeded',
+			count: movingCount,
+			target: done.params.target ?? previewTarget,
+			error: done.error ?? null
+		};
 		preview = null;
 		refreshMediaFiles(mediaType);
 		invalidate(`app:media:${mediaType}`);
@@ -238,6 +258,24 @@
 			>
 			{#if previewing}<InlineLoading description="Checking…" />{/if}
 		</div>
+
+		{#if result}
+			<div class="result">
+				<InlineNotification
+					kind={result.ok ? 'success' : 'error'}
+					title={result.ok ? 'Moved' : 'Move finished with problems'}
+					subtitle={result.ok
+						? `${result.count} comic(s) now in ${result.target}.`
+						: (result.error ?? 'The move job failed.')}
+					on:close={() => (result = null)}
+				/>
+				{#if resultFolderKey !== undefined}
+					<Link href="/{mediaType}/folder?dir={encodeURIComponent(resultFolderKey)}"
+						>Open the folder</Link
+					>
+				{/if}
+			</div>
+		{/if}
 
 		{#if previewError}
 			<InlineNotification
@@ -355,6 +393,13 @@
 		gap: 0.25rem;
 		min-width: 0;
 		overflow-wrap: anywhere;
+	}
+	.result {
+		margin: 1rem 0;
+	}
+	.result :global(.bx--inline-notification) {
+		max-width: 48rem;
+		margin-bottom: 0.25rem;
 	}
 	.summary {
 		margin: 1rem 0 0.5rem;

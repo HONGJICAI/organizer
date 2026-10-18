@@ -3,6 +3,7 @@
 	import TagStack from '$lib/components/TagStack.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
 	import { genTagMap, includeAllKeywords } from '$lib/utility';
+	import { hasTag } from '$lib/moveTarget';
 	import {
 		Category,
 		MediaFile,
@@ -19,6 +20,7 @@
 		Search,
 		Select,
 		SelectItem,
+		Link,
 		Toggle
 	} from 'carbon-components-svelte';
 	import {
@@ -159,6 +161,14 @@
 			)
 		)
 	);
+	// When the search is a whole tag of some comics (e.g. an author), offer to
+	// gather them into one folder.
+	let searchTag = $derived(searchStr.trim());
+	let tagMatches = $derived(
+		page.params.mediaType === 'comic' && searchTag
+			? files.filter((f) => !f.archived && hasTag(f.name, searchTag)).length
+			: 0
+	);
 	let mediaType = $derived(files[0]?.type);
 	let filteredTagMap = $derived(genTagMap(categoryFiles.map((c) => adapters[c.type].tagSource(c))));
 	let searchedTagMap = $derived(genTagMap(searchFiles.map((c) => adapters[c.type].tagSource(c))));
@@ -225,14 +235,6 @@
 				kind="ghost"
 				on:click={() => goto(`/search?q=${encodeURIComponent(searchStr)}`)}
 			/>
-			{#if page.params.mediaType === 'comic' && searchStr.trim()}
-				<Button
-					icon={FolderMoveTo}
-					iconDescription="Move this tag's comics to a folder"
-					kind="ghost"
-					on:click={() => goto(`/comic/move?tag=${encodeURIComponent(searchStr.trim())}`)}
-				/>
-			{/if}
 			{#if config.OrderByPosition === 'NextToSearchBar' && orderByOptions}
 				<Select bind:selected={orderBy} labelText="Order By">
 					{#each orderByOptions as { value, text }}
@@ -247,6 +249,13 @@
 				on:click={() => (showFilter = !showFilter)}
 			/>
 		</div>
+		{#if tagMatches > 0}
+			<p class="move-hint">
+				<FolderMoveTo size={16} />
+				<span>{tagMatches} comic{tagMatches === 1 ? '' : 's'} tagged “{searchTag}”.</span>
+				<Link href="/comic/move?tag={encodeURIComponent(searchTag)}">Move into one folder</Link>
+			</p>
+		{/if}
 		{#if !dataLoaded}
 			<PaginationContainer skeleton>
 				<SkeletonPlaceholder style="width: 100%; height: 30vh" />
@@ -333,6 +342,16 @@
 {/if}
 
 <style>
+	.move-hint {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.375rem;
+		margin: 0.5rem 0;
+		font-size: 0.875rem;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+
 	.layout {
 		display: flex;
 		justify-content: space-between;
