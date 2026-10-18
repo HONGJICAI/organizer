@@ -22,6 +22,28 @@ def root(tmp_path, monkeypatch):
     return root
 
 
+@pytest.fixture
+def deferred_jobs(monkeypatch):
+    """Start queued jobs only when the test calls the returned function.
+
+    The tests share one in-memory SQLite connection (StaticPool). A job the
+    move endpoint starts would run while the request's session is still
+    open, and closing that session rolls back the shared connection, the
+    job's uncommitted update included. Production sessions have their own
+    connections, so this only defers the job past the request.
+    """
+    import core.jobs
+
+    started = []
+    monkeypatch.setattr(core.jobs, "_spawn", started.append)
+
+    def run():
+        while started:
+            started.pop(0)()
+
+    return run
+
+
 def add_zip(session, root, id, rel):
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -151,7 +173,7 @@ class TestPreview:
 # ---------------------------------------------------------------------------
 
 class TestMove:
-    def test_moves_and_keeps_records(self, engine_and_client, session, root):
+    def test_moves_and_keeps_records(self, engine_and_client, session, root, deferred_jobs):
         engine, client = engine_and_client
         add_zip(session, root, 1, "a/one.zip")
         add_folder(session, root, 2, "b/Two")
@@ -162,6 +184,7 @@ class TestMove:
         body = r.json()
         assert body["status"] == "started"
         assert body["message"] == "Moving 2 comic(s)"
+        deferred_jobs()
         assert jobs.wait_idle(10)
         job = jobs.snapshot()["history"][0]
         assert (job.id, job.kind, job.state) == (body["jobId"], "move", "succeeded")
@@ -192,9 +215,10 @@ class TestMove:
             "jobId": 7, "status": "queued", "message": "Moving 1 comic(s) after the running job",
         }
 
-    def test_listed_in_jobs(self, client, session, root):
+    def test_listed_in_jobs(self, client, session, root, deferred_jobs):
         add_zip(session, root, 1, "a/one.zip")
         client.post("/api/comics/move", json={"ids": [1], "target": str(root / "Author")})
+        deferred_jobs()
         assert jobs.wait_idle(10)
         info = client.get("/api/system/jobs").json()["history"][0]
         assert info["kind"] == "move"
