@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { adapters } from '$lib/mediaAdapters';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import type { MediaFile } from '$lib/model.svelte';
-	import { separateFilename } from '$lib/utility';
-	import { NumberInput, SkeletonPlaceholder, Tag } from 'carbon-components-svelte';
+	import { primaryTags } from '$lib/tagIndex';
+	import { loadTags, tagState } from '$lib/tags.svelte';
+	import TagClassifier from '$lib/components/TagClassifier.svelte';
+	import {
+		ContentSwitcher,
+		NumberInput,
+		SkeletonPlaceholder,
+		Switch,
+		Tag
+	} from 'carbon-components-svelte';
 
 	let { data } = $props();
 	let dataLoaded = $state(false);
@@ -42,8 +51,11 @@
 	// with a handful of items can't dominate a percentage chart. Adjustable.
 	let minCount = $state(5);
 
-	// Match the main list: comics tag off their name, everything else off path.
-	const tagsOf = (f: MediaFile) => separateFilename(adapters[f.type].tagSource(f));
+	// Match the main list: comics tag off their name, everything else off path;
+	// aliases count under their primary tag and ignored tags are left out.
+	loadTags();
+	const tagsOf = (f: MediaFile) => primaryTags(adapters[f.type].tagSource(f), tagState.index);
+	let classifyView = $derived(page.url.searchParams.get('view') === 'classify');
 
 	let tagDetails = $derived.by(() => {
 		const tag2detail = new Map<string, TagDetail>();
@@ -122,12 +134,26 @@
 <div class="layout">
 	<div class="header">
 		<h2>Tags</h2>
-		<div class="control">
-			<NumberInput size="sm" label="Min items for rate rankings" min={1} bind:value={minCount} />
+		<div class="switcher">
+			<ContentSwitcher
+				size="sm"
+				selectedIndex={classifyView ? 1 : 0}
+				on:change={(e) => goto(e.detail === 1 ? '?view=classify' : '?', { replaceState: true })}
+			>
+				<Switch text="Rankings" />
+				<Switch text="Classify" />
+			</ContentSwitcher>
 		</div>
+		{#if !classifyView}
+			<div class="control">
+				<NumberInput size="sm" label="Min items for rate rankings" min={1} bind:value={minCount} />
+			</div>
+		{/if}
 	</div>
 
-	{#if !dataLoaded}
+	{#if dataLoaded && classifyView}
+		<TagClassifier {files} onClickTag={onTagClick} />
+	{:else if !dataLoaded}
 		<div class="grid">
 			{#each Array(4) as _}
 				<SkeletonPlaceholder style="width: 100%; height: 16rem" />
@@ -174,6 +200,11 @@
 	}
 	.header h2 {
 		margin: 0;
+	}
+	.switcher {
+		width: 16rem;
+		max-width: 100%;
+		margin-right: auto;
 	}
 	.control {
 		width: 14rem;

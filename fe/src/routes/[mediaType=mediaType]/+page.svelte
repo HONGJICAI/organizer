@@ -2,7 +2,8 @@
 	import { adapters } from '$lib/mediaAdapters';
 	import TagStack from '$lib/components/TagStack.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
-	import { genTagMap, includeAllKeywords } from '$lib/utility';
+	import { countTags, groupTags, matchesKeywords } from '$lib/tagIndex';
+	import { loadTags, tagState } from '$lib/tags.svelte';
 	import { hasTag } from '$lib/moveTarget';
 	import {
 		Category,
@@ -155,9 +156,10 @@
 	let categoryFiles = $derived(files.filter(category2filterfunc[category]));
 	let searchFiles = $derived(
 		categoryFiles.filter((f) =>
-			includeAllKeywords(
+			matchesKeywords(
 				adapters[f.type].tagSource(f).toLowerCase(),
-				searchStr.trim().toLowerCase().split(' ')
+				searchStr.trim().toLowerCase().split(' '),
+				tagState.index
 			)
 		)
 	);
@@ -166,12 +168,29 @@
 	let searchTag = $derived(searchStr.trim());
 	let tagMatches = $derived(
 		page.params.mediaType === 'comic' && searchTag
-			? files.filter((f) => !f.archived && hasTag(f.name, searchTag)).length
+			? files.filter((f) => !f.archived && hasTag(f.name, tagState.index.names(searchTag))).length
 			: 0
 	);
 	let mediaType = $derived(files[0]?.type);
-	let filteredTagMap = $derived(genTagMap(categoryFiles.map((c) => adapters[c.type].tagSource(c))));
-	let searchedTagMap = $derived(genTagMap(searchFiles.map((c) => adapters[c.type].tagSource(c))));
+	// Tags count once per file under their primary name; ignored ones are hidden
+	// and classified ones get their own sections (Tags page -> Classify).
+	loadTags();
+	let tagGroups = $derived(
+		groupTags(
+			countTags(
+				categoryFiles.map((c) => adapters[c.type].tagSource(c)),
+				tagState.index
+			),
+			tagState.index
+		)
+	);
+	let classified = $derived(tagGroups.author.size + tagGroups.language.size > 0);
+	let searchedTagMap = $derived(
+		countTags(
+			searchFiles.map((c) => adapters[c.type].tagSource(c)),
+			tagState.index
+		)
+	);
 
 	const orderByOptions = $derived.by(() => {
 		switch (category) {
@@ -198,7 +217,22 @@
 		{#if !dataLoaded}
 			<TagStack skeleton title="All Tags" />
 		{:else}
-			<TagStack tag2countMap={filteredTagMap} {onClickTag} title="All Tags" />
+			{#if tagGroups.author.size}
+				<TagStack tag2countMap={tagGroups.author} {onClickTag} title="Authors" />
+			{/if}
+			<TagStack
+				tag2countMap={tagGroups.other}
+				{onClickTag}
+				title={classified ? 'Other Tags' : 'All Tags'}
+			/>
+			{#if tagGroups.language.size}
+				<TagStack
+					tag2countMap={tagGroups.language}
+					{onClickTag}
+					title="Languages"
+					defaultOpen={false}
+				/>
+			{/if}
 			{#if searchStr}
 				<TagStack tag2countMap={searchedTagMap} {onClickTag} title="Searched Tags" />
 			{/if}

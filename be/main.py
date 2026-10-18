@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
 import db
-from api import auth, comics, comicpage, home, videos, images, system
+from api import auth, comics, comicpage, home, videos, images, system, tags
 from core.auth import require_auth
 from core.lifespan import lifespan
 from core.exceptions import http_exception_handler, validation_exception_handler
@@ -45,6 +45,7 @@ app.include_router(videos.router, dependencies=_protected)
 app.include_router(images.router)
 app.include_router(system.router, dependencies=_protected)
 app.include_router(home.router, dependencies=_protected)
+app.include_router(tags.router, dependencies=_protected)
 
 
 if __name__ == "__main__":

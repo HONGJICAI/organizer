@@ -7,6 +7,8 @@
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { hasTag } from '$lib/moveTarget';
 	import { folderKey } from '$lib/folderTree';
+	import { loadTags, tagState } from '$lib/tags.svelte';
+	import AuthorsOverview from '$lib/components/AuthorsOverview.svelte';
 	import { goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
@@ -52,8 +54,12 @@
 
 	let tagInput = $state(page.url.searchParams.get('tag') ?? '');
 	let tag = $derived(page.url.searchParams.get('tag') ?? '');
+	// A classified tag gathers its aliases too, under the primary name.
+	loadTags();
+	let tagNames = $derived(tag ? tagState.index.names(tag) : []);
+	let folderTag = $derived(tag ? tagState.index.canonical(tag) : '');
 	// Archived comics are records of deleted files: nothing to move.
-	let matches = $derived(files.filter((f) => !f.archived && hasTag(f.name, tag)));
+	let matches = $derived(files.filter((f) => !f.archived && hasTag(f.name, tagNames)));
 	let excluded = $state(new Set<number>());
 	let selected = $derived(matches.filter((f) => !excluded.has(f.id)));
 	let target = $state('');
@@ -92,7 +98,7 @@
 	// already holds some of these comics, else <artist folder>/<tag>.
 	$effect(() => {
 		const ids = matches.map((f) => f.id);
-		const name = tag;
+		const name = folderTag;
 		if (!dataLoaded || !ids.length) return;
 		let stale = false;
 		ComicsService.comicMoveSuggest({ body: { ids, name } }).then(({ data }) => {
@@ -220,14 +226,26 @@
 		</div>
 	</div>
 
-	{#if !dataLoaded}
+	<!-- Only the first load shows a skeleton: a reload after a move keeps the
+	     page (and its result banners) in place. -->
+	{#if !dataLoaded && !files.length}
 		<SkeletonPlaceholder style="width: 100%; height: 12rem" />
 	{:else if !tag}
-		<p class="muted">Enter a tag to find its comics.</p>
+		<AuthorsOverview
+			{files}
+			{mediaType}
+			onDone={() => {
+				refreshMediaFiles(mediaType);
+				invalidate(`app:media:${mediaType}`);
+			}}
+		/>
 	{:else if matches.length === 0}
 		<p class="muted">No comic has the tag “{tag}”.</p>
 	{:else}
-		<h4>{selected.length} of {matches.length} comics with “{tag}” selected</h4>
+		<h4>{selected.length} of {matches.length} comics with “{folderTag}” selected</h4>
+		{#if tagNames.length > 1}
+			<p class="muted">Including its aliases: {tagNames.slice(1).join(', ')}.</p>
+		{/if}
 		<ul class="comics">
 			{#each matches as f (f.id)}
 				<li>

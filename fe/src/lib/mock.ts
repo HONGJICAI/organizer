@@ -365,6 +365,42 @@ export async function setupMock(authRequired: boolean) {
 		return { target, items };
 	};
 
+	// Mock tag classification (api/tags.py), seeded with a few authors, noise
+	// tags and an alias so the grouped views have content.
+	type TagRow = {
+		name: string;
+		kind: 'author' | 'language' | 'ignored' | null;
+		canonical: string | null;
+		updateTime: string;
+	};
+	const now = () => new Date().toISOString();
+	const tags = new Map<string, TagRow>();
+	const seedTag = (name: string, kind: TagRow['kind'], canonical: string | null = null) =>
+		tags.set(name, { name, kind, canonical, updateTime: now() });
+	const mockAuthors = [...new Set(comics.map((c) => c.name.match(/^\[([^\]]+)\]/)?.[1]))]
+		.filter((a): a is string => !!a && /^[A-Z][a-z]+$/.test(a))
+		.slice(0, 6);
+	mockAuthors.forEach((a) => seedTag(a, 'author'));
+	['DL版', '無修正', 'v2', 'Scan', '汉化组', '.zip', '.rar', '.cbz'].forEach((t) =>
+		seedTag(t, 'ignored')
+	);
+	// An alias: one more comic of the second author is released under a
+	// "romanized" name, which is merged into the author.
+	const aliased = comics.find((c) => mockAuthors[1] && c.name.startsWith(`[${mockAuthors[1]}]`));
+	if (aliased) {
+		const alias = `${mockAuthors[1]} EN`;
+		const name = `[${alias}] ${faker.commerce.productName()} [English]`;
+		comics.push({
+			...aliased,
+			id: Math.max(...comics.map((c) => c.id)) + 1,
+			name,
+			path: `/data/comics/inbox/${name}`
+		});
+		seedTag(alias, null, mockAuthors[1]);
+		seedTag('English', 'language');
+	}
+	const tagRows = () => [...tags.values()].sort((a, b) => a.name.localeCompare(b.name));
+
 	const handlers = [
 		http.get('/api/system/jobs', async () => {
 			await delay(100);
@@ -600,6 +636,52 @@ export async function setupMock(authRequired: boolean) {
 				return { id, status: 'absent' };
 			});
 			return HttpResponse.json({ results });
+		}),
+		http.get('/api/tags', async () => {
+			await delay(150);
+			return HttpResponse.json(tagRows());
+		}),
+		http.post('/api/tags/kind', async ({ request }) => {
+			await delay(200);
+			const body = (await request.json()) as { names: string[]; kind: TagRow['kind'] };
+			const names = [...new Set(body.names.map((n) => n.trim()))];
+			if (!names.length || names.some((n) => !n))
+				return HttpResponse.json({ msg: "Tag names can't be empty" }, { status: 400 });
+			// Mirrors api/tags.py set_kind.
+			for (const name of names) {
+				if (body.kind === null) {
+					tags.delete(name);
+					for (const [n, row] of tags) if (row.canonical === name) tags.delete(n);
+				} else {
+					tags.set(name, { name, kind: body.kind, canonical: null, updateTime: now() });
+				}
+			}
+			return HttpResponse.json({ tags: tagRows() });
+		}),
+		http.post('/api/tags/merge', async ({ request }) => {
+			await delay(200);
+			const body = (await request.json()) as { primary: string; aliases: string[] };
+			const primary = body.primary.trim();
+			const aliases = [...new Set(body.aliases.map((n) => n.trim()))].filter((n) => n !== primary);
+			if (!primary || !aliases.length || aliases.some((n) => !n))
+				return HttpResponse.json(
+					{ msg: 'Choose at least one tag other than the primary one' },
+					{ status: 400 }
+				);
+			// Mirrors api/tags.py merge.
+			const head = tags.get(primary);
+			const kind =
+				head?.kind ??
+				(head?.canonical ? tags.get(head.canonical)?.kind : null) ??
+				aliases.map((a) => tags.get(a)?.kind).find((k) => k) ??
+				null;
+			tags.set(primary, { name: primary, kind, canonical: null, updateTime: now() });
+			for (const name of aliases) {
+				for (const row of tags.values())
+					if (row.canonical === name) Object.assign(row, { canonical: primary, updateTime: now() });
+				tags.set(name, { name, kind: null, canonical: primary, updateTime: now() });
+			}
+			return HttpResponse.json({ tags: tagRows() });
 		}),
 		http.post('/api/comics/move/suggest', async ({ request }) => {
 			await delay(150);
