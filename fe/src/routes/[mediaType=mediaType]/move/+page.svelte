@@ -295,9 +295,9 @@
 	on:submit={move}
 >
 	<p>
-		The files will be moved into <code>{previewTarget}</code>.{#if crossCount}
-			{crossCount} of them are copied across drives first.{/if} The move runs as a background job, after
-		any scan or cover run in progress.
+		The files will be moved into <code>{previewTarget}</code>.{crossCount
+			? ` ${crossCount} of them are copied across drives first.`
+			: ''} The move runs as a background job, after any scan or cover run in progress.
 	</p>
 </Modal>
 
