@@ -507,3 +507,171 @@ class TestScanIssues:
         [issue] = progress.snapshot()["issues"]
         assert (issue["media"], issue["level"]) == ("video", "warning")
         assert issue["reason"] == "No cover/duration: ffmpeg missing"
+
+
+# ---------------------------------------------------------------------------
+# Following moved files
+# ---------------------------------------------------------------------------
+
+class TestFollowMoves:
+    @pytest.fixture
+    def lib(self, tmp_path, monkeypatch):
+        root = tmp_path / "lib"
+        root.mkdir()
+        covers = tmp_path / "covers"
+        covers.mkdir()
+        monkeypatch.setattr(global_data.Config.Comic, "scan_pathes", [str(root)])
+        monkeypatch.setattr(global_data.Config, "nginx_comic_path", str(covers))
+        return root, covers
+
+    @staticmethod
+    def record(session, id, path, file, **kwargs):
+        """A record whose size and time match ``file`` (as an import makes them)."""
+        from model import FileEntity
+        import pathlib
+        stat = FileEntity.from_path(pathlib.Path(file))
+        comic = ComicEntity(
+            id=id, name=os.path.basename(path), path=str(path), size=stat.size,
+            updateTime=stat.updateTime, page=2, **kwargs,
+        )
+        session.add(comic)
+        session.commit()
+        return comic
+
+    @staticmethod
+    def comics(engine):
+        with Session(engine) as s:
+            return sorted(s.exec(select(ComicEntity)).all(), key=lambda c: c.id)
+
+    def work(self):
+        with patch.object(ComicLoader, "gen_comic_cover", return_value=True):
+            ComicLoader().work()
+
+    def test_moved_file_keeps_its_record(self, task_engine, task_session, lib):
+        from core.scan_progress import progress
+        root, _ = lib
+        new = root / "Author" / "One.zip"
+        new.parent.mkdir()
+        make_zip_comic(str(new), pages=2)
+        self.record(task_session, 7, root / "inbox" / "One.zip", new, favorited=True, lastViewedPosition=3)
+        progress.start("comics")
+        self.work()
+        [c] = self.comics(task_engine)
+        assert (c.id, c.path, c.missing, c.favorited, c.lastViewedPosition) == (7, str(new), False, True, 3)
+        assert "Recognized as moved" in progress.snapshot()["issues"][0]["reason"]
+
+    def test_ambiguous_match_imports_as_new(self, task_engine, task_session, lib):
+        root, _ = lib
+        new = root / "One.zip"
+        make_zip_comic(str(new), pages=2)
+        self.record(task_session, 1, root / "a" / "One.zip", new)
+        self.record(task_session, 2, root / "b" / "One.zip", new)
+        self.work()
+        comics = self.comics(task_engine)
+        assert len(comics) == 3
+        assert [c.missing for c in comics] == [True, True, False]
+
+    def test_merges_case_duplicate(self, task_engine, task_session, lib):
+        from model import ActivityEvent
+        import events
+        from datetime import timedelta
+        root, covers = lib
+        real = root / "artist" / "hoge" / "x.zip"
+        real.parent.mkdir(parents=True)
+        make_zip_comic(str(real), pages=2)
+        older = datetime.now() - timedelta(days=3)
+        self.record(task_session, 1, root / "artist" / "Hoge" / "x.zip", real, favorited=True,
+                    lastViewedPosition=1, lastViewedTime=older)
+        self.record(task_session, 2, real, real, lastViewedPosition=5, lastViewedTime=datetime.now())
+        events.record(task_session, events.ADD, events.COMIC, 1)
+        events.record(task_session, events.ADD, events.COMIC, 2)
+        events.record(task_session, events.READ, events.COMIC, 2)
+        task_session.commit()
+        (covers / "1_0.jpg").write_bytes(b"1")
+        (covers / "2_0.jpg").write_bytes(b"2")
+
+        self.work()
+
+        [c] = self.comics(task_engine)
+        assert (c.id, c.path, c.missing, c.favorited, c.lastViewedPosition) == (1, str(real), False, True, 5)
+        assert os.listdir(covers) == ["1_0.jpg"]
+        with Session(task_engine) as s:
+            evs = sorted((e.kind, e.entityId) for e in s.exec(select(ActivityEvent)).all())
+        assert evs == [("add", 1), ("read", 1)]
+
+    def test_keeps_progress_when_older_is_newer(self, task_engine, task_session, lib):
+        root, _ = lib
+        real = root / "hoge" / "x.zip"
+        real.parent.mkdir()
+        make_zip_comic(str(real), pages=2)
+        self.record(task_session, 1, root / "HOGE" / "x.zip", real, lastViewedPosition=4, lastViewedTime=datetime.now())
+        self.record(task_session, 2, real, real)
+        self.work()
+        [c] = self.comics(task_engine)
+        assert (c.id, c.lastViewedPosition) == (1, 4)
+
+    def test_no_merge_for_other_paths(self, task_engine, task_session, lib):
+        # A copy elsewhere (e.g. another drive while this one is unmounted)
+        # is not the same file: both records stay.
+        root, _ = lib
+        real = root / "b" / "x.zip"
+        real.parent.mkdir()
+        make_zip_comic(str(real), pages=2)
+        self.record(task_session, 1, root / "a" / "x.zip", real)
+        self.record(task_session, 2, real, real)
+        self.work()
+        assert [(c.id, c.missing) for c in self.comics(task_engine)] == [(1, True), (2, False)]
+
+    def test_no_merge_into_a_newer_record(self, task_engine, task_session, lib):
+        root, _ = lib
+        real = root / "hoge" / "x.zip"
+        real.parent.mkdir()
+        make_zip_comic(str(real), pages=2)
+        self.record(task_session, 1, real, real)
+        self.record(task_session, 2, root / "Hoge" / "x.zip", real)
+        self.work()
+        assert [(c.id, c.missing) for c in self.comics(task_engine)] == [(1, False), (2, True)]
+
+    def test_vanished_new_path_is_skipped(self, task_engine, task_session, lib):
+        root, _ = lib
+        real = root / "x.zip"
+        make_zip_comic(str(real), pages=2)
+        self.record(task_session, 1, root / "old" / "x.zip", real)
+        assert ComicLoader()._follow_moves({str(root / "gone.zip")}, set()) == 0
+
+    def test_nothing_gone(self, task_engine, task_session, lib):
+        root, _ = lib
+        real = root / "x.zip"
+        make_zip_comic(str(real), pages=2)
+        self.record(task_session, 1, real, real)
+        assert ComicLoader()._follow_moves({str(real)}, {str(real)}) == 0
+        assert ComicLoader()._follow_moves(set(), set()) == 0
+
+    def test_cover_removal_error_is_ignored(self, task_engine, task_session, lib, monkeypatch):
+        root, covers = lib
+        real = root / "hoge" / "x.zip"
+        real.parent.mkdir()
+        make_zip_comic(str(real), pages=2)
+        self.record(task_session, 1, root / "Hoge" / "x.zip", real)
+        self.record(task_session, 2, real, real)
+        (covers / "2_0.jpg").write_bytes(b"2")
+
+        def denied(path):
+            raise PermissionError(path)
+
+        monkeypatch.setattr("loader.os.remove", denied)
+        self.work()
+        assert [c.id for c in self.comics(task_engine)] == [1]
+
+    def test_cover_paths(self, monkeypatch):
+        monkeypatch.setattr(global_data.Config, "nginx_video_path", "/v")
+        monkeypatch.setattr(global_data.Config, "nginx_comic_path", "/c")
+        assert VideoLoader._cover_path(None, 3) == "/v/3.jpg"
+        assert ComicLoader._cover_path(None, 3) == "/c/3_0.jpg"
+
+    def test_same_path(self):
+        import unicodedata
+        from loader import _same_path
+        assert _same_path("/a/Hoge/x", "/a/hoge/x")
+        assert _same_path("/a/が", unicodedata.normalize("NFD", "/a/が"))
+        assert not _same_path("/a/x", "/b/x")

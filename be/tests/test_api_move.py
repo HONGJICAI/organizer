@@ -433,3 +433,42 @@ class TestUnmountedWarning:
     def test_folder_name(self):
         assert mover.folder_name(' A:B*C?"D<E>F|G\x01 ') == "A_B_C__D_E_F_G_"
         assert mover.folder_name("Name. .") == "Name"
+
+
+class TestOnDisk:
+    def test_takes_listed_spelling(self, tmp_path):
+        import unicodedata
+        (tmp_path / "artist" / "hoge").mkdir(parents=True)
+        nfd = unicodedata.normalize("NFD", "がくぶち")
+        (tmp_path / nfd).mkdir()
+        assert mover.on_disk(str(tmp_path / "Artist" / "HOGE" / "new" / "x.zip")) == str(
+            tmp_path / "artist" / "hoge" / "new" / "x.zip"
+        )
+        assert mover.on_disk(str(tmp_path / "がくぶち")) == str(tmp_path / nfd)
+        assert mover.on_disk(str(tmp_path / "artist")) == str(tmp_path / "artist")
+        assert mover.on_disk("relative/Path") == "relative/Path"
+
+    def test_unreadable_folder_keeps_the_rest(self, tmp_path, monkeypatch):
+        real = os.listdir
+
+        def listdir(path):
+            if path == str(tmp_path):
+                raise PermissionError(path)
+            return real(path)
+
+        monkeypatch.setattr(mover.os, "listdir", listdir)
+        assert mover.on_disk(str(tmp_path / "A" / "b")) == str(tmp_path / "A" / "b")
+
+    def test_target_uses_existing_spelling(self, client, session, root):
+        add_zip(session, root, 1, "inbox/[Hoge] One.zip")
+        (root / "artist" / "hoge").mkdir(parents=True)
+        r = client.post("/api/comics/move/preview", json={"ids": [1], "target": str(root / "artist" / "Hoge")})
+        assert r.json()["target"] == str(root / "artist" / "hoge")
+        assert r.json()["items"][0]["destination"] == str(root / "artist" / "hoge" / "[Hoge] One.zip")
+
+    def test_suggestion_ignores_case(self, client, session, root):
+        add_zip(session, root, 1, "inbox/[Hoge] One.zip")
+        add_zip(session, root, 2, "nas/hoge/[Hoge] Two.zip")
+        assert suggest(client, [1, 2], "Hoge") == str(root / "nas" / "hoge")
+        (root / "artist" / "HOGE").mkdir(parents=True)
+        assert suggest(client, [1], "Hoge") == str(root / "artist" / "HOGE")

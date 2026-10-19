@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from collections import defaultdict
 import io
 from multiprocessing.pool import ThreadPool
 import os
@@ -7,9 +8,10 @@ import subprocess
 import time
 from typing import List
 import threading
+import unicodedata
 
 from sqlalchemy import func
-from sqlmodel import Session, select
+from sqlmodel import Session, col, delete, select, update
 from rich.progress import Progress
 from PIL import Image
 
@@ -17,12 +19,20 @@ from comicfile import Comicfile
 import comicfile
 import global_data
 from core.scan_progress import progress
-from model import ComicEntity, FileEntity, VideoEntity
+from model import ActivityEvent, ComicEntity, FileEntity, VideoEntity
 import db
 import events
 import util
 
 p = ThreadPool(8)
+
+
+def _same_path(a: str, b: str) -> bool:
+    """Whether two paths differ only in case or Unicode normalization: the
+    same file on a case-insensitive filesystem (NTFS, SMB, macOS)."""
+    def norm(p: str) -> str:
+        return unicodedata.normalize("NFC", p).casefold()
+    return norm(a) == norm(b)
 
 
 class SkipFile(Exception):
@@ -70,6 +80,10 @@ class Loader:
         old_pathes = set(self._load_old())
         all_pathes = set(self._load_all())
         print(f"old: {len(old_pathes)}, all: {len(all_pathes)}")
+        # Before anything treats a moved file as new: carry records over to
+        # where their files went.
+        if self._follow_moves(all_pathes, old_pathes):
+            old_pathes = set(self._load_old())
         # Reconcile the missing flag first: a file can disappear without any new
         # file appearing, so this must run even when the early-returns below fire.
         progress.add_reconciled(self._reconcile_missing(all_pathes))
@@ -110,6 +124,106 @@ class Loader:
             new_entities = [e for e in entities if e is not None]
 
         self._commit_news(new_entities)
+
+    def _cover_path(self, entity_id: int) -> str | None:
+        """The cover file of a record, removed when the record is merged away."""
+        return None
+
+    def _follow_moves(self, present: set, known: set) -> int:
+        """Recognize files that moved instead of importing them as new.
+
+        Records are keyed by path, so a file whose path changed (moved or
+        renamed outside the app, or spelled differently by a case-insensitive
+        filesystem) would get a second record and lose its favorite and
+        progress. A record whose path is gone is matched to a file by its
+        size and modification time, and only when exactly one gone record and
+        one file share them:
+
+        - a path not in the database yet: the record takes the new path;
+        - a record imported later for the same file under a path that differs
+          only in case or Unicode normalization (the duplicate a
+          case-insensitive filesystem leads to): merged into the older
+          record, which keeps its id. Paths that differ otherwise are left
+          alone: they may be a second copy on another drive.
+
+        Returns how many records changed.
+        """
+        if self.entity_cls is None or not present:
+            return 0
+        cls = self.entity_cls
+        with Session(db.engine) as session:
+            rows = session.exec(select(cls).where(cls.archived == False)).all()  # noqa: E712
+            gone = defaultdict(list)
+            for e in rows:
+                if e.path not in present:
+                    gone[(e.size, e.updateTime)].append(e)
+            if not gone:
+                return 0
+            changed = 0
+
+            later = defaultdict(list)
+            for e in rows:
+                if e.path in present and (e.size, e.updateTime) in gone:
+                    later[(e.size, e.updateTime)].append(e)
+            for sig, (keep, *more) in list(gone.items()):
+                found = later.get(sig, [])
+                if more or len(found) != 1 or found[0].id < keep.id:
+                    continue
+                if not _same_path(found[0].path, keep.path):
+                    continue
+                drop, old_path = found[0], keep.path
+                self._merge(session, keep, drop)
+                progress.add_issue(
+                    self.media, "warning", keep.path,
+                    f"Merged duplicate record #{drop.id} into #{keep.id} (it was recorded at {old_path!r})",
+                )
+                del gone[sig]
+                changed += 1
+
+            new_files = defaultdict(list)
+            if gone:
+                for path in present - known:
+                    try:
+                        entity = FileEntity.from_path(pathlib.Path(path))
+                    except OSError:
+                        continue
+                    if (entity.size, entity.updateTime) in gone:
+                        new_files[(entity.size, entity.updateTime)].append(path)
+            for sig, paths in new_files.items():
+                if len(paths) != 1 or len(gone[sig]) != 1:
+                    continue
+                keep = gone[sig][0]
+                progress.add_issue(
+                    self.media, "warning", paths[0], f"Recognized as moved from {keep.path!r} (record #{keep.id} kept)"
+                )
+                keep.path, keep.name, keep.missing = paths[0], os.path.basename(paths[0]), False
+                session.add(keep)
+                changed += 1
+            session.commit()
+        print(f"follow moves: updated {changed} record(s)")
+        return changed
+
+    def _merge(self, session: Session, keep: FileEntity, drop: FileEntity) -> None:
+        """Fold ``drop`` (a later record of the same file) into ``keep``: keep
+        takes its path, the favorite and the latest reading position; drop's
+        add event goes and its other events move over."""
+        keep.path, keep.name, keep.missing = drop.path, drop.name, False
+        keep.favorited = keep.favorited or drop.favorited
+        if drop.lastViewedTime and (not keep.lastViewedTime or drop.lastViewedTime > keep.lastViewedTime):
+            keep.lastViewedTime, keep.lastViewedPosition = drop.lastViewedTime, drop.lastViewedPosition
+        if self.media_type:
+            events_of_drop = (ActivityEvent.mediaType == self.media_type) & (col(ActivityEvent.entityId) == drop.id)
+            session.exec(delete(ActivityEvent).where(events_of_drop & (ActivityEvent.kind == events.ADD)))
+            session.exec(update(ActivityEvent).where(events_of_drop).values(entityId=keep.id))
+        session.delete(drop)
+        session.flush()
+        session.add(keep)
+        cover = self._cover_path(drop.id)
+        if cover and os.path.exists(cover):
+            try:
+                os.remove(cover)
+            except OSError:
+                pass
 
     def _reconcile_missing(self, present_pathes: set):
         """Flag DB rows whose file is gone and clear ones that reappeared.
@@ -198,6 +312,9 @@ class ComicLoader(Loader):
     entity_cls = ComicEntity
     phase = "comics"
     media_type = events.COMIC
+
+    def _cover_path(self, entity_id: int) -> str:
+        return os.path.join(global_data.Config.nginx_comic_path, f"{entity_id}_0.jpg")
 
     def __init__(self):
         super().__init__()
@@ -295,6 +412,9 @@ class VideoLoader(Loader):
     entity_cls = VideoEntity
     phase = "videos"
     _starting_id: int
+
+    def _cover_path(self, entity_id: int) -> str:
+        return os.path.join(global_data.Config.nginx_video_path, f"{entity_id}.jpg")
 
     def __init__(self):
         super().__init__()
