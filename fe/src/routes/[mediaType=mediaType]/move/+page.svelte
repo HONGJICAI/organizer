@@ -26,6 +26,7 @@
 		InlineNotification,
 		Link,
 		Modal,
+		NotificationActionButton,
 		Pagination,
 		Tag,
 		TextInput,
@@ -91,8 +92,13 @@
 	let suggested = $state<Record<string, string>>({});
 	let edited = $state<Record<string, string>>({});
 	let picked = $state<Record<string, number[]>>({});
+	// Whether a row's suggested target is loading, came back, or failed.
+	let suggestState = $state<Record<string, 'loading' | 'done' | 'error'>>({});
+	let suggestError = $state('');
+	// A preview is for the target and comic paths in its `sig`; anything else
+	// changed since makes it stale.
 	let previews = $state<
-		Record<string, { items?: ComicMovePlanItem[]; target?: string; error?: string }>
+		Record<string, { sig: string; items?: ComicMovePlanItem[]; target?: string; error?: string }>
 	>({});
 	let results = $state<
 		Record<
@@ -110,6 +116,18 @@
 	const crossCount = (key: string) =>
 		previews[key]?.items?.filter((i) => i.status === 'move' && i.crossDevice).length ?? 0;
 	const busy = (key: string) => ['queued', 'moving'].includes(results[key]?.state ?? '');
+	// Why a row has no target yet: still loading, the request failed, or the
+	// name makes no folder name (the user has to type one).
+	const targetProblem = (key: string): 'loading' | 'error' | 'empty' | null => {
+		if (target(key)) return null;
+		const st = suggestState[key];
+		return !st || st === 'loading' ? 'loading' : st === 'error' ? 'error' : 'empty';
+	};
+	const problemText = {
+		loading: 'finding its folder',
+		error: 'no folder (request failed)',
+		empty: 'no folder name'
+	};
 
 	const visible = $derived(
 		groups.filter((g) => {
@@ -132,7 +150,12 @@
 	const workKeys = $derived(
 		visible.filter((g) => chosen(g).length && !busy(g.key)).map((g) => g.key)
 	);
-	const sumChosen = (keys: string[]) => keys.reduce((n, k) => n + chosenOf(k).length, 0);
+	const sumChosen = (keys: string[]) =>
+		keys.reduce((n, k) => n + (target(k) ? chosenOf(k).length : 0), 0);
+	// Batch buttons wait for the rows they'd move to have a target, rather than
+	// silently leaving those out.
+	const anyLoading = (keys: string[]) => keys.some((k) => targetProblem(k) === 'loading');
+	const selectedWork = $derived(selectedRowIds.filter((k) => chosenOf(k).length && !busy(k)));
 	$effect(() => {
 		void search;
 		void showDone;
@@ -154,43 +177,66 @@
 	});
 
 	// Suggested targets for every row, fetched in one request whenever rows
-	// without one show up.
+	// without one show up. A failed request is retried from its banner.
 	$effect(() => {
-		const missing = groups.filter((g) => !(g.key in suggested));
+		const missing = groups.filter((g) => !(g.key in suggestState));
 		if (!missing.length) return;
-		for (const g of missing) suggested[g.key] = '';
+		for (const g of missing) suggestState[g.key] = 'loading';
+		const failed = (message: string) => {
+			suggestError = message;
+			for (const g of missing) suggestState[g.key] = 'error';
+		};
 		ComicsService.comicMoveSuggest({
 			body: { groups: missing.map((g) => ({ ids: g.comics.map((c) => c.id), name: g.key })) }
-		}).then(({ data }) => {
-			data?.targets.forEach((t, i) => (suggested[missing[i].key] = t));
-		});
+		})
+			.then(({ data, error }) => {
+				if (!data) return failed(errorMessage(error));
+				data.targets.forEach((t, i) => {
+					suggested[missing[i].key] = t;
+					suggestState[missing[i].key] = 'done';
+				});
+			})
+			.catch(() => failed('Request failed'));
 	});
+	function retrySuggest() {
+		suggestError = '';
+		for (const [key, st] of Object.entries(suggestState))
+			if (st === 'error') delete suggestState[key];
+	}
+
+	const previewSig = (g: MoveGroup) =>
+		`${target(g.key)}\n${g.comics.map((c) => c.path).join('\n')}`;
+	const isFresh = (g: MoveGroup) => previews[g.key]?.sig === previewSig(g);
+
+	// Preview where every comic of the row would go; kept only if nothing
+	// changed while the request ran.
+	async function fetchPreview(g: MoveGroup) {
+		const sig = previewSig(g);
+		const { data, error } = await ComicsService.comicMovePreview({
+			body: { ids: g.comics.map((c) => c.id), target: target(g.key) }
+		}).catch(() => ({ data: undefined, error: undefined }));
+		const now = byKey.get(g.key);
+		if (!now || previewSig(now) !== sig) return;
+		previews[g.key] = data
+			? { sig, items: data.items, target: data.target }
+			: { sig, error: errorMessage(error) };
+	}
 
 	// Expanded rows preview their move whenever the target or the comics'
 	// paths change (debounced while typing a target).
-	const previewed: Record<string, string> = {};
+	const scheduled: Record<string, string> = {};
 	const timers = new Map<string, ReturnType<typeof setTimeout>>();
 	$effect(() => {
 		for (const key of expandedRowIds) {
 			const g = byKey.get(key);
-			if (!g) continue;
-			const ids = g.comics.map((c) => c.id);
-			const to = target(key);
-			const sig = `${to}\n${g.comics.map((c) => c.path).join('\n')}`;
-			if (!to || previewed[key] === sig) continue;
-			previewed[key] = sig;
+			if (!g || !target(key)) continue;
+			const sig = previewSig(g);
+			if (scheduled[key] === sig || isFresh(g)) continue;
+			scheduled[key] = sig;
 			clearTimeout(timers.get(key));
 			timers.set(
 				key,
-				setTimeout(async () => {
-					const { data, error } = await ComicsService.comicMovePreview({
-						body: { ids, target: to }
-					});
-					if (previewed[key] !== sig) return;
-					previews[key] = data
-						? { items: data.items, target: data.target }
-						: { error: errorMessage(error) };
-				}, 400)
+				setTimeout(() => fetchPreview(g), 400)
 			);
 		}
 	});
@@ -203,24 +249,87 @@
 	}
 
 	// --- Moving ---------------------------------------------------------------
-	let confirmKeys = $state<string[]>([]);
+	// The confirmation previews every row first (rows never expanded included),
+	// so it can say what will be copied across drives and what will be skipped,
+	// and only comics that can move are sent.
+	interface Confirm {
+		checking: boolean;
+		/** Comics to send per row (ready rows whose preview says "move"). */
+		moves: Record<string, number[]>;
+		copies: number;
+		skipped: { name: string; reason: string }[];
+		/** Rows left out: no target folder, or their preview failed. */
+		leftOut: { key: string; reason: string }[];
+	}
+	let confirm = $state<Confirm | null>(null);
 	let confirmOpen = $state(false);
-	const confirmCross = $derived(confirmKeys.reduce((n, k) => n + crossCount(k), 0));
+	let confirmRun = 0;
+	const confirmMoves = $derived(
+		confirm ? Object.values(confirm.moves).reduce((n, ids) => n + ids.length, 0) : 0
+	);
+	const confirmRows = $derived(confirm ? Object.keys(confirm.moves) : []);
 	let summary = $state<{ moved: number; failed: string[] } | null>(null);
 
-	function ask(keys: string[]) {
-		confirmKeys = keys.filter((k) => chosenOf(k).length && target(k));
-		if (confirmKeys.length) confirmOpen = true;
+	async function ask(keys: string[]) {
+		const run = ++confirmRun;
+		const work = keys.filter((k) => chosenOf(k).length && !busy(k));
+		const ready = work.flatMap((k) => {
+			const g = byKey.get(k);
+			return g && target(k) ? [g] : [];
+		});
+		const leftOut = work
+			.filter((k) => !target(k))
+			.map((k) => ({ key: k, reason: problemText[targetProblem(k) ?? 'empty'] }));
+		confirm = { checking: true, moves: {}, copies: 0, skipped: [], leftOut };
+		confirmOpen = true;
+		// A few previews at a time.
+		const stale = ready.filter((g) => !isFresh(g));
+		await Promise.all(
+			Array.from({ length: 4 }, async () => {
+				for (let g = stale.shift(); g; g = stale.shift()) await fetchPreview(g);
+			})
+		);
+		if (run !== confirmRun) return;
+		const next: Confirm = { checking: false, moves: {}, copies: 0, skipped: [], leftOut };
+		for (const g of ready) {
+			const p = previews[g.key];
+			if (!p?.items) {
+				next.leftOut.push({ key: g.key, reason: p?.error ?? 'could not check' });
+				continue;
+			}
+			const plan = new Map(p.items.map((i) => [i.id, i]));
+			const ids: number[] = [];
+			for (const id of chosen(g)) {
+				const item = plan.get(id);
+				if (item?.status === 'move') {
+					ids.push(id);
+					if (item.crossDevice) next.copies++;
+				} else if (item && item.status !== 'same') {
+					next.skipped.push({
+						name: item.name || `#${id}`,
+						reason: item.reason ?? planTag[item.status].label
+					});
+				}
+			}
+			if (ids.length) next.moves[g.key] = ids;
+		}
+		confirm = next;
+	}
+
+	function closeConfirm() {
+		confirmRun++;
+		confirmOpen = false;
 	}
 
 	async function move() {
-		confirmOpen = false;
+		const moves = confirm?.moves ?? {};
+		closeConfirm();
 		summary = null;
-		const keys = confirmKeys;
+		const keys = Object.keys(moves);
 		selectedRowIds = [];
 		for (const key of keys) {
 			const { data, error } = await ComicsService.comicMove({
-				body: { ids: chosenOf(key), target: target(key) }
+				body: { ids: moves[key], target: previews[key]?.target ?? target(key) }
 			});
 			results[key] = data
 				? { state: 'queued', jobId: data.jobId }
@@ -343,6 +452,19 @@
 		/>
 	{/if}
 
+	{#if suggestError}
+		<InlineNotification
+			kind="error"
+			title="Couldn't get target folders"
+			subtitle={`${suggestError}. Rows without one can't be moved until it's retried or a folder is typed in.`}
+			hideCloseButton
+		>
+			<NotificationActionButton slot="actions" on:click={retrySuggest}
+				>Retry</NotificationActionButton
+			>
+		</InlineNotification>
+	{/if}
+
 	<div class="above">
 		<Toggle
 			size="sm"
@@ -382,7 +504,11 @@
 					>
 				{/if}
 			{:else if cell.key === 'target'}
-				<span class="path" title={cell.value}>{cell.value || '…'}</span>
+				{#if cell.value}
+					<span class="path" title={cell.value}>{cell.value}</span>
+				{:else}
+					<span class="muted">{targetProblem(row.id) === 'loading' ? '…' : '—'}</span>
+				{/if}
 			{:else if cell.key === 'move'}
 				{cell.value || '—'}
 			{:else if cell.key === 'status'}
@@ -395,6 +521,16 @@
 					<Tag size="sm" type="red" title={r.error}>Failed</Tag>
 				{:else if r?.state === 'done' && !row.move}
 					<Tag size="sm" type="green">Moved</Tag>
+				{:else if row.move && targetProblem(row.id) === 'loading'}
+					<InlineLoading description="Finding folder…" />
+				{:else if row.move && targetProblem(row.id)}
+					<Tag
+						size="sm"
+						type="magenta"
+						title={targetProblem(row.id) === 'error'
+							? suggestError
+							: 'Expand the row and type a target folder'}>Needs a target folder</Tag
+					>
 				{:else if row.move}
 					<span>{row.move} to move</span>
 					{#if crossCount(row.id)}<Tag size="sm" type="warm-gray">{crossCount(row.id)} copy</Tag
@@ -478,14 +614,24 @@
 
 		<Toolbar>
 			<ToolbarBatchActions>
-				<Button icon={FolderMoveTo} on:click={() => ask(selectedRowIds)}
-					>Move selected ({sumChosen(selectedRowIds)} comics)</Button
+				<Button
+					icon={FolderMoveTo}
+					disabled={!sumChosen(selectedWork) || anyLoading(selectedWork)}
+					on:click={() => ask(selectedWork)}
+					>{anyLoading(selectedWork)
+						? 'Finding folders…'
+						: `Move selected (${sumChosen(selectedWork)} comics)`}</Button
 				>
 			</ToolbarBatchActions>
 			<ToolbarContent>
 				<ToolbarSearch persistent bind:value={search} placeholder="Search authors or any tag" />
-				<Button icon={FolderMoveTo} disabled={!workKeys.length} on:click={() => ask(workKeys)}
-					>Gather all ({sumChosen(workKeys)})</Button
+				<Button
+					icon={FolderMoveTo}
+					disabled={!sumChosen(workKeys) || anyLoading(workKeys)}
+					on:click={() => ask(workKeys)}
+					>{anyLoading(workKeys)
+						? 'Finding folders…'
+						: `Gather all (${sumChosen(workKeys)})`}</Button
 				>
 			</ToolbarContent>
 		</Toolbar>
@@ -514,19 +660,51 @@
 
 <Modal
 	bind:open={confirmOpen}
-	modalHeading="Move {sumChosen(confirmKeys)} comic{sumChosen(confirmKeys) === 1 ? '' : 's'}?"
+	modalHeading={confirm?.checking
+		? 'Checking…'
+		: confirmMoves
+			? `Move ${confirmMoves} comic${confirmMoves === 1 ? '' : 's'}?`
+			: 'Nothing to move'}
 	primaryButtonText="Move"
+	primaryButtonDisabled={!confirm || confirm.checking || !confirmMoves}
 	secondaryButtonText="Cancel"
-	on:click:button--secondary={() => (confirmOpen = false)}
+	on:click:button--secondary={closeConfirm}
+	on:close={closeConfirm}
 	on:submit={move}
 >
-	<p>
-		{confirmKeys.length === 1
-			? `Into ${target(confirmKeys[0])}.`
-			: `${confirmKeys.length} rows, each into its own folder.`}
-		{confirmCross ? `${confirmCross} are copied across drives first.` : ''}
-		Each row is a background job, after any scan or cover run in progress; comics that conflict are skipped.
-	</p>
+	{#if confirm?.checking}
+		<InlineLoading description="Checking where each comic goes…" />
+	{:else if confirm}
+		{#if confirmMoves}
+			<p>
+				{confirmRows.length === 1
+					? `Into ${previews[confirmRows[0]]?.target ?? target(confirmRows[0])}.`
+					: `${confirmRows.length} rows, each into its own folder.`}
+				{confirm.copies
+					? `${confirm.copies} ${confirm.copies === 1 ? 'is' : 'are'} on another drive or share and will be copied, then deleted: this can take a while.`
+					: 'All are renamed on their drive.'}
+				Each row is a background job, after any scan or cover run in progress.
+			</p>
+		{/if}
+		{#if confirm.skipped.length}
+			<p class="modal-section">{confirm.skipped.length} comic(s) can't be moved and are skipped:</p>
+			<ul class="modal-list">
+				{#each confirm.skipped.slice(0, 5) as s (s.name)}
+					<li>{s.name} — {s.reason}</li>
+				{/each}
+				{#if confirm.skipped.length > 5}<li>… and {confirm.skipped.length - 5} more</li>{/if}
+			</ul>
+		{/if}
+		{#if confirm.leftOut.length}
+			<p class="modal-section">{confirm.leftOut.length} row(s) are left out:</p>
+			<ul class="modal-list">
+				{#each confirm.leftOut.slice(0, 5) as r (r.key)}
+					<li>{r.key} — {r.reason}</li>
+				{/each}
+				{#if confirm.leftOut.length > 5}<li>… and {confirm.leftOut.length - 5} more</li>{/if}
+			</ul>
+		{/if}
+	{/if}
 </Modal>
 
 <style>
@@ -571,6 +749,15 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		vertical-align: bottom;
+	}
+	.modal-section {
+		margin-top: 1rem;
+	}
+	.modal-list {
+		margin: 0.25rem 0 0 1rem;
+		list-style: disc;
+		font-size: 0.875rem;
+		overflow-wrap: anywhere;
 	}
 	.above {
 		margin-bottom: 0.5rem;
