@@ -17,6 +17,7 @@ deleted. A failed copy leaves the original and the record untouched.
 import errno
 import os
 import shutil
+import unicodedata
 from typing import Dict, Iterable, List, Optional
 
 from sqlmodel import Session, select
@@ -66,6 +67,41 @@ def _device(path: str) -> int:
     return os.stat(_existing_ancestor(path)).st_dev
 
 
+def _same_name(a: str, b: str) -> bool:
+    """Whether two names are the same file on a case-insensitive or
+    normalizing filesystem (NTFS, SMB, macOS): equal after Unicode NFC and
+    case folding."""
+    return unicodedata.normalize("NFC", a).casefold() == unicodedata.normalize("NFC", b).casefold()
+
+
+def on_disk(path: str) -> str:
+    """``path`` spelled the way the filesystem lists it.
+
+    On a case-insensitive filesystem ``artist/Hoge`` opens an existing
+    ``artist/hoge``, but a scan lists it as ``hoge``: a record saved under
+    the other spelling would look like a different file and get imported
+    again. So each existing component takes the listed name that matches it
+    (exactly, else ignoring case and Unicode normalization); components that
+    don't exist yet are kept as given.
+    """
+    path = os.path.normpath(path)
+    if not os.path.isabs(path):
+        return path
+    resolved, rest = os.sep, [p for p in path.split(os.sep) if p]
+    for i, part in enumerate(rest):
+        try:
+            names = os.listdir(resolved)
+        except OSError:
+            return os.path.join(resolved, *rest[i:])
+        if part not in names:
+            match = next((n for n in names if _same_name(n, part)), None)
+            if match is None:
+                return os.path.join(resolved, *rest[i:])
+            part = match
+        resolved = os.path.join(resolved, part)
+    return resolved
+
+
 def check_target(session: Session, target: str) -> str:
     """Normalize ``target`` and check it can receive comics; raises MoveError."""
     target = (target or "").strip()
@@ -77,6 +113,8 @@ def check_target(session: Session, target: str) -> str:
         raise MoveError(
             "Target must be inside a comic scan folder (" + ", ".join(roots) + ")"
         )
+    # Record paths the way a scan will list them (see on_disk).
+    target = on_disk(target)
     if os.path.exists(target) and not os.path.isdir(target):
         raise MoveError("Target exists and is not a folder")
     # A folder comic is a folder of images without subfolders: moving files
@@ -113,11 +151,11 @@ def suggest_target(session: Session, ids: Iterable[int], name: str) -> str:
         if comic is None:
             continue
         parent = os.path.dirname(os.path.normpath(comic.path))
-        if os.path.basename(parent) == folder:
+        if _same_name(os.path.basename(parent), folder):
             counts[parent] = counts.get(parent, 0) + 1
     if counts:
         return max(counts, key=counts.__getitem__)
-    return os.path.join(os.path.normpath(global_data.Config.Comic.artist_root()), folder)
+    return on_disk(os.path.join(os.path.normpath(global_data.Config.Comic.artist_root()), folder))
 
 
 def unmounted_paths() -> List[str]:

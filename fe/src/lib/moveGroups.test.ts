@@ -64,3 +64,21 @@ describe('tagGroup', () => {
 		expect(tagGroup(files, index, ' ')).toBeNull();
 	});
 });
+
+describe('in place', () => {
+	it('ignores case and Unicode normalization of the folder', () => {
+		const idx = new TagIndex([{ name: 'Hoge', kind: 'author', canonical: null }]);
+		const [group] = authorGroups(
+			[
+				file(1, '[Hoge] a.zip', '/data/comics/artist/hoge/[Hoge] a.zip'),
+				file(2, '[Hoge] b.zip', '/data/comics/inbox/[Hoge] b.zip')
+			],
+			idx
+		);
+		expect(group.comics.map((c) => c.inPlace)).toEqual([true, false]);
+		const nfd = 'が'.normalize('NFD');
+		const kana = new TagIndex([{ name: 'が', kind: 'author', canonical: null }]);
+		const [g2] = authorGroups([file(3, '[が] c.zip', `/data/comics/${nfd}/[が] c.zip`)], kana);
+		expect(g2.pending).toEqual([]);
+	});
+});

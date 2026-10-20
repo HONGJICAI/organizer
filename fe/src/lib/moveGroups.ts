@@ -43,13 +43,18 @@ function splitFolder(path: string): [string, string] {
 	return [folder, folder.slice(j + 1)];
 }
 
+// Folder names that are the same folder on a case-insensitive or normalizing
+// filesystem (NTFS, SMB, macOS), as the backend compares them.
+const sameName = (a: string, b: string) =>
+	a.normalize('NFC').toLowerCase() === b.normalize('NFC').toLowerCase();
+
 function makeGroup(key: string, isAuthor: boolean, names: string[]): MoveGroup {
 	return { key, isAuthor, names, comics: [], pending: [] };
 }
 
 function addComic(group: MoveGroup, f: FileLike, otherAuthors: string[]) {
 	const [folder, parentName] = splitFolder(f.path);
-	const inPlace = parentName === folderName(group.key);
+	const inPlace = sameName(parentName, folderName(group.key));
 	group.comics.push({ id: f.id, name: f.name, path: f.path, folder, inPlace, otherAuthors });
 	if (!inPlace && !otherAuthors.length) group.pending.push(f.id);
 }
