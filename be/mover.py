@@ -18,9 +18,9 @@ import errno
 import os
 import shutil
 import unicodedata
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 import comicfile
 import db
@@ -74,7 +74,7 @@ def _same_name(a: str, b: str) -> bool:
     return unicodedata.normalize("NFC", a).casefold() == unicodedata.normalize("NFC", b).casefold()
 
 
-def on_disk(path: str) -> str:
+def on_disk(path: str, listings: Optional[Dict[str, Optional[List[str]]]] = None) -> str:
     """``path`` spelled the way the filesystem lists it.
 
     On a case-insensitive filesystem ``artist/Hoge`` opens an existing
@@ -83,15 +83,24 @@ def on_disk(path: str) -> str:
     again. So each existing component takes the listed name that matches it
     (exactly, else ignoring case and Unicode normalization); components that
     don't exist yet are kept as given.
+
+    ``listings`` caches folder listings across calls (one request resolving
+    many paths under the same, possibly slow network, folder).
     """
     path = os.path.normpath(path)
     if not os.path.isabs(path):
         return path
     resolved, rest = os.sep, [p for p in path.split(os.sep) if p]
+    if listings is None:
+        listings = {}
     for i, part in enumerate(rest):
-        try:
-            names = os.listdir(resolved)
-        except OSError:
+        if resolved not in listings:
+            try:
+                listings[resolved] = os.listdir(resolved)
+            except OSError:
+                listings[resolved] = None
+        names = listings[resolved]
+        if names is None:
             return os.path.join(resolved, *rest[i:])
         if part not in names:
             match = next((n for n in names if _same_name(n, part)), None)
@@ -118,11 +127,16 @@ def check_target(session: Session, target: str) -> str:
     if os.path.exists(target) and not os.path.isdir(target):
         raise MoveError("Target exists and is not a folder")
     # A folder comic is a folder of images without subfolders: moving files
-    # into one would change (or, with a folder comic, break) that comic.
-    for comic in session.exec(select(ComicEntity)).all():
-        # Path check first: stat-ing every comic is slow on network mounts.
-        if _inside(target, os.path.normpath(comic.path)) and os.path.isdir(comic.path):
-            raise MoveError(f"Target is inside the folder comic {comic.name!r}")
+    # into one would change (or, with a folder comic, break) that comic. Only
+    # the target and its parents can be one, so look those paths up.
+    parents = [target]
+    while os.path.dirname(parents[-1]) != parents[-1]:
+        parents.append(os.path.dirname(parents[-1]))
+    for path, name in session.exec(
+        select(ComicEntity.path, ComicEntity.name).where(col(ComicEntity.path).in_(parents))
+    ):
+        if os.path.isdir(path):
+            raise MoveError(f"Target is inside the folder comic {name!r}")
     if in_container_fs(target):
         raise MoveError(
             "Target isn't on a mounted drive: files there would live in the "
@@ -138,24 +152,46 @@ def folder_name(name: str) -> str:
     return cleaned.rstrip(". ")
 
 
-def suggest_target(session: Session, ids: Iterable[int], name: str) -> str:
-    """Where to gather ``ids`` under the name ``name``: a folder of that name
-    already holding some of them (the most common one), else
-    ``<artist root>/<name>``. Empty when ``name`` makes no folder name."""
-    folder = folder_name(name)
-    if not folder:
-        return ""
-    counts: Dict[str, int] = {}
-    for id in dict.fromkeys(ids):
-        comic = session.get(ComicEntity, id)
-        if comic is None:
+def suggest_targets(session: Session, groups: Iterable[Tuple[Iterable[int], str]]) -> List[str]:
+    """Where to gather each ``(ids, name)`` group under the name ``name``: a
+    folder of that name already holding some of them (the most common one),
+    else ``<artist root>/<name>``; empty when ``name`` makes no folder name.
+
+    Built for a whole table of authors at once: the comics' paths are read in
+    one query and the artist folder is listed once."""
+    groups = [(list(dict.fromkeys(ids)), name) for ids, name in groups]
+    wanted = {id for ids, _ in groups for id in ids}
+    paths: Dict[int, str] = {}
+    chunk = list(wanted)
+    # SQLite caps the number of bound parameters per statement.
+    for start in range(0, len(chunk), 900):
+        paths.update(
+            session.exec(
+                select(ComicEntity.id, ComicEntity.path).where(
+                    col(ComicEntity.id).in_(chunk[start:start + 900])
+                )
+            ).all()
+        )
+    artist_root = os.path.normpath(global_data.Config.Comic.artist_root())
+    listings: Dict[str, Optional[List[str]]] = {}
+    targets: List[str] = []
+    for ids, name in groups:
+        folder = folder_name(name)
+        if not folder:
+            targets.append("")
             continue
-        parent = os.path.dirname(os.path.normpath(comic.path))
-        if _same_name(os.path.basename(parent), folder):
-            counts[parent] = counts.get(parent, 0) + 1
-    if counts:
-        return max(counts, key=counts.__getitem__)
-    return on_disk(os.path.join(os.path.normpath(global_data.Config.Comic.artist_root()), folder))
+        counts: Dict[str, int] = {}
+        for id in ids:
+            if id not in paths:
+                continue
+            parent = os.path.dirname(os.path.normpath(paths[id]))
+            if _same_name(os.path.basename(parent), folder):
+                counts[parent] = counts.get(parent, 0) + 1
+        if counts:
+            targets.append(max(counts, key=counts.__getitem__))
+        else:
+            targets.append(on_disk(os.path.join(artist_root, folder), listings))
+    return targets
 
 
 def unmounted_paths() -> List[str]:

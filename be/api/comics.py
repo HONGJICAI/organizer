@@ -161,7 +161,7 @@ class ComicCBV:
         """Default targets for gathering each group into a folder named after it
         (one request for a whole table of authors)."""
         return ComicMoveSuggestion(
-            targets=[mover.suggest_target(self.session, g.ids, g.name) for g in req.groups]
+            targets=mover.suggest_targets(self.session, ((g.ids, g.name) for g in req.groups))
         )
 
     @router.post(
