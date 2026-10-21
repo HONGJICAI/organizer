@@ -125,6 +125,21 @@ class TestPreview:
         assert r.status_code == 400
         assert "inside the folder comic" in r.json()["msg"]
 
+    def test_target_below_a_folder_comic(self, client, session, root):
+        add_folder(session, root, 1, "a/Folder Comic")
+        add_zip(session, root, 2, "a/two.zip")
+        for target in (root / "a" / "Folder Comic", root / "a" / "Folder Comic" / "x" / "y"):
+            r = client.post("/api/comics/move/preview", json={"ids": [2], "target": str(target)})
+            assert r.status_code == 400
+            assert "'Folder Comic'" in r.json()["msg"]
+
+    def test_target_at_a_missing_folder_comic(self, client, session, root):
+        add_zip(session, root, 2, "a/two.zip")
+        # A record whose folder is gone doesn't block the path.
+        insert_comic(session, id=1, name="Gone", path=str(root / "b" / "Gone"), missing=True)
+        r = client.post("/api/comics/move/preview", json={"ids": [2], "target": str(root / "b" / "Gone")})
+        assert r.status_code == 200
+
     def test_cross_device_flag(self, client, session, root, monkeypatch):
         add_zip(session, root, 1, "a/one.zip")
         target = str(root / "b")
@@ -407,6 +422,32 @@ class TestSuggest:
             json={"groups": [{"ids": [1], "name": "A"}, {"ids": [2], "name": "B"}]},
         )
         assert r.json() == {"targets": [str(root / "artist" / "A"), str(root / "B")]}
+
+    def test_many_groups_list_the_artist_folder_once(self, client, session, root, monkeypatch):
+        (root / "artist" / "b").mkdir(parents=True)
+        listed = []
+        real = os.listdir
+
+        def listdir(path):
+            listed.append(path)
+            return real(path)
+
+        monkeypatch.setattr(mover.os, "listdir", listdir)
+        r = client.post(
+            "/api/comics/move/suggest",
+            json={"groups": [{"ids": [1], "name": n} for n in ("A", "B", "C")]},
+        )
+        artist = root / "artist"
+        assert r.json() == {"targets": [str(artist / "A"), str(artist / "b"), str(artist / "C")]}
+        assert listed.count(str(artist)) == 1
+
+    def test_more_ids_than_one_query_takes(self, session, root):
+        add_zip(session, root, 1000, "Alice/[Alice] One.zip")
+        ids = list(range(1, 1001))
+        assert mover.suggest_targets(session, [(ids, "Alice"), (ids[:5], "Bob")]) == [
+            str(root / "Alice"),
+            str(root / "artist" / "Bob"),
+        ]
 
     @pytest.mark.parametrize(
         "body", [{"groups": []}, {"groups": [{"ids": [], "name": "A"}]}, {"ids": [1], "name": "A"}]

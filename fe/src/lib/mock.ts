@@ -688,7 +688,7 @@ export async function setupMock(authRequired: boolean) {
 			const body = (await request.json()) as { groups?: { ids: number[]; name: string }[] };
 			if (!body.groups?.length || body.groups.some((g) => !g.ids?.length))
 				return HttpResponse.json({ msg: 'Invalid request' }, { status: 400 });
-			// Mirrors mover.suggest_target, with the artist folder at its default.
+			// Mirrors mover.suggest_targets, with the artist folder at its default.
 			const suggest = ({ ids, name }: { ids: number[]; name: string }) => {
 				const folder = name
 					.trim()
