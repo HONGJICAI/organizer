@@ -82,6 +82,28 @@ class ComicMoveResponse(BaseModel):
     message: str
 
 
+class ComicZipPlanItem(BaseModel):
+    """A folder comic and what converting it to a zip would do"""
+    id: int
+    name: str
+    source: str = Field(description="The comic's folder")
+    destination: str = Field(description="The zip that replaces it: the folder's path plus .zip")
+    pages: int
+    status: Literal["zip", "conflict"] = Field(
+        description="zip: will be converted; conflict: the destination is taken"
+    )
+    reason: Optional[str] = None
+
+
+class ComicZipPreview(BaseModel):
+    """Folder comics that could become zips"""
+    items: List[ComicZipPlanItem]
+
+
+class ComicZipRequest(BaseModel):
+    ids: List[int] = Field(min_length=1)
+
+
 class DuplicateGroup(BaseModel):
     """Comics that look like copies of the same work"""
     exact: bool = Field(description="All names reduce to the same title and volume; otherwise only similar")

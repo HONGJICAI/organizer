@@ -174,8 +174,9 @@ export async function setupMock(authRequired: boolean) {
 	// waiting jobs are deduped, finished ones go to a short history.
 	type MockJob = {
 		id: number;
-		kind: 'scan' | 'covers' | 'move';
+		kind: 'scan' | 'covers' | 'move' | 'zip';
 		params: Record<string, string>;
+		progress?: string;
 		state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 		created_at: string;
 		started_at: string | null;
@@ -198,13 +199,49 @@ export async function setupMock(authRequired: boolean) {
 			if (ids.has(c.id)) c.path = `${job.params.target}/${c.path.split('/').pop()}`;
 		}
 	};
+	// Mock folder comics (zipper.py): a few comics stand for folders of images
+	// (mock names have no extension to tell). Converting takes ~1s per comic
+	// and appends .zip to the record; the first one's name is already taken.
+	const folderIds = new Set(comics.filter((c, i) => i % 3 === 1 && i < 40).map((c) => c.id));
+	const zipState = { started: 0, cancelRequested: false };
+	const zipPlan = () =>
+		comics
+			.filter((c) => folderIds.has(c.id) && !c.archived && !c.missing)
+			.sort((a, b) => a.path.localeCompare(b.path))
+			.map((c, i) => ({
+				id: c.id,
+				name: c.name,
+				source: c.path,
+				destination: `${c.path}.zip`,
+				pages: c.page,
+				status: (i === 0 ? 'conflict' : 'zip') as 'zip' | 'conflict',
+				reason: i === 0 ? 'A file with this name is already there' : null
+			}));
+	// How many comics of a running zip job are done by now.
+	const zipDone = (job: MockJob) =>
+		Math.min(Number(job.params.count), Math.floor((Date.now() - zipState.started) / 1000));
+	const finishZip = (job: MockJob, done: number) => {
+		const ids = job.params.ids.split(',').map(Number).slice(0, done);
+		for (const c of comics) {
+			if (!ids.includes(c.id)) continue;
+			folderIds.delete(c.id);
+			c.path = `${c.path}.zip`;
+			c.name = `${c.name}.zip`;
+		}
+		job.progress = `${done} / ${job.params.count}`;
+	};
 	const startJob = (job: MockJob) => {
 		job.state = 'running';
 		job.started_at = new Date().toISOString();
-		job.cancellable = job.kind === 'covers';
+		job.cancellable = job.kind === 'covers' || job.kind === 'zip';
 		jobQueue.running = job;
 		if (job.kind === 'move') {
 			moveState.until = Date.now() + 2000;
+			return;
+		}
+		if (job.kind === 'zip') {
+			Object.assign(zipState, { started: Date.now(), cancelRequested: false });
+			job.progress = `0 / ${job.params.count}`;
 			return;
 		}
 		if (job.kind === 'scan') {
@@ -243,18 +280,27 @@ export async function setupMock(authRequired: boolean) {
 	const tickJobs = () => {
 		const job = jobQueue.running;
 		if (job) {
+			if (job.kind === 'zip') {
+				const done = zipDone(job);
+				job.progress = `${done} / ${job.params.count}`;
+				if (!zipState.cancelRequested && done < Number(job.params.count)) return;
+				finishZip(job, done);
+			}
 			const busy =
 				job.kind === 'scan'
 					? scanState.running
 					: job.kind === 'move'
 						? Date.now() < moveState.until
-						: coverState.running;
+						: job.kind === 'zip'
+							? false
+							: coverState.running;
 			if (busy) return;
 			if (job.kind === 'move') finishMove(job);
 			// A partly failed scan fails its job, as _scan_job raises on it.
 			const scanFailed = job.kind === 'scan' && scanState.mediaType === 'all';
 			job.state =
-				job.kind === 'covers' && coverState.cancelled
+				(job.kind === 'covers' && coverState.cancelled) ||
+				(job.kind === 'zip' && zipState.cancelRequested)
 					? 'cancelled'
 					: scanFailed
 						? 'failed'
@@ -275,6 +321,7 @@ export async function setupMock(authRequired: boolean) {
 		b: Record<string, string>
 	) => {
 		if (kind === 'move') return a.ids === b.ids && a.target === b.target;
+		if (kind === 'zip') return a.ids === b.ids;
 		const key = kind === 'scan' ? 'media_type' : 'mode';
 		return a[key] === 'all' || a[key] === b[key];
 	};
@@ -429,13 +476,14 @@ export async function setupMock(authRequired: boolean) {
 			if (!running || running.id !== id) {
 				return HttpResponse.json({ msg: 'No queued or running job with that id' }, { status: 404 });
 			}
-			if (running.kind !== 'covers') {
+			if (running.kind !== 'covers' && running.kind !== 'zip') {
 				return HttpResponse.json(
 					{ msg: "This job can't be cancelled while it runs" },
 					{ status: 400 }
 				);
 			}
-			coverState.cancelRequested = true;
+			if (running.kind === 'zip') zipState.cancelRequested = true;
+			else coverState.cancelRequested = true;
 			running.cancellable = false;
 			return HttpResponse.json({ status: 'cancelling' });
 		}),
@@ -736,6 +784,38 @@ export async function setupMock(authRequired: boolean) {
 			});
 		}),
 		// Registered before /api/comics/:id so the literal path wins.
+		http.get('/api/comics/zip', async () => {
+			await delay(600);
+			return HttpResponse.json({ items: zipPlan() });
+		}),
+		http.post('/api/comics/zip', async ({ request }) => {
+			await delay(300);
+			const body = (await request.json()) as { ids?: number[] };
+			if (!body.ids?.length) return HttpResponse.json({ msg: 'ids: too short' }, { status: 400 });
+			const ids = zipPlan()
+				.filter((i) => body.ids?.includes(i.id))
+				.map((i) => i.id);
+			if (!ids.length) {
+				return HttpResponse.json(
+					{ msg: 'None of these comics is a folder comic' },
+					{ status: 400 }
+				);
+			}
+			const params = { ids: ids.join(','), count: String(ids.length) };
+			const status = enqueueJob('zip', params);
+			const job = [jobQueue.running, ...jobQueue.queued].find(
+				(j) => j?.kind === 'zip' && subsumes('zip', j.params, params)
+			);
+			return HttpResponse.json({
+				jobId: job?.id ?? 0,
+				status,
+				message: {
+					started: `Converting ${ids.length} comic(s)`,
+					queued: `Converting ${ids.length} comic(s) after the running job`,
+					already_queued: 'The same conversion is already waiting in the queue'
+				}[status]
+			});
+		}),
 		http.get('/api/comics/stats', async ({ request }) => {
 			await delay(500);
 			const count = Number(new URL(request.url).searchParams.get('months') ?? 12);

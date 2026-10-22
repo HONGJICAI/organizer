@@ -1,4 +1,4 @@
-"""Single-lane queue for heavy background jobs (media scans, cover runs, comic moves).
+"""Single-lane queue for heavy background jobs (media scans, cover runs, comic moves and zips).
 
 Both read every comic file and hammer the same disk; running them at once
 only slows both down. Jobs run one at a time in submission order on a worker
@@ -36,6 +36,8 @@ class Job:
         self.finished_at: Optional[datetime] = None
         self.error: Optional[str] = None
         self.cancel_requested = False
+        # Set by a running job that reports how far it got, e.g. "12 / 300".
+        self.progress: Optional[str] = None
 
 
 Params = Dict[str, str]

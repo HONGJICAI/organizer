@@ -583,6 +583,86 @@ export const ComicTopReadSchema = {
     title: 'ComicTopRead'
 } as const;
 
+export const ComicZipPlanItemSchema = {
+    properties: {
+        id: {
+            type: 'integer',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        source: {
+            type: 'string',
+            title: 'Source',
+            description: "The comic's folder"
+        },
+        destination: {
+            type: 'string',
+            title: 'Destination',
+            description: "The zip that replaces it: the folder's path plus .zip"
+        },
+        pages: {
+            type: 'integer',
+            title: 'Pages'
+        },
+        status: {
+            type: 'string',
+            enum: ['zip', 'conflict'],
+            title: 'Status',
+            description: 'zip: will be converted; conflict: the destination is taken'
+        },
+        reason: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Reason'
+        }
+    },
+    type: 'object',
+    required: ['id', 'name', 'source', 'destination', 'pages', 'status'],
+    title: 'ComicZipPlanItem',
+    description: 'A folder comic and what converting it to a zip would do'
+} as const;
+
+export const ComicZipPreviewSchema = {
+    properties: {
+        items: {
+            items: {
+                '$ref': '#/components/schemas/ComicZipPlanItem'
+            },
+            type: 'array',
+            title: 'Items'
+        }
+    },
+    type: 'object',
+    required: ['items'],
+    title: 'ComicZipPreview',
+    description: 'Folder comics that could become zips'
+} as const;
+
+export const ComicZipRequestSchema = {
+    properties: {
+        ids: {
+            items: {
+                type: 'integer'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Ids'
+        }
+    },
+    type: 'object',
+    required: ['ids'],
+    title: 'ComicZipRequest'
+} as const;
+
 export const CoverFailureSchema = {
     properties: {
         id: {
@@ -999,7 +1079,7 @@ export const JobInfoSchema = {
         },
         kind: {
             type: 'string',
-            enum: ['scan', 'covers', 'move'],
+            enum: ['scan', 'covers', 'move', 'zip'],
             title: 'Kind'
         },
         params: {
@@ -1053,6 +1133,18 @@ export const JobInfoSchema = {
                 }
             ],
             title: 'Error'
+        },
+        progress: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Progress',
+            description: 'How far a job got, e.g. "12 / 300"; set by zip jobs'
         },
         cancellable: {
             type: 'boolean',
