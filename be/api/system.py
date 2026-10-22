@@ -202,13 +202,14 @@ class CoverRegenResponse(BaseModel):
 
 class JobInfo(BaseModel):
     id: int
-    kind: Literal["scan", "covers", "move"]
+    kind: Literal["scan", "covers", "move", "zip"]
     params: Dict[str, str]
     state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     error: Optional[str] = None
+    progress: Optional[str] = Field(default=None, description='How far a job got, e.g. "12 / 300"; set by zip jobs')
     cancellable: bool
 
 
@@ -281,13 +282,13 @@ def _job_info(job: Job) -> JobInfo:
     return JobInfo(
         id=job.id, kind=job.kind, params=job.params, state=job.state,
         created_at=job.created_at, started_at=job.started_at, finished_at=job.finished_at,
-        error=job.error, cancellable=jobs.cancellable(job),
+        error=job.error, progress=job.progress, cancellable=jobs.cancellable(job),
     )
 
 
 @router.get("/api/system/jobs", tags=["system"])
 def list_jobs() -> JobsResponse:
-    """The running heavy job (scan, cover run or comic move), the queue behind it, and recent history."""
+    """The running heavy job (scan, cover run, comic move or zip), the queue behind it, and recent history."""
     snap = jobs.snapshot()
     return JobsResponse(
         running=_job_info(snap["running"]) if snap["running"] else None,

@@ -265,6 +265,39 @@ export type ComicTopRead = {
     readDays: number;
 };
 
+/**
+ * A folder comic and what converting it to a zip would do
+ */
+export type ComicZipPlanItem = {
+    id: number;
+    name: string;
+    /**
+     * The comic's folder
+     */
+    source: string;
+    /**
+     * The zip that replaces it: the folder's path plus .zip
+     */
+    destination: string;
+    pages: number;
+    /**
+     * zip: will be converted; conflict: the destination is taken
+     */
+    status: 'zip' | 'conflict';
+    reason?: string | null;
+};
+
+/**
+ * Folder comics that could become zips
+ */
+export type ComicZipPreview = {
+    items: Array<ComicZipPlanItem>;
+};
+
+export type ComicZipRequest = {
+    ids: Array<number>;
+};
+
 export type CoverFailure = {
     id: number;
     name: string;
@@ -392,7 +425,7 @@ export type JobCancelResponse = {
 
 export type JobInfo = {
     id: number;
-    kind: 'scan' | 'covers' | 'move';
+    kind: 'scan' | 'covers' | 'move' | 'zip';
     params: {
         [key: string]: string;
     };
@@ -401,6 +434,10 @@ export type JobInfo = {
     started_at?: string | null;
     finished_at?: string | null;
     error?: string | null;
+    /**
+     * How far a job got, e.g. "12 / 300"; set by zip jobs
+     */
+    progress?: string | null;
     cancellable: boolean;
 };
 
@@ -955,6 +992,88 @@ export type ComicMoveResponses = {
 };
 
 export type ComicMoveResponse2 = ComicMoveResponses[keyof ComicMoveResponses];
+
+export type ComicZipPreviewData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/comics/zip';
+};
+
+export type ComicZipPreviewErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicZipPreviewError = ComicZipPreviewErrors[keyof ComicZipPreviewErrors];
+
+export type ComicZipPreviewResponses = {
+    /**
+     * Successful Response
+     */
+    200: ComicZipPreview;
+};
+
+export type ComicZipPreviewResponse = ComicZipPreviewResponses[keyof ComicZipPreviewResponses];
+
+export type ComicZipConvertData = {
+    body: ComicZipRequest;
+    path?: never;
+    query?: never;
+    url: '/api/comics/zip';
+};
+
+export type ComicZipConvertErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ComicZipConvertError = ComicZipConvertErrors[keyof ComicZipConvertErrors];
+
+export type ComicZipConvertResponses = {
+    /**
+     * Successful Response
+     */
+    200: ComicMoveResponse;
+};
+
+export type ComicZipConvertResponse = ComicZipConvertResponses[keyof ComicZipConvertResponses];
 
 export type ComicDeleteData = {
     body?: never;

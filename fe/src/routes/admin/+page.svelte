@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { SystemService } from '$lib/client';
+	import { ComicsService, SystemService } from '$lib/client';
 	import type {
+		ComicZipPlanItem,
 		CoverRegenStatus,
 		JobInfo,
 		JobsResponse,
@@ -21,7 +22,7 @@
 		Tag,
 		Tile
 	} from 'carbon-components-svelte';
-	import { Close, Home, Image as ImageIcon, Renew } from 'carbon-icons-svelte';
+	import { Archive, Close, Home, Image as ImageIcon, Renew, Search } from 'carbon-icons-svelte';
 
 	let scan = $state<ScanStatusResponse | null>(null);
 	let tasks = $state<TasksResponse | null>(null);
@@ -42,6 +43,15 @@
 		{ id: 'images', text: 'Images' }
 	];
 	let cancelling = $state<number | null>(null);
+	// The running move or zip job: when it's gone, comic paths have changed.
+	let comicJobId: number | null = null;
+	// Folder comics that could become zips (null until looked up).
+	let zipItems = $state<ComicZipPlanItem[] | null>(null);
+	let findingZips = $state(false);
+	let confirmZip = $state(false);
+	let startingZip = $state(false);
+	const zipReady = $derived(zipItems?.filter((i) => i.status === 'zip') ?? []);
+	const zipConflicts = $derived(zipItems?.filter((i) => i.status === 'conflict') ?? []);
 
 	function fmtTime(iso: string | null | undefined): string {
 		if (!iso) return '—';
@@ -90,12 +100,16 @@
 			loadCovers(),
 			loadJobs()
 		]);
-		if ((wasRunning && !running) || (coversWereRunning && !coversRunning)) {
-			// A scan may have imported or reconciled away media, and a cover run
-			// bumps every comic's cover version; drop the cached lists so the next
-			// visit re-fetches them (mediaStore).
+		const current = jobs?.running;
+		const comicJobDone = comicJobId !== null && current?.id !== comicJobId;
+		if ((wasRunning && !running) || (coversWereRunning && !coversRunning) || comicJobDone) {
+			// A scan may have imported or reconciled away media, a cover run
+			// bumps every comic's cover version, and moves and zips change comic
+			// paths; drop the cached lists so the next visit re-fetches them
+			// (mediaStore).
 			refreshMediaFiles();
 		}
+		comicJobId = current && ['move', 'zip'].includes(current.kind) ? current.id : null;
 		wasRunning = running;
 		coversWereRunning = coversRunning;
 		timer = setTimeout(poll, running || coversRunning || busy ? 1000 : 5000);
@@ -113,6 +127,35 @@
 			return;
 		}
 		addNotification(new SuccessNotification({ subtitle: data.message }));
+		clearTimeout(timer);
+		poll();
+	}
+
+	async function findFolderComics() {
+		findingZips = true;
+		const { data, error } = await ComicsService.comicZipPreview();
+		findingZips = false;
+		if (error || !data) {
+			addNotification(new ErrorNotification({ subtitle: "Couldn't look up folder comics" }));
+			return;
+		}
+		zipItems = data.items;
+	}
+
+	async function convertToZip() {
+		confirmZip = false;
+		startingZip = true;
+		const { data, error } = await ComicsService.comicZipConvert({
+			body: { ids: zipReady.map((i) => i.id) }
+		});
+		startingZip = false;
+		if (error || !data) {
+			addNotification(new ErrorNotification({ subtitle: 'Failed to queue the conversion' }));
+			return;
+		}
+		addNotification(new SuccessNotification({ subtitle: data.message }));
+		// Look again once it has run; the list is stale from now on.
+		zipItems = null;
 		clearTimeout(timer);
 		poll();
 	}
@@ -157,6 +200,7 @@
 			const folder = (job.params.target ?? '').split(/[/\\]/).pop();
 			return `Move ${job.params.count ?? ''} comic(s) → ${folder}`;
 		}
+		if (job.kind === 'zip') return `Zip ${job.params.count ?? ''} folder comic(s)`;
 		return job.params.mode === 'missing' ? 'Covers (missing only)' : 'Covers (all)';
 	}
 
@@ -215,15 +259,16 @@
 			{/if}
 		</div>
 		<p class="muted note">
-			Scans, cover runs and comic moves share one queue and run one at a time. Waiting jobs can be
-			cancelled; a running cover run stops after the comic in hand, a running scan or move can't be
-			stopped.
+			Scans, cover runs, comic moves and zips share one queue and run one at a time. Waiting jobs
+			can be cancelled; a running cover run or zip stops after the comic in hand, a running scan or
+			move can't be stopped.
 		</p>
 		{#if jobs?.running}
 			{@const job = jobs.running}
 			<div class="job">
 				<Tag type="blue" size="sm">Running</Tag>
 				<span class="job-label">{jobLabel(job)}</span>
+				{#if job.progress}<span class="muted">{job.progress}</span>{/if}
 				<span class="muted">{fmtDuration(jobDuration(job))}</span>
 				{#if job.cancellable}
 					<Button
@@ -468,6 +513,60 @@
 	</Tile>
 
 	<Tile class="card">
+		<div class="card-head">
+			<h3>Folder comics</h3>
+			{#if zipItems}
+				<Tag type={zipItems.length ? 'blue' : 'green'}>{zipItems.length} found</Tag>
+			{/if}
+		</div>
+		<p class="muted">
+			A comic kept as a folder of images is hundreds of files to scan, read and copy, which is slow
+			on network drives. <em>Convert to zip</em> packs each folder into an uncompressed zip next to
+			it (<code>Name</code> → <code>Name.zip</code>), checks every file reads back intact, then
+			deletes the folder. The comic keeps its favorite, progress and cover. Stopping the job keeps
+			the comics already converted.
+		</p>
+		{#if zipItems}
+			<dl class="kv">
+				<dt>To convert</dt>
+				<dd>{zipReady.length} ({zipReady.reduce((n, i) => n + i.pages, 0)} pages)</dd>
+				<dt>Name taken</dt>
+				<dd>{zipConflicts.length}</dd>
+			</dl>
+			{#if zipConflicts.length}
+				<h4>Skipped</h4>
+				<ul class="failures">
+					{#each zipConflicts as item (item.id)}
+						<li>
+							<a href="/comic/{item.id}" title={item.source}>{item.name}</a>
+							<span class="err" title={item.reason}>{item.reason}</span>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		{/if}
+		<div class="buttons">
+			<Button
+				kind={zipItems ? 'tertiary' : 'primary'}
+				icon={Search}
+				disabled={findingZips}
+				on:click={findFolderComics}
+			>
+				{findingZips ? 'Looking…' : zipItems ? 'Look again' : 'Find folder comics'}
+			</Button>
+			{#if zipItems}
+				<Button
+					icon={Archive}
+					disabled={!zipReady.length || startingZip}
+					on:click={() => (confirmZip = true)}
+				>
+					Convert {zipReady.length} to zip
+				</Button>
+			{/if}
+		</div>
+	</Tile>
+
+	<Tile class="card">
 		<div class="card-head"><h3>Background tasks</h3></div>
 		<dl class="kv">
 			<dt>Next daily scan</dt>
@@ -498,6 +597,21 @@
 	<p>
 		Every comic's cover is rebuilt from its archive, which can take a while on a large library.
 		Custom cover pages are kept.
+	</p>
+</Modal>
+
+<Modal
+	bind:open={confirmZip}
+	modalHeading="Convert {zipReady.length} folder comic(s) to zip?"
+	primaryButtonText="Convert"
+	secondaryButtonText="Cancel"
+	on:click:button--secondary={() => (confirmZip = false)}
+	on:submit={convertToZip}
+>
+	<p>
+		Each folder is replaced by a zip of the same name holding its files unchanged; a folder is
+		deleted only after its zip checks out. The drive needs room for one more copy of the comic being
+		converted. This reads and writes every page, so a large library takes a while.
 	</p>
 </Modal>
 

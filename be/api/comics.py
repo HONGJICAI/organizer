@@ -16,11 +16,14 @@ import stats
 import events
 import global_data
 import mover
+import zipper
 import util
 from core.exceptions import abort
 from loader import ComicLoader
 from model import ComicEntity
 from schemas.comic import (
+    ComicZipPreview,
+    ComicZipRequest,
     ComicDetailResponse,
     ComicMovePreview,
     ComicMoveRequest,
@@ -201,6 +204,36 @@ class ComicCBV:
             "started": f"Moving {len(ids)} comic(s)",
             "queued": f"Moving {len(ids)} comic(s) after the running job",
             "already_queued": "The same move is already waiting in the queue",
+        }[status]
+        return ComicMoveResponse(jobId=job.id, status=status, message=message)
+
+    @router.get("/api/comics/zip", tags=["comics"])
+    def zip_preview(self) -> ComicZipPreview:
+        """Folder comics, and whether each can be converted to a zip."""
+        return ComicZipPreview(items=zipper.plan(self.session))
+
+    @router.post(
+        "/api/comics/zip",
+        tags=["comics"],
+        responses={
+            200: {"model": ComicMoveResponse},
+            400: {"model": dict},
+        },
+    )
+    def zip_convert(self, req: ComicZipRequest) -> ComicMoveResponse:
+        """Queue a job converting folder comics into zips, keeping their records.
+
+        Comics that aren't folder comics are left alone; ones whose zip name is
+        taken (see the preview) make the job fail listing them.
+        """
+        ids = [i.id for i in zipper.plan(self.session, req.ids)]
+        if not ids:
+            abort(400, "None of these comics is a folder comic")
+        job, status = zipper.submit(ids)
+        message = {
+            "started": f"Converting {len(ids)} comic(s)",
+            "queued": f"Converting {len(ids)} comic(s) after the running job",
+            "already_queued": "The same conversion is already waiting in the queue",
         }[status]
         return ComicMoveResponse(jobId=job.id, status=status, message=message)
 

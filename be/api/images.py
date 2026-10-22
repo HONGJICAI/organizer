@@ -454,7 +454,7 @@ class ImageCBV:
     def convert(self, id: int, _: None = Depends(require_auth)) -> ComicEntity:
         """Package an image folder into a zip comic file and import it.
 
-        The original images are stored verbatim (deflate-compressed) under
+        The original images are stored verbatim (uncompressed: images are compressed already) under
         their existing filenames, so page order matches what the album shows.
         The source folder is left untouched; the new comic is added to the
         comic library and gets a cover generated like any scanned comic.
@@ -484,7 +484,7 @@ class ImageCBV:
                 abort(400, "A comic with this path already exists")
 
         try:
-            with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_STORED) as zf:
                 for fname in files:
                     zf.write(os.path.join(entity.path, fname), arcname=fname)
         except OSError as e:
