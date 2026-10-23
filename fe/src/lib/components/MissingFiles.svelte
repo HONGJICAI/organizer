@@ -3,10 +3,7 @@
 	import { Comic, ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
-	import { page } from '$app/state';
 	import {
-		Breadcrumb,
-		BreadcrumbItem,
 		Button,
 		DataTable,
 		DataTableSkeleton,
@@ -16,7 +13,9 @@
 		ToolbarContent,
 		ToolbarSearch
 	} from 'carbon-components-svelte';
-	import { Home, Renew, Search, TrashCan } from 'carbon-icons-svelte';
+	import { Renew, Search, TrashCan } from 'carbon-icons-svelte';
+
+	// Comics whose file is gone (Cleanup → Missing files).
 
 	interface Row {
 		id: number;
@@ -25,7 +24,7 @@
 		coverUrl: string;
 	}
 
-	let mediaType = $derived(page.params.mediaType);
+	let { mediaType }: { mediaType: string } = $props();
 	let loading = $state(true);
 	let rows = $state<Row[]>([]);
 	let selectedRowIds = $state<number[]>([]);
@@ -129,13 +128,6 @@
 	load();
 </script>
 
-<Breadcrumb noTrailingSlash>
-	<BreadcrumbItem href="/{mediaType}">
-		<span class="crumb"><Home size={16} /><span>{mediaType}</span></span>
-	</BreadcrumbItem>
-	<BreadcrumbItem isCurrentPage>Organize</BreadcrumbItem>
-</Breadcrumb>
-<h1>Missing Files</h1>
 <p class="hint">
 	These comics still have a record but their file is gone from disk. A removable or network drive
 	that's simply unmounted will reappear on the next scan — only delete records you're sure won't
@@ -218,12 +210,6 @@
 {/if}
 
 <style>
-	.crumb {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
-	}
-
 	.hint {
 		max-width: 60rem;
 		margin: 0.5rem 0 1rem;
