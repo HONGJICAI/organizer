@@ -1,6 +1,7 @@
 <script lang="ts">
 	import BadNames from '$lib/components/BadNames.svelte';
 	import MissingFiles from '$lib/components/MissingFiles.svelte';
+	import NormalizeNames from '$lib/components/NormalizeNames.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { Breadcrumb, BreadcrumbItem, Tab, TabContent, Tabs } from 'carbon-components-svelte';
@@ -9,7 +10,7 @@
 	// Library problems to fix by hand, one tab each; ?tab= picks one.
 	let { data } = $props();
 	let mediaType = $derived(page.params.mediaType ?? 'comic');
-	const tabs = ['missing', 'names'] as const;
+	const tabs = ['missing', 'names', 'normalize'] as const;
 	let selected = $derived(Math.max(0, tabs.indexOf(page.url.searchParams.get('tab') as never)));
 
 	function select(index: number) {
@@ -31,12 +32,16 @@
 <Tabs {selected} on:change={(e) => select(e.detail)}>
 	<Tab label="Missing files" />
 	<Tab label="Bad names" />
+	<Tab label="Normalize" />
 	<svelte:fragment slot="content">
 		<TabContent>
 			{#if selected === 0}<MissingFiles {mediaType} />{/if}
 		</TabContent>
 		<TabContent>
 			{#if selected === 1}<BadNames {mediaType} files={data.files} />{/if}
+		</TabContent>
+		<TabContent>
+			{#if selected === 2}<NormalizeNames {mediaType} files={data.files} />{/if}
 		</TabContent>
 	</svelte:fragment>
 </Tabs>

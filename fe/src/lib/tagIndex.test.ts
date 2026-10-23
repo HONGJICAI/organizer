@@ -23,6 +23,11 @@ describe('TagIndex', () => {
 		expect(index.row('DL版')?.kind).toBe('ignored');
 		expect(index.size).toBe(6);
 	});
+
+	it('lists the names of a kind, aliases included', () => {
+		expect(index.withKind('author')).toEqual(['アリス', 'Alice']);
+		expect(index.withKind('language')).toEqual(['Chinese']);
+	});
 });
 
 describe('counting and grouping', () => {
