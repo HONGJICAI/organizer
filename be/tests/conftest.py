@@ -42,11 +42,13 @@ def insert_comic(
     name: str = "test.zip",
     path: str = "/nonexistent/test.zip",
     page: int = 3,
+    size: int = 1000,
+    updateTime: datetime | None = None,
     **kwargs,
 ) -> ComicEntity:
     comic = ComicEntity(
-        id=id, name=name, path=path, size=1000,
-        updateTime=datetime.now(), page=page, **kwargs,
+        id=id, name=name, path=path, size=size,
+        updateTime=updateTime or datetime.now(), page=page, **kwargs,
     )
     session.add(comic)
     session.commit()

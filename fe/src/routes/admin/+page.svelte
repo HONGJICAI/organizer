@@ -117,7 +117,7 @@
 
 	// `missing` only fills in covers whose file doesn't exist; `all` rewrites
 	// every cover (behind a confirm, since it reopens every archive).
-	async function regenerateCovers(mode: 'all' | 'missing') {
+	async function regenerateCovers(mode: 'all' | 'missing' | 'changed') {
 		confirmCovers = false;
 		startingCovers = true;
 		const { data, error } = await SystemService.regenerateCovers({ query: { mode } });
@@ -201,7 +201,7 @@
 			return `Move ${job.params.count ?? ''} comic(s) → ${folder}`;
 		}
 		if (job.kind === 'zip') return `Zip ${job.params.count ?? ''} folder comic(s)`;
-		return job.params.mode === 'missing' ? 'Covers (missing only)' : 'Covers (all)';
+		return `Covers (${coverModes[job.params.mode] ?? job.params.mode})`;
 	}
 
 	function jobDuration(job: JobInfo): number | null {
@@ -216,6 +216,12 @@
 			? fmtTime(job.finished_at)
 			: `${fmtTime(job.finished_at)} · took ${fmtDuration(took)}`;
 	}
+
+	const coverModes: Record<string, string> = {
+		all: 'all',
+		missing: 'missing only',
+		changed: 'changed only'
+	};
 
 	const stateTag: Record<JobInfo['state'], 'blue' | 'gray' | 'green' | 'red' | 'warm-gray'> = {
 		running: 'blue',
@@ -463,8 +469,10 @@
 		</div>
 		<p class="muted">
 			Builds covers from each comic's chosen cover page (or the first page) and refreshes its page
-			count. <em>Generate missing</em> only fills in comics without a cover; <em>Regenerate all</em>
-			rewrites every one. Covers that can't be generated are removed instead of left stale.
+			count, size and modification time. <em>Generate missing</em> only fills in comics without a
+			cover; <em>Refresh changed</em> only handles comics whose file changed in place (say, pages
+			recompressed by another tool), which scans don't notice; <em>Regenerate all</em> rewrites every
+			one. Covers that can't be generated are removed instead of left stale.
 		</p>
 		{#if covers?.running}
 			<ProgressBar
@@ -475,11 +483,18 @@
 		{:else if covers?.finished_at}
 			<dl class="kv">
 				<dt>Mode</dt>
-				<dd>{covers.mode === 'missing' ? 'Missing only' : 'All'}</dd>
+				<dd class="cap">{coverModes[covers.mode ?? 'all']}</dd>
 				<dt>Finished</dt>
 				<dd>{fmtTime(covers.finished_at)}</dd>
-				<dt>Generated</dt>
-				<dd>{covers.processed - covers.failed} / {covers.total}</dd>
+				{#if covers.mode === 'changed'}
+					<dt>Checked</dt>
+					<dd>{covers.processed} / {covers.total}</dd>
+					<dt>Changed</dt>
+					<dd>{covers.refreshed}</dd>
+				{:else}
+					<dt>Generated</dt>
+					<dd>{covers.processed - covers.failed} / {covers.total}</dd>
+				{/if}
 				<dt>Failed</dt>
 				<dd>{covers.failed}</dd>
 			</dl>
@@ -505,6 +520,14 @@
 				on:click={() => regenerateCovers('missing')}
 			>
 				Generate missing
+			</Button>
+			<Button
+				kind="tertiary"
+				icon={Renew}
+				disabled={startingCovers}
+				on:click={() => regenerateCovers('changed')}
+			>
+				Refresh changed
 			</Button>
 			<Button kind="tertiary" disabled={startingCovers} on:click={() => (confirmCovers = true)}
 				>Regenerate all</Button
@@ -656,6 +679,10 @@
 
 	.kv dt {
 		color: var(--cds-text-02, #c6c6c6);
+	}
+
+	.cap::first-letter {
+		text-transform: uppercase;
 	}
 
 	.kv dd {

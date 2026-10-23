@@ -318,6 +318,7 @@ class ComicCBV:
         with comicfile.create(comic.path) as cf:
             comic.page = cf.page
             comic.updateTime = comic_entity_init.updateTime
+            comic.size = comic_entity_init.size
             ComicLoader.gen_comic_cover(comic, cf)
             # The cover JPEG is rewritten under the same filename, so bump the
             # version field that the frontend appends to the cover URL — this is

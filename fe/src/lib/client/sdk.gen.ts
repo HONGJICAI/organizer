@@ -774,7 +774,8 @@ export class SystemService {
     
     /**
      * Regenerate Covers
-     * Queue a cover run: every live comic's cover, or only those without a cover file.
+     * Queue a cover run: every live comic's cover, only those without a cover
+     * file, or only comics whose file changed in place since it was recorded.
      */
     public static regenerateCovers<ThrowOnError extends boolean = false>(options?: Options<RegenerateCoversData, ThrowOnError>) {
         return (options?.client ?? _heyApiClient).post<RegenerateCoversResponse, RegenerateCoversError, ThrowOnError>({

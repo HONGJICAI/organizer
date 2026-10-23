@@ -716,7 +716,7 @@ export const CoverRegenStatusSchema = {
             anyOf: [
                 {
                     type: 'string',
-                    enum: ['all', 'missing']
+                    enum: ['all', 'missing', 'changed']
                 },
                 {
                     type: 'null'
@@ -735,6 +735,12 @@ export const CoverRegenStatusSchema = {
         failed: {
             type: 'integer',
             title: 'Failed'
+        },
+        refreshed: {
+            type: 'integer',
+            title: 'Refreshed',
+            description: 'Comics reopened and updated; in changed mode, the ones whose file changed',
+            default: 0
         },
         failures: {
             items: {

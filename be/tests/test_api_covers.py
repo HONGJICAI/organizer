@@ -64,7 +64,7 @@ class TestRegenerate:
         body = client.get("/api/system/covers").json()
         assert body == {
             "running": False, "cancelled": False, "mode": None, "total": 0, "processed": 0, "failed": 0,
-            "failures": [], "started_at": None, "finished_at": None,
+            "refreshed": 0, "failures": [], "started_at": None, "finished_at": None,
         }
 
     def test_rewrites_cover_and_bumps_version(self, client, session, tmp_path):
@@ -184,14 +184,14 @@ class TestRegenerate:
             insert_comic(session, id=id, path=str(f), page=1)
         started = threading.Event()
         proceed = threading.Event()
-        real = covers._regenerate
+        real = covers._refresh
 
         def slow(comic):
             started.set()
             proceed.wait(5)
             return real(comic)
 
-        monkeypatch.setattr(covers, "_regenerate", slow)
+        monkeypatch.setattr(covers, "_refresh", slow)
         job = client.post("/api/system/covers").json()
         assert job["status"] == "started"
         assert started.wait(5)
@@ -227,6 +227,17 @@ class TestRegenerate:
         session.expire_all()
         assert session.get(ComicEntity, 1).page == 2
 
+    def test_refreshes_size_and_time(self, client, session, tmp_path):
+        f = tmp_path / "a.zip"
+        colored_zip(f, [(0, 0, 255)])
+        insert_comic(session, id=1, path=str(f), page=1, updateTime=datetime(2020, 1, 1))
+        _, status = regenerate(client)
+        assert status["refreshed"] == 1
+        session.expire_all()
+        comic = session.get(ComicEntity, 1)
+        assert comic.size == f.stat().st_size
+        assert comic.updateTime == datetime.fromtimestamp(f.stat().st_mtime)
+
     def test_page_count_kept_when_file_unreadable(self, client, session):
         insert_comic(session, id=1, path="/nonexistent/a.zip", page=7)
         regenerate(client)
@@ -235,3 +246,72 @@ class TestRegenerate:
 
     def test_invalid_mode(self, client):
         assert client.post("/api/system/covers?mode=some").status_code == 400
+
+
+def record_as_is(session, id, path, **kwargs):
+    """A comic recorded with its file's current size and time, as a scan would."""
+    st = os.stat(path)
+    kwargs.setdefault("size", st.st_size)
+    return insert_comic(
+        session, id=id, path=str(path), updateTime=datetime.fromtimestamp(st.st_mtime), **kwargs
+    )
+
+
+class TestChangedMode:
+    def test_only_changed_comics(self, client, session, tmp_path):
+        old = datetime.now() - timedelta(days=1)
+        for id in (1, 2, 3):
+            colored_zip(tmp_path / f"{id}.zip", [(0, 0, 255)])
+            record_as_is(session, id, tmp_path / f"{id}.zip", page=1, entityUpdateTime=old)
+            write_stale_cover(id)
+        # 2 recompressed in place (new pages, new size), 3 touched only.
+        colored_zip(tmp_path / "2.zip", [(0, 255, 0), (0, 255, 0)])
+        os.utime(tmp_path / "3.zip", (0, 1_000_000_000))
+
+        started, status = regenerate(client, "changed")
+        assert started["message"] == "Refresh of changed comics started"
+        assert (status["mode"], status["total"], status["processed"]) == ("changed", 3, 3)
+        assert (status["refreshed"], status["failed"]) == (2, 0)
+        # The unchanged comic keeps its cover and version.
+        assert close(cover_color(1), (255, 0, 0))
+        assert close(cover_color(2), (0, 255, 0))
+        session.expire_all()
+        one, two = session.get(ComicEntity, 1), session.get(ComicEntity, 2)
+        assert one.entityUpdateTime == old
+        assert two.entityUpdateTime > old
+        assert (two.page, two.size) == (2, (tmp_path / "2.zip").stat().st_size)
+        assert session.get(ComicEntity, 3).updateTime == datetime.fromtimestamp(1_000_000_000)
+
+    def test_folder_comic_by_folder_time(self, client, session, tmp_path):
+        folder = tmp_path / "Folder"
+        folder.mkdir()
+        Image.new("RGB", (10, 10), (0, 0, 255)).save(folder / "001.png")
+        # Its recorded size is the files' total, never compared: summing it
+        # would take a walk of the folder.
+        record_as_is(session, 1, folder, page=1, size=1)
+        _, status = regenerate(client, "changed")
+        assert status["refreshed"] == 0
+        Image.new("RGB", (10, 10), (0, 255, 0)).save(folder / "000.png")
+        os.utime(folder, (0, 1_000_000_000))
+        _, status = regenerate(client, "changed")
+        assert status["refreshed"] == 1
+        assert close(cover_color(1), (0, 255, 0))
+        session.expire_all()
+        comic = session.get(ComicEntity, 1)
+        assert comic.page == 2
+        assert comic.size == sum(p.stat().st_size for p in folder.iterdir())
+
+    def test_gone_file_keeps_its_cover(self, client, session):
+        insert_comic(session, id=1, name="gone.zip", path="/nonexistent/gone.zip")
+        write_stale_cover(1)
+        _, status = regenerate(client, "changed")
+        assert (status["refreshed"], status["failed"]) == (0, 1)
+        assert status["failures"][0]["reason"].startswith("Can't read the file")
+        assert os.path.exists(cover_path(1))
+
+    def test_full_run_covers_a_waiting_changed_run(self, client):
+        from api.system import _covers_subsumes
+
+        assert _covers_subsumes({"mode": "all"}, {"mode": "changed"})
+        assert not _covers_subsumes({"mode": "changed"}, {"mode": "all"})
+        assert not _covers_subsumes({"mode": "missing"}, {"mode": "changed"})
