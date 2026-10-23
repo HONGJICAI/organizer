@@ -220,13 +220,32 @@ class TestRename:
         r = client.post("/api/comics/1/rename", json={"name": "new.zip"})
         assert r.status_code == 400
 
-    def test_name_conflict_in_db(self, client, session, tmp_path):
+    def test_path_conflict_in_db(self, client, session, tmp_path):
         f1 = tmp_path / "a.zip"
         f1.write_bytes(b"data")
         insert_comic(session, 1, name="a.zip", path=str(f1))
-        insert_comic(session, 2, name="b.zip", path=str(tmp_path / "b.zip"))
+        insert_comic(session, 2, name="b.zip", path=str(tmp_path / "b.zip"), missing=True)
         r = client.post("/api/comics/1/rename", json={"name": "b.zip"})
         assert r.status_code == 400
+        assert r.json()["msg"] == "Another comic is recorded at this path"
+
+    def test_same_name_in_another_folder(self, client, session, tmp_path):
+        f1 = tmp_path / "a.zip"
+        f1.write_bytes(b"data")
+        insert_comic(session, 1, name="a.zip", path=str(f1))
+        insert_comic(session, 2, name="b.zip", path=str(tmp_path / "other" / "b.zip"))
+        r = client.post("/api/comics/1/rename", json={"name": "b.zip"})
+        assert r.status_code == 200
+        assert (tmp_path / "b.zip").exists()
+
+    @pytest.mark.parametrize("name", ["../b.zip", "sub/b.zip", "a\\b.zip", "..", "."])
+    def test_name_with_a_separator(self, client, session, tmp_path, name):
+        f = tmp_path / "a.zip"
+        f.write_bytes(b"data")
+        insert_comic(session, 1, name="a.zip", path=str(f))
+        r = client.post("/api/comics/1/rename", json={"name": name})
+        assert r.status_code == 400
+        assert f.exists()
 
     def test_clears_cache_entry(self, client, session, tmp_path):
         f = tmp_path / "cached.zip"

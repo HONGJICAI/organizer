@@ -61,6 +61,11 @@ export class TagIndex {
 		return [primary, ...(this.aliases.get(primary) ?? [])];
 	}
 
+	/** Every classified name (primaries and their aliases) of the given kind. */
+	withKind(kind: TagKind): string[] {
+		return [...this.rows.keys()].filter((name) => this.kind(name) === kind);
+	}
+
 	/** Like names(), looked up case-insensitively (search keywords are lower case). */
 	namesIgnoringCase(keyword: string): string[] {
 		const name = this.lower.get(keyword.toLowerCase());

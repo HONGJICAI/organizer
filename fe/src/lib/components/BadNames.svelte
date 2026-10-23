@@ -2,6 +2,7 @@
 	import { adapterFor } from '$lib/mediaAdapters';
 	import type { MediaFile } from '$lib/model.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
+	import { invalidate } from '$app/navigation';
 	import { ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import {
@@ -150,8 +151,9 @@
 		}
 		renamed[id] = newName;
 		editing = null;
-		// Other views hold the old name; the next visit fetches the list again.
+		// Reload the list, so the other tabs and views see the new name.
 		refreshMediaFiles(mediaType);
+		invalidate(`app:media:${mediaType}`);
 		addNotification(new SuccessNotification({ subtitle: `Renamed ${name} → ${newName}` }));
 	}
 </script>

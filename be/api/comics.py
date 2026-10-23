@@ -7,7 +7,7 @@ from typing import List
 from fastapi import APIRouter, Depends, Query
 from fastapi_utils.api_model import APIMessage
 from fastapi_utils.cbv import cbv
-from sqlmodel import Session, select, or_
+from sqlmodel import Session, select
 
 import comicfile
 import db
@@ -347,15 +347,15 @@ class ComicCBV:
             abort(400, "Name is required")
         if new_name == comic.name:
             abort(400, "Name is same")
+        if new_name in (".", "..") or "/" in new_name or "\\" in new_name:
+            abort(400, "A name can't contain / or \\")
         new_path = os.path.join(os.path.dirname(comic.path), new_name)
         if os.path.exists(new_path):
             abort(400, "File already exists")
-        new_comic_statement = select(ComicEntity).where(
-            or_(ComicEntity.name == new_name, ComicEntity.path == new_path)
-        )
-        new_comic = self.session.exec(new_comic_statement).first()
-        if new_comic is not None:
-            abort(400, "Comic with same name/path already exists")
+        # Only the path must be free: comics of the same name in other folders
+        # are other files.
+        if self.session.exec(select(ComicEntity.id).where(ComicEntity.path == new_path)).first() is not None:
+            abort(400, "Another comic is recorded at this path")
         mover.evict(comic.path)
         os.rename(comic.path, new_path)
         comic.name = new_name

@@ -216,9 +216,21 @@ export async function setupMock(authRequired: boolean) {
 		(t: string) => t,
 		(t: string) => `${t} v2`
 	];
+	// And names to normalize (normalizeName.ts): full-width, spacing, a
+	// language tag first; the last one would break (an unclosed （ becomes ( ).
+	badNames.push(
+		(t: string) => `［Ｍｉｋａ］\u3000${t}`,
+		(t: string) => `[Mika] ${t}（C99）`,
+		(t: string) => `[English] [Mika]  ${t}`,
+		(t: string) => `[Mika] ${t} ｶﾞｲﾄﾞ`,
+		(t: string) => `[Mika］ ${t}`,
+		(t: string) => `[Mika] ${t} （Vol.2`,
+		(t: string) => `[Mika] ${t}？ ～ＶＯＬ１～`
+	);
 	comics.slice(40, 40 + badNames.length).forEach((c, i) => {
 		c.name = badNames[i](c.name.replace(/^\[[^\]]*\]\s*/, ''));
 		c.archived = false;
+		c.missing = false;
 		c.path = `${c.path.slice(0, c.path.lastIndexOf('/'))}/${c.name}`;
 	});
 	comics
@@ -999,8 +1011,18 @@ export async function setupMock(authRequired: boolean) {
 			const comic = findComic(params.id);
 			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
 			const body = (await request.json()) as { name: string };
+			if (/[/\\]/.test(body.name) || body.name === '.' || body.name === '..') {
+				return HttpResponse.json({ msg: "A name can't contain / or \\" }, { status: 400 });
+			}
+			const path = `${comic.path.slice(0, comic.path.lastIndexOf('/'))}/${body.name}`;
+			if (comics.some((c) => c.path === path)) {
+				return HttpResponse.json(
+					{ msg: 'Another comic is recorded at this path' },
+					{ status: 400 }
+				);
+			}
 			comic.name = body.name;
-			comic.path = `${comic.path.slice(0, comic.path.lastIndexOf('/'))}/${body.name}`;
+			comic.path = path;
 			return HttpResponse.json({ name: body.name });
 		}),
 		http.get('/api/comics/:id/detail', async ({ params }) => {
