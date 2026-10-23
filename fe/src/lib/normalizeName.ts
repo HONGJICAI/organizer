@@ -1,5 +1,5 @@
-// Name normalization for Cleanup → Normalize: full-width letters and brackets
-// to half-width, tidy spaces, and language tags moved to the end. Each rule
+// Name normalization for Cleanup → Normalize: full-width letters, digits and
+// round/square/curly brackets to half-width, tidy spaces, and language tags moved to the end. Each rule
 // is separate so the page can turn them off one by one and say which changed
 // a name.
 
@@ -8,7 +8,7 @@ import { checkName, splitExtension } from '$lib/nameCheck';
 export type NormalizeRule = 'width' | 'brackets' | 'kana' | 'spaces' | 'language';
 
 export const ruleLabels: Record<NormalizeRule, string> = {
-	width: 'Full-width letters',
+	width: 'Full-width letters and digits',
 	brackets: 'Full-width brackets',
 	kana: 'Half-width katakana',
 	spaces: 'Spaces',
@@ -16,9 +16,11 @@ export const ruleLabels: Record<NormalizeRule, string> = {
 };
 export const rules = Object.keys(ruleLabels) as NormalizeRule[];
 
-// Full-width brackets the tag splitter doesn't read. 【】 and 《》 have no
-// half-width form and are read as they are.
-const wideBrackets = new Set(['（', '）', '［', '］', '｛', '｝', '＜', '＞']);
+// Full-width symbols are left alone. Japanese titles use ！？～ on purpose,
+// and ？：＊＂＜＞｜／＼ usually stand in for characters Windows (NTFS, SMB)
+// doesn't allow in file names: narrowed, the rename would fail or the name
+// would become a path. Only （）［］｛｝ are narrowed, so they read as tags;
+// 【】 and 《》 have no half-width form and are read as they are.
 const pairs = new Map([
 	['(', ')'],
 	['[', ']'],
@@ -30,15 +32,15 @@ const pairs = new Map([
 
 const narrowChar = (c: string) => String.fromCharCode(c.charCodeAt(0) - 0xfee0);
 
-/** Full-width ASCII (Ａ, １, ！) and the ideographic space to half-width; brackets stay. */
+/** Full-width letters and digits (Ａ, ｚ, １) and the ideographic space to half-width. */
 export function narrowWidth(s: string): string {
-	return s.replace(/[\uff01-\uff5e\u3000]/g, (c) =>
-		c === '\u3000' ? ' ' : wideBrackets.has(c) ? c : narrowChar(c)
+	return s.replace(/[\uff10-\uff19\uff21-\uff3a\uff41-\uff5a\u3000]/g, (c) =>
+		c === '\u3000' ? ' ' : narrowChar(c)
 	);
 }
 
 function narrowBrackets(s: string): string {
-	return s.replace(/[（）［］｛｝＜＞]/g, narrowChar);
+	return s.replace(/[（）［］｛｝]/g, narrowChar);
 }
 
 // NFKC on half-width katakana only, so ｶﾞ becomes ガ (one character).

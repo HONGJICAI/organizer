@@ -224,7 +224,8 @@ export async function setupMock(authRequired: boolean) {
 		(t: string) => `[English] [Mika]  ${t}`,
 		(t: string) => `[Mika] ${t} ｶﾞｲﾄﾞ`,
 		(t: string) => `[Mika］ ${t}`,
-		(t: string) => `[Mika] ${t} （Vol.2`
+		(t: string) => `[Mika] ${t} （Vol.2`,
+		(t: string) => `[Mika] ${t}？ ～ＶＯＬ１～`
 	);
 	comics.slice(40, 40 + badNames.length).forEach((c, i) => {
 		c.name = badNames[i](c.name.replace(/^\[[^\]]*\]\s*/, ''));

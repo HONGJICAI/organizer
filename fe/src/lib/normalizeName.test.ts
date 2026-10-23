@@ -16,13 +16,20 @@ describe('normalizeName', () => {
 		});
 	});
 
-	it('narrows full-width letters, digits, symbols and spaces', () => {
-		expect(norm('[Ａｕｔｈｏｒ]\u3000Ｔｉｔｌｅ１２！.zip')).toEqual({
-			name: '[Author] Title12!.zip',
+	it('narrows full-width letters, digits and spaces', () => {
+		expect(norm('[Ａｕｔｈｏｒ]\u3000Ｔｉｔｌｅ１２.zip')).toEqual({
+			name: '[Author] Title12.zip',
 			changed: ['width']
 		});
 		// 【】 and 《》 have no half-width form.
 		expect(narrowWidth('【Ａ】《Ｂ》')).toBe('【A】《B》');
+	});
+
+	it('keeps full-width symbols', () => {
+		// Japanese punctuation, and stand-ins for characters Windows forbids.
+		const name = '[A] ご注文は？！～ Ｖｏｌ：１＊＂＜＞｜／＼.zip';
+		expect(norm(name).name).toBe('[A] ご注文は？！～ Vol：1＊＂＜＞｜／＼.zip');
+		expect(norm('[A] ＞＜ Title.zip').changed).toEqual([]);
 	});
 
 	it('narrows full-width brackets, which then read as tags', () => {
@@ -70,6 +77,6 @@ describe('normalizeName', () => {
 	});
 
 	it('keeps folder names without an extension whole', () => {
-		expect(norm('[A] Vol．1').name).toBe('[A] Vol.1');
+		expect(norm('[A] Vol．１').name).toBe('[A] Vol．1');
 	});
 });

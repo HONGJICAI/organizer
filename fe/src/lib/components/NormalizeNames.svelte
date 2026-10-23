@@ -31,8 +31,8 @@
 	} from 'carbon-components-svelte';
 	import { Edit } from 'carbon-icons-svelte';
 
-	// Comic names normalized in bulk (Cleanup → Normalize): full-width letters
-	// and brackets to half-width, spaces tidied, language tags last. Names with
+	// Comic names normalized in bulk (Cleanup → Normalize): full-width letters,
+	// digits and brackets to half-width, spaces tidied, language tags last. Names with
 	// bracket problems are included, since narrowing often fixes them; a rename
 	// that would add a problem is held back for Bad names.
 
@@ -203,16 +203,16 @@
 </script>
 
 <p class="hint">
-	Renames comics to a consistent form: full-width letters, digits and symbols to half-width (<code
+	Renames comics to a consistent form: full-width letters and digits to half-width (<code
 		>Ａｕｔｈｏｒ</code
 	>
-	→ <code>Author</code>), full-width brackets to half-width so they read as tags (<code
-		>（C99）</code
-	>
-	→ <code>(C99)</code>; 【】 and 《》 stay), half-width katakana to full-width, single spaces, and
-	tags marked <em>language</em> on the Tags page moved to the end. Names with bracket problems are included:
-	narrowing often fixes them. A rename that would add a problem is held back; fix those under Bad names.
-	Renaming changes the file on disk and keeps favorite and progress.
+	→ <code>Author</code>), full-width round, square and curly brackets to half-width so they read as
+	tags (<code>（C99）</code> → <code>(C99)</code>), half-width katakana to full-width, single
+	spaces, and tags marked <em>language</em> on the Tags page moved to the end. Full-width symbols
+	stay: Japanese titles use <code>！？～</code> on purpose, and <code>？：＊＂＜＞｜／＼</code> stand
+	in for characters Windows doesn't allow in file names. Names with bracket problems are included: narrowing
+	often fixes them. A rename that would add a problem is held back; fix those under Bad names. Renaming
+	changes the file on disk and keeps favorite and progress.
 </p>
 
 <div class="rules">
