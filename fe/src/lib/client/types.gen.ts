@@ -315,10 +315,14 @@ export type CoverRegenStatus = {
      * The last run was cancelled before finishing
      */
     cancelled?: boolean;
-    mode?: ('all' | 'missing') | null;
+    mode?: ('all' | 'missing' | 'changed') | null;
     total: number;
     processed: number;
     failed: number;
+    /**
+     * Comics reopened and updated; in changed mode, the ones whose file changed
+     */
+    refreshed?: number;
     /**
      * First failures only; `failed` counts all
      */
@@ -2414,7 +2418,7 @@ export type RegenerateCoversData = {
     body?: never;
     path?: never;
     query?: {
-        mode?: 'all' | 'missing';
+        mode?: 'all' | 'missing' | 'changed';
     };
     url: '/api/system/covers';
 };

@@ -159,6 +159,8 @@ class TestRefresh:
             r = client.post("/api/comics/1/refresh")
         assert r.status_code == 200
         assert r.json()["page"] == 4
+        # insert_comic records size 1000; the file's real size replaces it.
+        assert r.json()["size"] == path.stat().st_size
 
     def test_not_found(self, client):
         r = client.post("/api/comics/999/refresh")

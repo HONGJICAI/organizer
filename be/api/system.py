@@ -94,7 +94,8 @@ def _scan_subsumes(a: Dict[str, str], b: Dict[str, str]) -> bool:
 
 
 def _covers_subsumes(a: Dict[str, str], b: Dict[str, str]) -> bool:
-    # Rewriting every cover also writes the missing ones.
+    # Rewriting every cover also writes the missing ones and refreshes the
+    # changed comics.
     return a["mode"] in ("all", b["mode"])
 
 
@@ -183,10 +184,14 @@ class CoverFailure(BaseModel):
 class CoverRegenStatus(BaseModel):
     running: bool
     cancelled: bool = Field(default=False, description="The last run was cancelled before finishing")
-    mode: Optional[Literal["all", "missing"]] = None
+    mode: Optional[Literal["all", "missing", "changed"]] = None
     total: int
     processed: int
     failed: int
+    refreshed: int = Field(
+        default=0,
+        description="Comics reopened and updated; in changed mode, the ones whose file changed",
+    )
     failures: List[CoverFailure] = Field(description="First failures only; `failed` counts all")
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
@@ -257,10 +262,15 @@ def scan_status() -> ScanStatusResponse:
 
 
 @router.post("/api/system/covers", tags=["system"])
-def regenerate_covers(mode: Literal["all", "missing"] = "all") -> CoverRegenResponse:
-    """Queue a cover run: every live comic's cover, or only those without a cover file."""
+def regenerate_covers(mode: Literal["all", "missing", "changed"] = "all") -> CoverRegenResponse:
+    """Queue a cover run: every live comic's cover, only those without a cover
+    file, or only comics whose file changed in place since it was recorded."""
     _, status = jobs.submit("covers", {"mode": mode})
-    what = "Missing cover generation" if mode == "missing" else "Cover regeneration"
+    what = {
+        "all": "Cover regeneration",
+        "missing": "Missing cover generation",
+        "changed": "Refresh of changed comics",
+    }[mode]
     return CoverRegenResponse(status=status, message=_queue_message(status, what))
 
 

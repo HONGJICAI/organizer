@@ -166,6 +166,8 @@ export async function setupMock(authRequired: boolean) {
 		total: 0,
 		processed: 0,
 		failures: [] as { id: number; name: string; reason: string }[],
+		// "changed" mode: the comics whose file changed (the first few processed).
+		changed: [] as number[],
 		startedAt: null as string | null,
 		finishedAt: null as string | null
 	};
@@ -260,6 +262,8 @@ export async function setupMock(authRequired: boolean) {
 		// Mock covers are all "present" except a handful, so missing mode
 		// processes a short run.
 		const live = comics.filter((c) => !c.archived && !c.missing).slice(mode === 'missing' ? -6 : 0);
+		// In changed mode a few files changed in place and one can't be read.
+		const changed = mode === 'changed';
 		Object.assign(coverState, {
 			running: true,
 			cancelled: false,
@@ -267,10 +271,15 @@ export async function setupMock(authRequired: boolean) {
 			mode,
 			total: live.length,
 			processed: 0,
-			failures: live.slice(-2).map((c, i) => ({
+			changed: changed ? live.slice(0, 4).map((c) => c.id) : [],
+			failures: live.slice(changed ? -1 : -2).map((c, i) => ({
 				id: c.id,
 				name: c.name,
-				reason: i === 0 ? 'No page could be rendered as a cover' : 'Bad CRC-32 for file 001.jpg'
+				reason: changed
+					? "Can't read the file (No such file or directory)"
+					: i === 0
+						? 'No page could be rendered as a cover'
+						: 'Bad CRC-32 for file 001.jpg'
 			})),
 			startedAt: job.started_at,
 			finishedAt: null
@@ -499,7 +508,10 @@ export async function setupMock(authRequired: boolean) {
 					coverState.running = false;
 					coverState.finishedAt = new Date().toISOString();
 					const now = new Date().toISOString();
-					for (const c of comics) c.entityUpdateTime = now;
+					for (const c of comics) {
+						if (coverState.mode !== 'changed' || coverState.changed.includes(c.id))
+							c.entityUpdateTime = now;
+					}
 				}
 			}
 			tickJobs();
@@ -513,6 +525,10 @@ export async function setupMock(authRequired: boolean) {
 				total: coverState.total,
 				processed: coverState.processed,
 				failed: failures.length,
+				refreshed:
+					coverState.mode === 'changed'
+						? Math.min(coverState.processed, coverState.changed.length)
+						: coverState.processed,
 				failures,
 				started_at: coverState.startedAt,
 				finished_at: coverState.finishedAt
@@ -521,11 +537,16 @@ export async function setupMock(authRequired: boolean) {
 		http.post('/api/system/covers', async ({ request }) => {
 			await delay(200);
 			const mode = new URL(request.url).searchParams.get('mode') ?? 'all';
-			if (mode !== 'all' && mode !== 'missing') {
+			const whats: Record<string, string> = {
+				all: 'Cover regeneration',
+				missing: 'Missing cover generation',
+				changed: 'Refresh of changed comics'
+			};
+			if (!(mode in whats)) {
 				return HttpResponse.json({ msg: 'Invalid mode' }, { status: 400 });
 			}
 			const status = enqueueJob('covers', { mode });
-			const what = mode === 'missing' ? 'Missing cover generation' : 'Cover regeneration';
+			const what = whats[mode];
 			return HttpResponse.json({ status, message: queueMessage(status, what) });
 		}),
 		http.get('/api/system/scan', async () => {
