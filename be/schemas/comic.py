@@ -83,11 +83,12 @@ class ComicMoveResponse(BaseModel):
 
 
 class ComicZipPlanItem(BaseModel):
-    """A folder comic and what converting it to a zip would do"""
+    """A folder comic or RAR and what converting it to a zip would do"""
     id: int
     name: str
-    source: str = Field(description="The comic's folder")
-    destination: str = Field(description="The zip that replaces it: the folder's path plus .zip")
+    kind: Literal["folder", "rar"]
+    source: str = Field(description="The comic's folder or RAR")
+    destination: str = Field(description="The zip that replaces it: a folder's path plus .zip, a RAR's with .zip")
     pages: int
     status: Literal["zip", "conflict"] = Field(
         description="zip: will be converted; conflict: the destination is taken"
@@ -96,7 +97,7 @@ class ComicZipPlanItem(BaseModel):
 
 
 class ComicZipPreview(BaseModel):
-    """Folder comics that could become zips"""
+    """Folder comics and RARs that could become zips"""
     items: List[ComicZipPlanItem]
 
 

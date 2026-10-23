@@ -209,7 +209,7 @@ class ComicCBV:
 
     @router.get("/api/comics/zip", tags=["comics"])
     def zip_preview(self) -> ComicZipPreview:
-        """Folder comics, and whether each can be converted to a zip."""
+        """Folder comics and RARs, and whether each can be converted to a zip."""
         return ComicZipPreview(items=zipper.plan(self.session))
 
     @router.post(
@@ -221,14 +221,14 @@ class ComicCBV:
         },
     )
     def zip_convert(self, req: ComicZipRequest) -> ComicMoveResponse:
-        """Queue a job converting folder comics into zips, keeping their records.
+        """Queue a job converting folder comics and RARs into zips, keeping their records.
 
-        Comics that aren't folder comics are left alone; ones whose zip name is
+        Comics that are neither are left alone; ones whose zip name is
         taken (see the preview) make the job fail listing them.
         """
         ids = [i.id for i in zipper.plan(self.session, req.ids)]
         if not ids:
-            abort(400, "None of these comics is a folder comic")
+            abort(400, "None of these comics is a folder comic or RAR")
         job, status = zipper.submit(ids)
         message = {
             "started": f"Converting {len(ids)} comic(s)",

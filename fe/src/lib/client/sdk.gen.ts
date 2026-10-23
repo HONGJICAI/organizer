@@ -183,7 +183,7 @@ export class ComicsService {
     
     /**
      * Comiccbv.Zip Preview
-     * Folder comics, and whether each can be converted to a zip.
+     * Folder comics and RARs, and whether each can be converted to a zip.
      */
     public static comicZipPreview<ThrowOnError extends boolean = false>(options?: Options<ComicZipPreviewData, ThrowOnError>) {
         return (options?.client ?? _heyApiClient).get<ComicZipPreviewResponse, ComicZipPreviewError, ThrowOnError>({
@@ -200,9 +200,9 @@ export class ComicsService {
     
     /**
      * Comiccbv.Zip Convert
-     * Queue a job converting folder comics into zips, keeping their records.
+     * Queue a job converting folder comics and RARs into zips, keeping their records.
      *
-     * Comics that aren't folder comics are left alone; ones whose zip name is
+     * Comics that are neither are left alone; ones whose zip name is
      * taken (see the preview) make the job fail listing them.
      */
     public static comicZipConvert<ThrowOnError extends boolean = false>(options: Options<ComicZipConvertData, ThrowOnError>) {

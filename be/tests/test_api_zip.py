@@ -1,6 +1,7 @@
 """Tests for converting folder comics into zips (GET/POST /api/comics/zip)."""
 import os
 import zipfile
+import zlib
 from datetime import datetime
 
 import pytest
@@ -73,6 +74,7 @@ class TestPreview:
         assert items[1] == {
             "id": 1,
             "name": "Folder",
+            "kind": "folder",
             "source": str(root / "b" / "Folder"),
             "destination": str(root / "b" / "Folder.zip"),
             "pages": 3,
@@ -126,7 +128,7 @@ class TestSubmit:
         add_zip(session, root, 1, "one.zip")
         r = client.post("/api/comics/zip", json={"ids": [1, 99]})
         assert r.status_code == 400
-        assert r.json()["msg"] == "None of these comics is a folder comic"
+        assert r.json()["msg"] == "None of these comics is a folder comic or RAR"
 
     @pytest.mark.parametrize("body", [{"ids": []}, {}])
     def test_bad_request(self, client, body):
@@ -193,7 +195,7 @@ class TestRun:
         add_folder(session, root, 1, "Folder")
         real = os.path.getsize
         monkeypatch.setattr(zipper.os.path, "getsize", lambda p: real(p) + (p.endswith("001.jpg")))
-        with pytest.raises(RuntimeError, match="The zip doesn't match the folder"):
+        with pytest.raises(RuntimeError, match="The zip doesn't match the original"):
             run_job([1])
         assert (root / "Folder").is_dir() and not (root / "Folder.zip").exists()
 
@@ -247,3 +249,226 @@ class TestRun:
 
 def test_destination():
     assert zipper.destination("/a/b/") == "/a/b.zip"
+    assert zipper.destination("/a/Vol.1") == "/a/Vol.1.zip"
+    assert zipper.destination("/a/B.RAR") == "/a/B.zip"
+
+
+# --- RARs -------------------------------------------------------------------
+# CI has no 7-Zip, so RarFile and the extraction are faked: FakeRar lists what
+# the archive holds, and the fake extraction writes it out.
+
+
+class Info:
+    def __init__(self, filename, data=b"", kind="file", crc=None):
+        self.filename = filename
+        self.data = data
+        self.file_size = len(data)
+        self.CRC = zlib.crc32(data) if crc is None else crc
+        self.kind = kind
+
+    def is_file(self):
+        return self.kind == "file"
+
+    def is_dir(self):
+        return self.kind == "dir"
+
+    def is_symlink(self):
+        return self.kind == "link"
+
+
+class FakeRar:
+    def __init__(self, infos, encrypted=False, volumes=1):
+        self.infos, self.encrypted, self.volumes = infos, encrypted, volumes
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+    def needs_password(self):
+        return self.encrypted
+
+    def volumelist(self):
+        return ["x"] * self.volumes
+
+    def infolist(self):
+        return self.infos
+
+
+PAGES = [Info("Title/", kind="dir"), Info("Title/002.jpg", b"b" * 20), Info("Title/001.jpg", b"a" * 10)]
+
+
+@pytest.fixture
+def fake_rar(monkeypatch):
+    """Make every RAR hold ``holds["infos"]``; the extraction writes their data
+    (``holds["written"]`` overrides what lands on disk)."""
+    holds = {"infos": PAGES, "rar": {}, "written": None}
+    monkeypatch.setattr(zipper.rarfile, "RarFile", lambda path: FakeRar(holds["infos"], **holds["rar"]))
+
+    def extract(source, target):
+        written = holds["written"] or {i.filename: i.data for i in holds["infos"] if i.is_file()}
+        for name, data in written.items():
+            path = os.path.join(target, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(data)
+
+    monkeypatch.setattr(zipper, "_extract", extract)
+    return holds
+
+
+def add_rar(session, root, id, rel, **kwargs):
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"Rar!")
+    return insert_comic(session, id=id, name=path.name, path=str(path), **kwargs)
+
+
+class TestRar:
+    def test_preview(self, client, session, root):
+        add_rar(session, root, 1, "a/One.rar")
+        add_rar(session, root, 2, "b/Same.RAR")
+        add_folder(session, root, 3, "b/Same")
+        # A RAR record without its file isn't offered.
+        insert_comic(session, id=4, name="Gone.rar", path=str(root / "Gone.rar"))
+        items = client.get("/api/comics/zip").json()["items"]
+        assert [(i["id"], i["kind"], i["destination"], i["status"]) for i in items] == [
+            (1, "rar", str(root / "a" / "One.zip"), "zip"),
+            (3, "folder", str(root / "b" / "Same.zip"), "zip"),
+            (2, "rar", str(root / "b" / "Same.zip"), "conflict"),
+        ]
+        assert items[2]["reason"] == "Another comic here converts to the same name"
+
+    def test_converts_and_keeps_the_record(self, client, session, root, fake_rar):
+        add_rar(session, root, 1, "[Bob] One.rar", favorited=True)
+        job = run_job([1])
+        assert job.progress == "1 / 1"
+        dest = root / "[Bob] One.zip"
+        assert not (root / "[Bob] One.rar").exists()
+        session.expire_all()
+        comic = session.get(ComicEntity, 1)
+        assert (comic.path, comic.name, comic.favorited) == (str(dest), dest.name, True)
+        assert comic.size == dest.stat().st_size
+        with zipfile.ZipFile(dest) as zf:
+            assert zf.namelist() == ["Title/001.jpg", "Title/002.jpg"]
+            assert {i.compress_type for i in zf.infolist()} == {zipfile.ZIP_STORED}
+            assert zf.read("Title/002.jpg") == b"b" * 20
+        assert not [p for p in os.listdir(root) if p.startswith(".")]
+
+    @pytest.mark.parametrize(
+        "infos, rar, reason",
+        [
+            (PAGES, {"encrypted": True}, "The archive is encrypted"),
+            (PAGES, {"volumes": 2}, "Multi-volume archives aren't converted"),
+            (PAGES + [Info("Title/x", kind="link")], {}, "The archive has links"),
+            ([Info("../001.jpg", b"x")], {}, "Unsafe name in the archive: ../001.jpg"),
+            ([Info("/abs/001.jpg", b"x")], {}, "Unsafe name in the archive: /abs/001.jpg"),
+            ([Info("C:/001.jpg", b"x")], {}, "Unsafe name in the archive: C:/001.jpg"),
+            ([Info("a.jpg", b"x"), Info("a.jpg", b"y")], {}, "The archive has duplicate names"),
+            ([Info("notes.txt", b"x")], {}, "The archive has no pages"),
+        ],
+    )
+    def test_refused(self, client, session, root, fake_rar, infos, rar, reason):
+        fake_rar.update(infos=infos, rar=rar)
+        add_rar(session, root, 1, "One.rar")
+        with pytest.raises(RuntimeError) as e:
+            run_job([1])
+        assert str(e.value) == f"Converted 0 of 1; One.rar: {reason}"
+        assert sorted(os.listdir(root)) == ["One.rar"]
+
+    def test_unreadable_archive(self, client, session, root, monkeypatch):
+        def broken(path):
+            raise zipper.rarfile.BadRarFile("Not a RAR file")
+
+        monkeypatch.setattr(zipper.rarfile, "RarFile", broken)
+        add_rar(session, root, 1, "One.rar")
+        with pytest.raises(RuntimeError, match=r"Can't read the archive \(BadRarFile: Not a RAR file\)"):
+            run_job([1])
+
+    def test_crc_mismatch(self, client, session, root, fake_rar):
+        fake_rar["infos"] = [Info("001.jpg", b"a" * 10, crc=1)]
+        add_rar(session, root, 1, "One.rar")
+        with pytest.raises(RuntimeError, match="The zip doesn't match the original"):
+            run_job([1])
+        assert sorted(os.listdir(root)) == ["One.rar"]
+
+    def test_missing_extracted_file(self, client, session, root, fake_rar):
+        fake_rar["written"] = {"Title/001.jpg": b"a" * 10}
+        add_rar(session, root, 1, "One.rar")
+        with pytest.raises(RuntimeError, match="No such file"):
+            run_job([1])
+        assert sorted(os.listdir(root)) == ["One.rar"]
+
+    def test_extracted_link_is_refused(self, client, session, root, fake_rar, monkeypatch):
+        fake_rar["infos"] = [Info("001.jpg", b"a")]
+
+        def extract(source, target):
+            os.symlink("/etc/hostname", os.path.join(target, "001.jpg"))
+
+        monkeypatch.setattr(zipper, "_extract", extract)
+        add_rar(session, root, 1, "One.rar")
+        with pytest.raises(RuntimeError, match="Unsafe name in the archive: 001.jpg"):
+            run_job([1])
+
+    def test_rar_left_behind_is_a_warning(self, client, session, root, fake_rar, monkeypatch):
+        add_rar(session, root, 1, "One.rar")
+        real = os.remove
+
+        def remove(path):
+            if str(path).endswith("One.rar"):
+                raise PermissionError(13, "Permission denied")
+            real(path)
+
+        monkeypatch.setattr(zipper.os, "remove", remove)
+        with pytest.raises(RuntimeError, match="zipped, but the rar couldn't be deleted"):
+            run_job([1])
+        session.expire_all()
+        assert session.get(ComicEntity, 1).path == str(root / "One.zip")
+
+
+class TestExtract:
+    """zipper._extract runs 7-Zip; a stand-in script plays it here."""
+
+    @pytest.fixture
+    def tool(self, tmp_path, monkeypatch):
+        bin = tmp_path / "bin"
+        bin.mkdir()
+        monkeypatch.setenv("PATH", str(bin))
+
+        def install(script):
+            path = bin / "7zz"
+            path.write_text("#!/bin/sh\n" + script)
+            path.chmod(0o755)
+
+        return install
+
+    def test_one_run_extracts_everything(self, tool, tmp_path):
+        # Prints its arguments and locale, and writes a file where -o points.
+        tool('for a; do echo "$a"; done > "$ARGS_OUT"; echo "$LC_ALL" >> "$ARGS_OUT"\n'
+             'out="${4#-o}"; echo x > "$out/001.jpg"\n')
+        args_out = tmp_path / "args"
+        os.environ["ARGS_OUT"] = str(args_out)
+        try:
+            zipper._extract("/lib/One.rar", str(tmp_path))
+        finally:
+            del os.environ["ARGS_OUT"]
+        assert args_out.read_text().split("\n")[:-1] == [
+            "x", "-y", "-bd", f"-o{tmp_path}", "--", "/lib/One.rar", "C.UTF-8",
+        ]
+        assert (tmp_path / "001.jpg").read_text() == "x\n"
+
+    def test_failure_reports_the_last_line(self, tool, tmp_path):
+        tool('echo "Scanning" >&2; echo "ERROR: CRC Failed : 012.jpg" >&2; exit 2\n')
+        with pytest.raises(zipper.ZipError, match="Extracting failed: ERROR: CRC Failed : 012.jpg"):
+            zipper._extract("/lib/One.rar", str(tmp_path))
+
+    def test_silent_failure(self, tool, tmp_path):
+        tool("exit 7\n")
+        with pytest.raises(zipper.ZipError, match="Extracting failed: exit code 7"):
+            zipper._extract("/lib/One.rar", str(tmp_path))
+
+    def test_no_tool(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PATH", str(tmp_path))
+        with pytest.raises(zipper.ZipError, match=r"No RAR extractor \(7zz\) is installed"):
+            zipper._extract("/lib/One.rar", str(tmp_path))

@@ -201,24 +201,37 @@ export async function setupMock(authRequired: boolean) {
 			if (ids.has(c.id)) c.path = `${job.params.target}/${c.path.split('/').pop()}`;
 		}
 	};
-	// Mock folder comics (zipper.py): a few comics stand for folders of images
-	// (mock names have no extension to tell). Converting takes ~1s per comic
-	// and appends .zip to the record; the first one's name is already taken.
+	// Mock folder comics and RARs (zipper.py): a few comics stand for folders
+	// of images (mock names have no extension to tell) and a few are made RARs.
+	// Converting takes ~1s per comic and gives the record a .zip name; the
+	// first folder's name is already taken.
 	const folderIds = new Set(comics.filter((c, i) => i % 3 === 1 && i < 40).map((c) => c.id));
+	comics
+		.filter((c, i) => i % 3 === 2 && i < 30)
+		.forEach((c) => {
+			c.name = `${c.name}.rar`;
+			c.path = `${c.path}.rar`;
+		});
+	const isRar = (c: { path: string }) => c.path.toLowerCase().endsWith('.rar');
 	const zipState = { started: 0, cancelRequested: false };
 	const zipPlan = () =>
 		comics
-			.filter((c) => folderIds.has(c.id) && !c.archived && !c.missing)
+			.filter((c) => (folderIds.has(c.id) || isRar(c)) && !c.archived && !c.missing)
 			.sort((a, b) => a.path.localeCompare(b.path))
-			.map((c, i) => ({
-				id: c.id,
-				name: c.name,
-				source: c.path,
-				destination: `${c.path}.zip`,
-				pages: c.page,
-				status: (i === 0 ? 'conflict' : 'zip') as 'zip' | 'conflict',
-				reason: i === 0 ? 'A file with this name is already there' : null
-			}));
+			.map((c) => {
+				const kind: 'folder' | 'rar' = isRar(c) ? 'rar' : 'folder';
+				const taken = c.id === Math.min(...folderIds);
+				return {
+					id: c.id,
+					name: c.name,
+					kind,
+					source: c.path,
+					destination: kind === 'rar' ? c.path.replace(/\.rar$/i, '.zip') : `${c.path}.zip`,
+					pages: c.page,
+					status: (taken ? 'conflict' : 'zip') as 'zip' | 'conflict',
+					reason: taken ? 'A file with this name is already there' : null
+				};
+			});
 	// How many comics of a running zip job are done by now.
 	const zipDone = (job: MockJob) =>
 		Math.min(Number(job.params.count), Math.floor((Date.now() - zipState.started) / 1000));
@@ -227,8 +240,9 @@ export async function setupMock(authRequired: boolean) {
 		for (const c of comics) {
 			if (!ids.includes(c.id)) continue;
 			folderIds.delete(c.id);
-			c.path = `${c.path}.zip`;
-			c.name = `${c.name}.zip`;
+			const zipped = (p: string) => (isRar(c) ? p.replace(/\.rar$/i, '.zip') : `${p}.zip`);
+			c.name = zipped(c.name);
+			c.path = zipped(c.path);
 		}
 		job.progress = `${done} / ${job.params.count}`;
 	};
@@ -818,7 +832,7 @@ export async function setupMock(authRequired: boolean) {
 				.map((i) => i.id);
 			if (!ids.length) {
 				return HttpResponse.json(
-					{ msg: 'None of these comics is a folder comic' },
+					{ msg: 'None of these comics is a folder comic or RAR' },
 					{ status: 400 }
 				);
 			}

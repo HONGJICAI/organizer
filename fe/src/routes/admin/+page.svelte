@@ -45,13 +45,21 @@
 	let cancelling = $state<number | null>(null);
 	// The running move or zip job: when it's gone, comic paths have changed.
 	let comicJobId: number | null = null;
-	// Folder comics that could become zips (null until looked up).
+	// Folder comics and RARs that could become zips (null until looked up).
+	type ZipKind = ComicZipPlanItem['kind'];
 	let zipItems = $state<ComicZipPlanItem[] | null>(null);
 	let findingZips = $state(false);
-	let confirmZip = $state(false);
+	// Which kind the confirmation is for.
+	let confirmZip = $state<ZipKind | null>(null);
 	let startingZip = $state(false);
-	const zipReady = $derived(zipItems?.filter((i) => i.status === 'zip') ?? []);
+	const zipReady = (kind: ZipKind) =>
+		zipItems?.filter((i) => i.status === 'zip' && i.kind === kind) ?? [];
 	const zipConflicts = $derived(zipItems?.filter((i) => i.status === 'conflict') ?? []);
+	const zipKinds: { kind: ZipKind; label: string; button: string; plural: string }[] = [
+		{ kind: 'folder', label: 'Folders', button: 'folders', plural: 'folder comic(s)' },
+		{ kind: 'rar', label: 'RARs', button: 'RARs', plural: 'RAR(s)' }
+	];
+	const pagesOf = (items: ComicZipPlanItem[]) => items.reduce((n, i) => n + i.pages, 0);
 
 	function fmtTime(iso: string | null | undefined): string {
 		if (!iso) return '—';
@@ -136,17 +144,17 @@
 		const { data, error } = await ComicsService.comicZipPreview();
 		findingZips = false;
 		if (error || !data) {
-			addNotification(new ErrorNotification({ subtitle: "Couldn't look up folder comics" }));
+			addNotification(new ErrorNotification({ subtitle: "Couldn't look up comics to convert" }));
 			return;
 		}
 		zipItems = data.items;
 	}
 
-	async function convertToZip() {
-		confirmZip = false;
+	async function convertToZip(kind: ZipKind) {
+		confirmZip = null;
 		startingZip = true;
 		const { data, error } = await ComicsService.comicZipConvert({
-			body: { ids: zipReady.map((i) => i.id) }
+			body: { ids: zipReady(kind).map((i) => i.id) }
 		});
 		startingZip = false;
 		if (error || !data) {
@@ -200,7 +208,7 @@
 			const folder = (job.params.target ?? '').split(/[/\\]/).pop();
 			return `Move ${job.params.count ?? ''} comic(s) → ${folder}`;
 		}
-		if (job.kind === 'zip') return `Zip ${job.params.count ?? ''} folder comic(s)`;
+		if (job.kind === 'zip') return `Convert ${job.params.count ?? ''} comic(s) to zip`;
 		return `Covers (${coverModes[job.params.mode] ?? job.params.mode})`;
 	}
 
@@ -537,22 +545,25 @@
 
 	<Tile class="card">
 		<div class="card-head">
-			<h3>Folder comics</h3>
+			<h3>Convert to zip</h3>
 			{#if zipItems}
 				<Tag type={zipItems.length ? 'blue' : 'green'}>{zipItems.length} found</Tag>
 			{/if}
 		</div>
 		<p class="muted">
-			A comic kept as a folder of images is hundreds of files to scan, read and copy, which is slow
-			on network drives. <em>Convert to zip</em> packs each folder into an uncompressed zip next to
-			it (<code>Name</code> → <code>Name.zip</code>), checks every file reads back intact, then
-			deletes the folder. The comic keeps its favorite, progress and cover. Stopping the job keeps
-			the comics already converted.
+			Uncompressed zips are the fastest comics here. A comic kept as a folder of images is hundreds
+			of files to scan, read and copy, slow on network drives; a RAR runs 7-Zip for every page read,
+			and a solid one unpacks from its start each time. Converting packs each into an uncompressed
+			zip next to it (<code>Name</code> or <code>Name.rar</code> → <code>Name.zip</code>), checks
+			every file reads back intact, then deletes the original. The comic keeps its favorite,
+			progress and cover. Stopping the job keeps the comics already converted.
 		</p>
 		{#if zipItems}
 			<dl class="kv">
-				<dt>To convert</dt>
-				<dd>{zipReady.length} ({zipReady.reduce((n, i) => n + i.pages, 0)} pages)</dd>
+				{#each zipKinds as k (k.kind)}
+					<dt>{k.label}</dt>
+					<dd>{zipReady(k.kind).length} ({pagesOf(zipReady(k.kind))} pages)</dd>
+				{/each}
 				<dt>Name taken</dt>
 				<dd>{zipConflicts.length}</dd>
 			</dl>
@@ -575,16 +586,19 @@
 				disabled={findingZips}
 				on:click={findFolderComics}
 			>
-				{findingZips ? 'Looking…' : zipItems ? 'Look again' : 'Find folder comics'}
+				{findingZips ? 'Looking…' : zipItems ? 'Look again' : 'Find comics to convert'}
 			</Button>
 			{#if zipItems}
-				<Button
-					icon={Archive}
-					disabled={!zipReady.length || startingZip}
-					on:click={() => (confirmZip = true)}
-				>
-					Convert {zipReady.length} to zip
-				</Button>
+				{#each zipKinds as k (k.kind)}
+					<Button
+						icon={Archive}
+						disabled={!zipReady(k.kind).length || startingZip}
+						on:click={() => (confirmZip = k.kind)}
+					>
+						Convert {zipReady(k.kind).length}
+						{k.button}
+					</Button>
+				{/each}
 			{/if}
 		</div>
 	</Tile>
@@ -624,17 +638,26 @@
 </Modal>
 
 <Modal
-	bind:open={confirmZip}
-	modalHeading="Convert {zipReady.length} folder comic(s) to zip?"
+	open={confirmZip !== null}
+	modalHeading="Convert {zipReady(confirmZip ?? 'folder').length} {zipKinds.find(
+		(k) => k.kind === confirmZip
+	)?.plural} to zip?"
 	primaryButtonText="Convert"
 	secondaryButtonText="Cancel"
-	on:click:button--secondary={() => (confirmZip = false)}
-	on:submit={convertToZip}
+	on:click:button--secondary={() => (confirmZip = null)}
+	on:close={() => (confirmZip = null)}
+	on:submit={() => confirmZip && convertToZip(confirmZip)}
 >
 	<p>
-		Each folder is replaced by a zip of the same name holding its files unchanged; a folder is
-		deleted only after its zip checks out. The drive needs room for one more copy of the comic being
-		converted. This reads and writes every page, so a large library takes a while.
+		{#if confirmZip === 'rar'}
+			Each RAR is unpacked once into a temporary folder on the server's own disk and replaced by a
+			zip of the same name holding its files unchanged, checked against the RAR's own file list.
+			Encrypted and multi-volume RARs are skipped.
+		{:else}
+			Each folder is replaced by a zip of the same name holding its files unchanged.
+		{/if}
+		An original is deleted only after its zip checks out. The drive needs room for one more copy of the
+		comic being converted. This reads and writes every page, so a large library takes a while.
 	</p>
 </Modal>
 
