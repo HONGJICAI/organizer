@@ -593,15 +593,20 @@ export const ComicZipPlanItemSchema = {
             type: 'string',
             title: 'Name'
         },
+        kind: {
+            type: 'string',
+            enum: ['folder', 'rar'],
+            title: 'Kind'
+        },
         source: {
             type: 'string',
             title: 'Source',
-            description: "The comic's folder"
+            description: "The comic's folder or RAR"
         },
         destination: {
             type: 'string',
             title: 'Destination',
-            description: "The zip that replaces it: the folder's path plus .zip"
+            description: "The zip that replaces it: a folder's path plus .zip, a RAR's with .zip"
         },
         pages: {
             type: 'integer',
@@ -626,9 +631,9 @@ export const ComicZipPlanItemSchema = {
         }
     },
     type: 'object',
-    required: ['id', 'name', 'source', 'destination', 'pages', 'status'],
+    required: ['id', 'name', 'kind', 'source', 'destination', 'pages', 'status'],
     title: 'ComicZipPlanItem',
-    description: 'A folder comic and what converting it to a zip would do'
+    description: 'A folder comic or RAR and what converting it to a zip would do'
 } as const;
 
 export const ComicZipPreviewSchema = {
@@ -644,7 +649,7 @@ export const ComicZipPreviewSchema = {
     type: 'object',
     required: ['items'],
     title: 'ComicZipPreview',
-    description: 'Folder comics that could become zips'
+    description: 'Folder comics and RARs that could become zips'
 } as const;
 
 export const ComicZipRequestSchema = {

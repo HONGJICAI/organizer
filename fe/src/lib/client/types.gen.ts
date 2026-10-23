@@ -266,17 +266,18 @@ export type ComicTopRead = {
 };
 
 /**
- * A folder comic and what converting it to a zip would do
+ * A folder comic or RAR and what converting it to a zip would do
  */
 export type ComicZipPlanItem = {
     id: number;
     name: string;
+    kind: 'folder' | 'rar';
     /**
-     * The comic's folder
+     * The comic's folder or RAR
      */
     source: string;
     /**
-     * The zip that replaces it: the folder's path plus .zip
+     * The zip that replaces it: a folder's path plus .zip, a RAR's with .zip
      */
     destination: string;
     pages: number;
@@ -288,7 +289,7 @@ export type ComicZipPlanItem = {
 };
 
 /**
- * Folder comics that could become zips
+ * Folder comics and RARs that could become zips
  */
 export type ComicZipPreview = {
     items: Array<ComicZipPlanItem>;
