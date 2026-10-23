@@ -206,6 +206,21 @@ export async function setupMock(authRequired: boolean) {
 	// Converting takes ~1s per comic and gives the record a .zip name; the
 	// first folder's name is already taken.
 	const folderIds = new Set(comics.filter((c, i) => i % 3 === 1 && i < 40).map((c) => c.id));
+	// Badly formed names for Cleanup → Bad names (nameCheck.ts), one per kind.
+	const badNames = [
+		(t: string) => `[Mika (C99) ${t}`,
+		(t: string) => `【Mika] ${t}`,
+		(t: string) => `[Mika [Studio]] ${t}`,
+		(t: string) => `[Mika] ${t}) (DL)`,
+		(t: string) => `[] [Mika] ${t}`,
+		(t: string) => t,
+		(t: string) => `${t} v2`
+	];
+	comics.slice(40, 40 + badNames.length).forEach((c, i) => {
+		c.name = badNames[i](c.name.replace(/^\[[^\]]*\]\s*/, ''));
+		c.archived = false;
+		c.path = `${c.path.slice(0, c.path.lastIndexOf('/'))}/${c.name}`;
+	});
 	comics
 		.filter((c, i) => i % 3 === 2 && i < 30)
 		.forEach((c) => {
@@ -694,7 +709,7 @@ export async function setupMock(authRequired: boolean) {
 			await delay(1000);
 			const params = new URL(request.url).searchParams;
 			const fileMiss = params.get('fileMiss') === 'true';
-			// Mirror the backend: fileMiss=true returns the gone files (organize
+			// Mirror the backend: fileMiss=true returns the gone files (Cleanup
 			// page); the default list hides them.
 			const filtered = comics.filter((c) => Boolean(c.missing) === fileMiss);
 			const top = params.get('top');
@@ -985,6 +1000,7 @@ export async function setupMock(authRequired: boolean) {
 			if (!comic) return HttpResponse.json({ msg: 'Not found' }, { status: 404 });
 			const body = (await request.json()) as { name: string };
 			comic.name = body.name;
+			comic.path = `${comic.path.slice(0, comic.path.lastIndexOf('/'))}/${body.name}`;
 			return HttpResponse.json({ name: body.name });
 		}),
 		http.get('/api/comics/:id/detail', async ({ params }) => {

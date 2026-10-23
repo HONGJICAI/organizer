@@ -148,7 +148,7 @@
 					<HeaderPanelLink href="/comic">Home</HeaderPanelLink>
 					<HeaderPanelLink href="/comic/folder">Folder</HeaderPanelLink>
 					<HeaderPanelLink href="/comic/tag">Tag</HeaderPanelLink>
-					<HeaderPanelLink href="/comic/organize">Organize</HeaderPanelLink>
+					<HeaderPanelLink href="/comic/cleanup">Cleanup</HeaderPanelLink>
 					<HeaderPanelLink href="/comic/duplicates">Duplicates</HeaderPanelLink>
 					<HeaderPanelLink href="/comic/move">Move to folder</HeaderPanelLink>
 					<HeaderPanelLink href="/stats">Stats</HeaderPanelLink>

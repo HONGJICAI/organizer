@@ -52,7 +52,7 @@ class ComicCBV:
     def get_all(self, fileMiss: bool = False, top: int = None) -> List[ComicEntity]:
         # `missing` is maintained by the scan reconcile (loader.work), so this
         # filters on the stored flag instead of stat-ing the filesystem on every
-        # request. fileMiss=true is the organize page asking for the gone files;
+        # request. fileMiss=true is the Cleanup page asking for the gone files;
         # the default list hides them so an unmounted drive doesn't show ghosts.
         statement = select(ComicEntity).where(
             ComicEntity.missing == fileMiss  # noqa: E712
