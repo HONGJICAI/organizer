@@ -74,6 +74,7 @@ describe('counting and grouping', () => {
 		expect(rows[0]).toEqual({
 			name: 'アリス',
 			count: 3,
+			own: 2,
 			kind: 'author',
 			aliases: [{ name: 'Alice', count: 2 }]
 		});
@@ -82,6 +83,7 @@ describe('counting and grouping', () => {
 		expect(byName.get('Merged')).toEqual({
 			name: 'Merged',
 			count: 1,
+			own: 0,
 			kind: undefined,
 			aliases: [{ name: 'merged-alias', count: 1 }]
 		});

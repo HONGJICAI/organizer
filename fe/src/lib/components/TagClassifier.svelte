@@ -220,22 +220,39 @@
 		{/if}
 	</svelte:fragment>
 	<svelte:fragment slot="expanded-row" let:row>
+		{#snippet itemCount(n: number)}
+			<span class="muted">{n} item{n === 1 ? '' : 's'}</span>
+		{/snippet}
+		<!-- Every name of the group with the files that name it; the Items
+		     column above counts each file once for the whole group. -->
 		<ul class="aliases">
+			<li>
+				<button class="tag-name" title="Show these items" onclick={() => onClickTag?.(row.name)}
+					>{row.name}</button
+				>
+				{@render itemCount(row.own)}
+				<span><Tag size="sm" type="outline">Primary</Tag></span>
+			</li>
 			{#each row.aliases as alias (alias.name)}
 				<li>
 					<button class="tag-name" title="Show these items" onclick={() => onClickTag?.(alias.name)}
 						>{alias.name}</button
 					>
-					<span class="muted">{alias.count} item{alias.count === 1 ? '' : 's'}</span>
-					<Button
-						size="small"
-						kind="ghost"
-						disabled={saving}
-						on:click={() => makePrimary(alias.name, row.name)}>Make primary</Button
-					>
-					<Button size="small" kind="ghost" disabled={saving} on:click={() => splitOut(alias.name)}
-						>Split out</Button
-					>
+					{@render itemCount(alias.count)}
+					<span>
+						<Button
+							size="small"
+							kind="ghost"
+							disabled={saving}
+							on:click={() => makePrimary(alias.name, row.name)}>Make primary</Button
+						>
+						<Button
+							size="small"
+							kind="ghost"
+							disabled={saving}
+							on:click={() => splitOut(alias.name)}>Split out</Button
+						>
+					</span>
 				</li>
 			{/each}
 		</ul>
@@ -331,15 +348,17 @@
 	.modal-text {
 		margin-bottom: 1rem;
 	}
+	/* Name, count and actions line up in columns across the group. */
 	.aliases {
+		display: grid;
+		grid-template-columns: minmax(0, max-content) max-content 1fr;
+		align-items: center;
+		gap: 0.25rem 1.5rem;
 		list-style: none;
 		margin: 0;
 		padding: 0;
 	}
 	.aliases li {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.5rem 1rem;
+		display: contents;
 	}
 </style>

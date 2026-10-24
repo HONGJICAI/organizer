@@ -96,6 +96,8 @@ export interface ClassifierRow {
 	name: string;
 	/** Files with this tag or any of its aliases, each counted once. */
 	count: number;
+	/** Files that name the primary itself. */
+	own: number;
 	kind: TagKind | undefined;
 	/** Every alias, also those no file uses now, with its own file count. */
 	aliases: { name: string; count: number }[];
@@ -119,6 +121,7 @@ export function classifierRows(sources: string[], index: TagIndex): ClassifierRo
 		.map(([name, count]) => ({
 			name,
 			count,
+			own: own.get(name) ?? 0,
 			kind: index.kind(name),
 			aliases: index
 				.names(name)
