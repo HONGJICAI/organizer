@@ -622,15 +622,23 @@ class TestFollowMoves:
         self.work()
         assert [(c.id, c.missing) for c in self.comics(task_engine)] == [(1, True), (2, False)]
 
-    def test_no_merge_into_a_newer_record(self, task_engine, task_session, lib):
-        root, _ = lib
+    def test_merges_when_the_newer_record_is_gone(self, task_engine, task_session, lib):
+        # Folder renamed back (hoge -> Hoge -> hoge): the older record's
+        # spelling is the present one, the later duplicate's is gone. It
+        # still folds into the older record, which keeps its own path.
+        root, covers = lib
         real = root / "hoge" / "x.zip"
         real.parent.mkdir()
         make_zip_comic(str(real), pages=2)
         self.record(task_session, 1, real, real)
-        self.record(task_session, 2, root / "Hoge" / "x.zip", real)
+        self.record(task_session, 2, root / "Hoge" / "x.zip", real, favorited=True,
+                    lastViewedPosition=3, lastViewedTime=datetime.now())
+        (covers / "1_0.jpg").write_bytes(b"1")
+        (covers / "2_0.jpg").write_bytes(b"2")
         self.work()
-        assert [(c.id, c.missing) for c in self.comics(task_engine)] == [(1, False), (2, True)]
+        [c] = self.comics(task_engine)
+        assert (c.id, c.path, c.missing, c.favorited, c.lastViewedPosition) == (1, str(real), False, True, 3)
+        assert os.listdir(covers) == ["1_0.jpg"]
 
     def test_vanished_new_path_is_skipped(self, task_engine, task_session, lib):
         root, _ = lib
