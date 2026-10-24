@@ -138,6 +138,17 @@
 		selectedRowIds = [];
 	}
 
+	// Unclassifying a primary forgets its aliases too (api/tags.py set_kind),
+	// which the folded rows hide: confirm when that would happen.
+	let unclassifyOpen = $state(false);
+	const unclassifyAliases = $derived(
+		rows.filter((r) => selectedRowIds.includes(r.id)).flatMap((r) => r.aliases.map((a) => a.name))
+	);
+	function unclassify() {
+		if (unclassifyAliases.length) unclassifyOpen = true;
+		else apply(null);
+	}
+
 	function openMerge() {
 		// Default primary: an already classified tag, else the most used one.
 		const selected = rows.filter((r) => selectedRowIds.includes(r.id));
@@ -235,7 +246,7 @@
 				<Button disabled={saving} on:click={() => apply(kind)}>{kindLabel[kind]}</Button>
 			{/each}
 			<Button disabled={saving || selectedRowIds.length < 2} on:click={openMerge}>Merge…</Button>
-			<Button disabled={saving} on:click={() => apply(null)}>Unclassify</Button>
+			<Button disabled={saving} on:click={unclassify}>Unclassify</Button>
 		</ToolbarBatchActions>
 		<ToolbarContent>
 			<ToolbarSearch bind:value={search} persistent placeholder="Search tags" />
@@ -271,6 +282,24 @@
 			<RadioButton labelText={name} value={name} />
 		{/each}
 	</RadioButtonGroup>
+</Modal>
+
+<Modal
+	danger
+	bind:open={unclassifyOpen}
+	modalHeading="Unclassify {selectedRowIds.length} tag(s)?"
+	primaryButtonText="Unclassify"
+	secondaryButtonText="Cancel"
+	on:click:button--secondary={() => (unclassifyOpen = false)}
+	on:submit={() => {
+		unclassifyOpen = false;
+		apply(null);
+	}}
+>
+	<p class="modal-text">
+		Their {unclassifyAliases.length} alias(es) are unmerged and unclassified too:
+	</p>
+	<p class="muted">{unclassifyAliases.join(', ')}</p>
 </Modal>
 
 <style>
