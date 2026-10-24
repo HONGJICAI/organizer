@@ -63,6 +63,10 @@ async function generateImageArrayBuffer(width: number, height: number): Promise<
 export async function setupMock(authRequired: boolean) {
 	console.log('Setting up mock...');
 	authState.required = authRequired;
+	// Same data on every start, so a link opened in a new tab (which starts
+	// mock mode again) finds the item it points at.
+	faker.seed(20240101);
+	authorFolders.clear();
 
 	const comics = genMockComics(100);
 	// Leave a third unsorted in an inbox on another "share", so the move page has

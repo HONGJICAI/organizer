@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { newTabHref } from '$lib/links';
 	import { ComicsService } from '$lib/client';
 	import type { ComicStatsResponse } from '$lib/client';
 	import { ErrorNotification } from '$lib/model.svelte';
@@ -165,7 +166,7 @@
 		<ol class="top">
 			{#each stats.topRead as c (c.id)}
 				<li>
-					<a href="/comic/{c.id}">{c.name}</a>
+					<a href={newTabHref(`/comic/${c.id}`)} target="_blank" rel="noopener">{c.name}</a>
 					<span class="days">{c.readDays} {c.readDays === 1 ? 'day' : 'days'}</span>
 				</li>
 			{/each}

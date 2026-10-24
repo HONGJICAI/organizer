@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { openInNewTab } from '$lib/links';
 	import { adapters } from '$lib/mediaAdapters';
 	import { goto, pushState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -121,7 +122,7 @@
 		onClickTag={(tag) => runSearch(tag)}
 		onClickPrimaryButton={() => {
 			if (selectedFile) {
-				goto(`/${selectedFile.type}/${selectedFile.id}`);
+				openInNewTab(`/${selectedFile.type}/${selectedFile.id}`);
 			}
 		}}
 		onFileDeleted={(permenant = false) => {

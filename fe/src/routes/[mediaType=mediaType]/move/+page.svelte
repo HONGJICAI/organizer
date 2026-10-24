@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { newTabHref } from '$lib/links';
 	import { ComicsService, SystemService } from '$lib/client';
 	import type { ComicMovePlanItem } from '$lib/client';
 	import { errorMessage } from '$lib/mediaAdapters';
@@ -429,8 +430,9 @@
 {:else}
 	<p class="hint">
 		Gather each author's comics into one folder. Authors come from
-		<Link href="/{mediaType}/tag?view=classify">Tags → Classify</Link>; search to gather any other
-		tag.
+		<Link href={newTabHref(`/${mediaType}/tag?view=classify`)} target="_blank" rel="noopener"
+			>Tags → Classify</Link
+		>; search to gather any other tag.
 	</p>
 	<details class="how">
 		<summary>How it works</summary>
@@ -605,7 +607,9 @@
 							>Move {chosen(g).length} comic{chosen(g).length === 1 ? '' : 's'}</Button
 						>
 						{#if results[g.key]?.state === 'done' && folderHref(g.key)}
-							<Link href={folderHref(g.key)}>Open the folder</Link>
+							<Link href={newTabHref(folderHref(g.key) ?? '')} target="_blank" rel="noopener"
+								>Open the folder</Link
+							>
 						{/if}
 					</div>
 				</div>
@@ -652,7 +656,9 @@
 				Every author is organized. Turn on “Show organized” to see them.
 			{:else}
 				No authors yet: mark tags as authors under
-				<Link href="/{mediaType}/tag?view=classify">Tags → Classify</Link>, or search for a tag.
+				<Link href={newTabHref(`/${mediaType}/tag?view=classify`)} target="_blank" rel="noopener"
+					>Tags → Classify</Link
+				>, or search for a tag.
 			{/if}
 		</p>
 	{/if}

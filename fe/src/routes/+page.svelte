@@ -4,10 +4,8 @@
 	import { HomeService } from '$lib/client/sdk.gen.js';
 	import { homeRows, randomRow, readerUrl, type HomeRows } from '$lib/home';
 	import { errorMessage } from '$lib/mediaAdapters';
-	import type { MediaFile } from '$lib/model.svelte';
 	import { Button, InlineNotification, SkeletonPlaceholder } from 'carbon-components-svelte';
 	import { Book, Image as ImageIcon, MediaLibrary, Renew } from 'carbon-icons-svelte';
-	import { goto } from '$app/navigation';
 
 	let { data } = $props();
 
@@ -43,8 +41,6 @@
 				].filter((s) => s.files.length > 0)
 			: []
 	);
-
-	const open = (file: MediaFile, resume: boolean) => goto(readerUrl(file, resume));
 </script>
 
 <div class="home">
@@ -89,7 +85,7 @@
 							{file}
 							showType
 							showProgress={section.resume}
-							onClickFile={(f) => open(f, section.resume)}
+							href={readerUrl(file, section.resume)}
 						/>
 					{/each}
 				</HorizontalScroller>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { newTabHref } from '$lib/links';
 	import { ComicsService } from '$lib/client';
 	import { Comic, ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
@@ -251,7 +252,7 @@
 					<div class="item" class:marked={selected.has(comic.id)}>
 						<a
 							class="cover-cell"
-							href="/{mediaType}/{comic.id}?private=1"
+							href={newTabHref(`/${mediaType}/${comic.id}?private=1`)}
 							target="_blank"
 							rel="noopener"
 							title="Open in reader"
@@ -298,7 +299,7 @@
 								kind="ghost"
 								size="small"
 								icon={Grid}
-								href="/{mediaType}/{comic.id}?overview=1&private=1"
+								href={newTabHref(`/${mediaType}/${comic.id}?overview=1&private=1`)}
 								target="_blank"
 								rel="noopener">Pages</Button
 							>

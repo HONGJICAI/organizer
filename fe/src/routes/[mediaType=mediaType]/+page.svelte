@@ -94,6 +94,9 @@
 		goto(`?q=${searchStr}&p=${curPage}&c=${category}`);
 	};
 
+	// The tag sidebar links to the same list searched for the tag (middle-click opens a new tab).
+	const tagHref = (tag: string) => `?q=${encodeURIComponent(tag)}&p=1&c=${category}`;
+
 	async function onClickTag(tag: string) {
 		searchStr = tag;
 		curPage = 1;
@@ -218,23 +221,23 @@
 			<TagStack skeleton title="All Tags" />
 		{:else}
 			{#if tagGroups.author.size}
-				<TagStack tag2countMap={tagGroups.author} {onClickTag} title="Authors" />
+				<TagStack tag2countMap={tagGroups.author} {tagHref} title="Authors" />
 			{/if}
 			<TagStack
 				tag2countMap={tagGroups.other}
-				{onClickTag}
+				{tagHref}
 				title={classified ? 'Other Tags' : 'All Tags'}
 			/>
 			{#if tagGroups.language.size}
 				<TagStack
 					tag2countMap={tagGroups.language}
-					{onClickTag}
+					{tagHref}
 					title="Languages"
 					defaultOpen={false}
 				/>
 			{/if}
 			{#if searchStr}
-				<TagStack tag2countMap={searchedTagMap} {onClickTag} title="Searched Tags" />
+				<TagStack tag2countMap={searchedTagMap} {tagHref} title="Searched Tags" />
 			{/if}
 		{/if}
 	</div>
