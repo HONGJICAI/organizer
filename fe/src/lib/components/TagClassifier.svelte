@@ -16,6 +16,7 @@
 	} from 'carbon-components-svelte';
 	import { untrack } from 'svelte';
 	import { adapters } from '$lib/mediaAdapters';
+	import { newTabHref } from '$lib/links';
 	import { ErrorNotification, SuccessNotification, type MediaFile } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { separateFilename } from '$lib/utility';
@@ -35,9 +36,10 @@
 
 	interface Props {
 		files: MediaFile[];
-		onClickTag?: (tag: string) => void;
+		/** Where a tag's items are listed; tag names link there in a new tab. */
+		tagHref: (tag: string) => string;
 	}
-	let { files, onClickTag }: Props = $props();
+	let { files, tagHref }: Props = $props();
 
 	loadTags();
 
@@ -201,8 +203,12 @@
 >
 	<svelte:fragment slot="cell" let:row let:cell>
 		{#if cell.key === 'name'}
-			<button class="tag-name" title="Show these items" onclick={() => onClickTag?.(row.name)}
-				>{cell.value}</button
+			<a
+				class="tag-name"
+				title="Show these items"
+				href={newTabHref(tagHref(row.name))}
+				target="_blank"
+				rel="noopener">{cell.value}</a
 			>
 			{#if row.aliases.length}
 				<span class="muted" title={row.aliases.map((a: { name: string }) => a.name).join(', ')}>
@@ -227,16 +233,24 @@
 		     column above counts each file once for the whole group. -->
 		<ul class="aliases">
 			<li>
-				<button class="tag-name" title="Show these items" onclick={() => onClickTag?.(row.name)}
-					>{row.name}</button
+				<a
+					class="tag-name"
+					title="Show these items"
+					href={newTabHref(tagHref(row.name))}
+					target="_blank"
+					rel="noopener">{row.name}</a
 				>
 				{@render itemCount(row.own)}
 				<span><Tag size="sm" type="outline">Primary</Tag></span>
 			</li>
 			{#each row.aliases as alias (alias.name)}
 				<li>
-					<button class="tag-name" title="Show these items" onclick={() => onClickTag?.(alias.name)}
-						>{alias.name}</button
+					<a
+						class="tag-name"
+						title="Show these items"
+						href={newTabHref(tagHref(alias.name))}
+						target="_blank"
+						rel="noopener">{alias.name}</a
 					>
 					{@render itemCount(alias.count)}
 					<span>
@@ -327,13 +341,8 @@
 		color: var(--cds-text-02, #c6c6c6);
 	}
 	.tag-name {
-		background: none;
-		border: none;
-		padding: 0;
 		color: inherit;
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
+		text-decoration: none;
 		overflow-wrap: anywhere;
 	}
 	.tag-name:hover {

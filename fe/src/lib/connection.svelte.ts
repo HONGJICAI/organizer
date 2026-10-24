@@ -6,9 +6,13 @@ import { refreshMediaFiles } from '$lib/mediaStore';
 
 export const SERVER_URL_KEY = 'organizer-server-url';
 
+/** Set while the app runs on mock data (`auth`: login is simulated). */
+export type MockMode = { auth: boolean };
+
 class ConnectionState {
 	status = $state<'idle' | 'connecting' | 'connected'>('idle');
 	error = $state<string | null>(null);
+	mock = $state<MockMode | null>(null);
 }
 
 export const connectionState = new ConnectionState();
@@ -76,6 +80,7 @@ export function applyServer(serverUrl: string, required: boolean) {
 	client.setConfig({ baseUrl: serverUrl });
 	authState.required = required;
 	localStorage.setItem(SERVER_URL_KEY, serverUrl);
+	connectionState.mock = null;
 	connectionState.error = null;
 	connectionState.status = 'connected';
 }
@@ -113,6 +118,7 @@ export async function connectMock(authRequired: boolean): Promise<boolean> {
 		const { data, error } = await AuthService.status();
 		if (error || !data) throw new Error('Mock setup failed');
 		authState.required = data.required;
+		connectionState.mock = { auth: authRequired };
 		connectionState.status = 'connected';
 		return true;
 	} catch {

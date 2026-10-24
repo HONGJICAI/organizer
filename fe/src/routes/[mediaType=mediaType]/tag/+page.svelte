@@ -6,12 +6,12 @@
 	import { primaryTags } from '$lib/tagIndex';
 	import { loadTags, tagState } from '$lib/tags.svelte';
 	import TagClassifier from '$lib/components/TagClassifier.svelte';
+	import TagLink from '$lib/components/TagLink.svelte';
 	import {
 		ContentSwitcher,
 		NumberInput,
 		SkeletonPlaceholder,
-		Switch,
-		Tag
+		Switch
 	} from 'carbon-components-svelte';
 
 	let { data } = $props();
@@ -108,7 +108,8 @@
 	);
 
 	const pct = (n: number, total: number) => (total === 0 ? 0 : Math.round((n / total) * 100));
-	const onTagClick = (tag: string) => goto(`/${data.mediaType}?q=${encodeURIComponent(tag)}`);
+	// Tags open their items in a new tab, keeping the rankings or the classifier as they are.
+	const tagHref = (tag: string) => `/${data.mediaType}?q=${encodeURIComponent(tag)}`;
 </script>
 
 {#snippet rateRanking(title: string, items: TagDetail[], pick: (d: TagDetail) => number)}
@@ -119,12 +120,12 @@
 		{:else}
 			<div class="chips">
 				{#each items as d (d.tag)}
-					<Tag interactive on:click={() => onTagClick(d.tag)}>
+					<TagLink newTab href={tagHref(d.tag)}>
 						<div class="chip">
 							<span class="name" title={d.tag}>{d.tag}</span>
 							<span class="metric">{pct(pick(d), d.count)}% · {pick(d)}/{d.count}</span>
 						</div>
-					</Tag>
+					</TagLink>
 				{/each}
 			</div>
 		{/if}
@@ -152,7 +153,7 @@
 	</div>
 
 	{#if dataLoaded && classifyView}
-		<TagClassifier {files} onClickTag={onTagClick} />
+		<TagClassifier {files} {tagHref} />
 	{:else if !dataLoaded}
 		<div class="grid">
 			{#each Array(4) as _}
@@ -170,12 +171,12 @@
 				<h3>Most common</h3>
 				<div class="chips">
 					{#each topByCount as d (d.tag)}
-						<Tag interactive on:click={() => onTagClick(d.tag)}>
+						<TagLink newTab href={tagHref(d.tag)}>
 							<div class="chip">
 								<span class="name" title={d.tag}>{d.tag}</span>
 								<span class="metric">{d.count}</span>
 							</div>
-						</Tag>
+						</TagLink>
 					{/each}
 				</div>
 			</section>

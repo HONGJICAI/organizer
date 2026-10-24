@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { newTabHref } from '$lib/links';
 	import { onDestroy, onMount } from 'svelte';
 	import { ComicsService, SystemService } from '$lib/client';
 	import type {
@@ -512,7 +513,9 @@
 			<ul class="failures">
 				{#each covers.failures as f (f.id)}
 					<li>
-						<a href="/comic/{f.id}" title={f.name}>{f.name}</a>
+						<a href={newTabHref(`/comic/${f.id}`)} target="_blank" rel="noopener" title={f.name}
+							>{f.name}</a
+						>
 						<span class="err" title={f.reason}>{f.reason}</span>
 					</li>
 				{/each}
@@ -572,7 +575,12 @@
 				<ul class="failures">
 					{#each zipConflicts as item (item.id)}
 						<li>
-							<a href="/comic/{item.id}" title={item.source}>{item.name}</a>
+							<a
+								href={newTabHref(`/comic/${item.id}`)}
+								target="_blank"
+								rel="noopener"
+								title={item.source}>{item.name}</a
+							>
 							<span class="err" title={item.reason}>{item.reason}</span>
 						</li>
 					{/each}

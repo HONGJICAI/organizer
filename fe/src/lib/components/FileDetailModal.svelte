@@ -40,7 +40,8 @@
 	import { formatBytes } from '$lib/stats';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
-	import { goto } from '$app/navigation';
+	import { newTabHref, openInNewTab } from '$lib/links';
+	import TagLink from './TagLink.svelte';
 	import { kindColor, kindLabel, tagKinds, type TagKind } from '$lib/tagIndex';
 	import { loadTags, setTagKind, tagState } from '$lib/tags.svelte';
 
@@ -49,6 +50,8 @@
 		onCloseModal?: () => void;
 		file: MediaFile;
 		onClickTag?: (tag: string) => void;
+		/** Set to make tags links to this page in a new tab instead of calling onClickTag. */
+		tagHref?: (tag: string) => string;
 		onClickPrimaryButton?: () => void;
 		onFileDeleted?: (permenant: boolean) => void;
 	}
@@ -58,6 +61,7 @@
 		onCloseModal = () => undefined,
 		file = $bindable(),
 		onClickTag = () => undefined,
+		tagHref,
 		onClickPrimaryButton = () => undefined,
 		onFileDeleted = () => undefined
 	}: Props = $props();
@@ -250,13 +254,20 @@
 		{#each separateFilename(separateToTagsFrom ?? '') as tag}
 			{@const kind = tagState.index.kind(tag)}
 			{@const primary = tagState.index.canonical(tag)}
+			{@const title = `${tag}${kind ? ` · ${kindLabel[kind]}` : ''}${primary !== tag ? ` · alias of ${primary}` : ''}`}
 			<span class="tag-wrap">
-				<Tag
-					type={kindColor[kind ?? 'none']}
-					title={`${tag}${kind ? ` · ${kindLabel[kind]}` : ''}${primary !== tag ? ` · alias of ${primary}` : ''}`}
-					on:click={() => onClickTag(primary)}
-					interactive={true}>{tag}</Tag
-				>
+				{#if tagHref}
+					<TagLink newTab href={tagHref(primary)} type={kindColor[kind ?? 'none']} {title}
+						>{tag}</TagLink
+					>
+				{:else}
+					<Tag
+						type={kindColor[kind ?? 'none']}
+						{title}
+						on:click={() => onClickTag(primary)}
+						interactive={true}>{tag}</Tag
+					>
+				{/if}
 				<button
 					type="button"
 					class="tag-global"
@@ -268,15 +279,16 @@
 				>
 					<TagEdit size={16} />
 				</button>
-				<button
-					type="button"
+				<a
 					class="tag-global"
-					title={`Search "${tag}" everywhere`}
-					aria-label={`Search "${tag}" everywhere`}
-					onclick={() => goto(`/search?q=${encodeURIComponent(tag)}`)}
+					title={`Search "${tag}" everywhere (new tab)`}
+					aria-label={`Search "${tag}" everywhere (new tab)`}
+					href={newTabHref(`/search?q=${encodeURIComponent(tag)}`)}
+					target="_blank"
+					rel="noopener"
 				>
 					<SearchIcon size={16} />
-				</button>
+				</a>
 			</span>
 		{/each}
 		{#if classifying}
@@ -342,7 +354,7 @@
 			icon={NewTab}
 			iconDescription="NewTab"
 			on:click={() => {
-				window.open(`/${mediaType}/${file.id}`);
+				openInNewTab(`/${mediaType}/${file.id}`);
 			}}
 			disabled={file.archived}
 		/>

@@ -5,6 +5,9 @@
 		file: MediaFile;
 		light?: boolean;
 		onClickFile?: (file: MediaFile) => void;
+		// Makes the card a link (instead of calling onClickFile), so
+		// middle-click opens it in a new tab.
+		href?: string;
 		// Rows mixing media types label each card with its type instead of its size.
 		showType?: boolean;
 		// Draw a reading-progress bar along the bottom of the cover.
@@ -15,6 +18,7 @@
 		file,
 		light = $bindable(false),
 		onClickFile = () => undefined,
+		href,
 		showType = false,
 		showProgress = false
 	}: Props = $props();
@@ -32,7 +36,7 @@
 	}
 </script>
 
-<div class="card">
+<svelte:element this={href ? 'a' : 'div'} class="card" {href}>
 	<Tile bind:light on:click={() => onClickFile(file)}>
 		<!-- size 0 means "not computed yet" (image folders skip it at scan time) -->
 		{#if showType}
@@ -73,7 +77,7 @@
 			{file.name}
 		</div>
 	</Tile>
-</div>
+</svelte:element>
 
 <style>
 	:root {
@@ -89,6 +93,8 @@
 	}
 
 	.card {
+		display: block;
+		text-decoration: none;
 		width: var(--card-width);
 		height: var(--card-height);
 		max-width: var(--card-width);

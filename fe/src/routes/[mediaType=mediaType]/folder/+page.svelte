@@ -194,7 +194,7 @@
 			open
 			onCloseModal={() => history.back()}
 			bind:file={selectedFile}
-			onClickTag={(tag) => goto(`/${mediaType}?q=${tag}`)}
+			tagHref={(tag) => `/${mediaType}?q=${encodeURIComponent(tag)}`}
 			onClickPrimaryButton={() => {
 				pushState('', { showFileDetailModal: false, showFileContent: true });
 			}}

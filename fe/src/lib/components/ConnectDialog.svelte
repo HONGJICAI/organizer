@@ -4,6 +4,7 @@
 	import SettingsAdjust from 'carbon-icons-svelte/lib/SettingsAdjust.svelte';
 	import SettingsModal from './SettingsModal.svelte';
 	import { connectionState, connect, connectMock, SERVER_URL_KEY } from '$lib/connection.svelte';
+	import { withoutMockParams } from '$lib/links';
 
 	let serverUrl = $state('');
 	let openSettings = $state(false);
@@ -22,7 +23,8 @@
 			const ok = await connectMock(authRequired);
 			if (ok) {
 				const { goto, invalidateAll } = await import('$app/navigation');
-				await goto('/', { replaceState: true });
+				// Stay on the page asked for (a link opened in a new tab).
+				await goto(withoutMockParams(window.location.href), { replaceState: true });
 				await invalidateAll();
 			}
 			return;
