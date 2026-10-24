@@ -140,11 +140,12 @@ class Loader:
         one file share them:
 
         - a path not in the database yet: the record takes the new path;
-        - a record imported later for the same file under a path that differs
-          only in case or Unicode normalization (the duplicate a
-          case-insensitive filesystem leads to): merged into the older
-          record, which keeps its id. Paths that differ otherwise are left
-          alone: they may be a second copy on another drive.
+        - another record of the same file under a path that differs only in
+          case or Unicode normalization (the duplicate a case-insensitive
+          filesystem leads to, whichever of the two spellings the folder has
+          now): the two are merged into the older record, which keeps its id
+          and takes the path that is present. Paths that differ otherwise are
+          left alone: they may be a second copy on another drive.
 
         Returns how many records changed.
         """
@@ -165,14 +166,16 @@ class Loader:
             for e in rows:
                 if e.path in present and (e.size, e.updateTime) in gone:
                     later[(e.size, e.updateTime)].append(e)
-            for sig, (keep, *more) in list(gone.items()):
+            for sig, (stale, *more) in list(gone.items()):
                 found = later.get(sig, [])
-                if more or len(found) != 1 or found[0].id < keep.id:
+                if more or len(found) != 1:
                     continue
-                if not _same_path(found[0].path, keep.path):
+                live = found[0]
+                if not _same_path(live.path, stale.path):
                     continue
-                drop, old_path = found[0], keep.path
-                self._merge(session, keep, drop)
+                keep, drop = sorted((stale, live), key=lambda e: e.id)
+                old_path = keep.path
+                self._merge(session, keep, drop, live.path)
                 progress.add_issue(
                     self.media, "warning", keep.path,
                     f"Merged duplicate record #{drop.id} into #{keep.id} (it was recorded at {old_path!r})",
@@ -203,11 +206,12 @@ class Loader:
         print(f"follow moves: updated {changed} record(s)")
         return changed
 
-    def _merge(self, session: Session, keep: FileEntity, drop: FileEntity) -> None:
+    def _merge(self, session: Session, keep: FileEntity, drop: FileEntity, path: str) -> None:
         """Fold ``drop`` (a later record of the same file) into ``keep``: keep
-        takes its path, the favorite and the latest reading position; drop's
-        add event goes and its other events move over."""
-        keep.path, keep.name, keep.missing = drop.path, drop.name, False
+        takes ``path`` (the spelling present on disk), the favorite and the
+        latest reading position; drop's add event goes and its other events
+        move over."""
+        keep.path, keep.name, keep.missing = path, os.path.basename(path), False
         keep.favorited = keep.favorited or drop.favorited
         if drop.lastViewedTime and (not keep.lastViewedTime or drop.lastViewedTime > keep.lastViewedTime):
             keep.lastViewedTime, keep.lastViewedPosition = drop.lastViewedTime, drop.lastViewedPosition
