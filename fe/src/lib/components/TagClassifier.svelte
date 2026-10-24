@@ -14,15 +14,24 @@
 		ToolbarContent,
 		ToolbarSearch
 	} from 'carbon-components-svelte';
+	import { untrack } from 'svelte';
 	import { adapters } from '$lib/mediaAdapters';
 	import { ErrorNotification, SuccessNotification, type MediaFile } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
-	import { genTagMap, separateFilename } from '$lib/utility';
-	import { kindColor, kindLabel, tagKinds, type TagKind } from '$lib/tagIndex';
+	import { separateFilename } from '$lib/utility';
+	import {
+		classifierRows,
+		kindColor,
+		kindLabel,
+		tagKinds,
+		type ClassifierRow,
+		type TagKind
+	} from '$lib/tagIndex';
 	import { loadTags, mergeTags, setTagKind, tagState } from '$lib/tags.svelte';
 
 	// Manual tag classification: every tag of the list with its count, marked
-	// as author / language / ignored, or merged as aliases.
+	// as author / language / ignored, or merged as aliases. Aliases fold into
+	// their primary's row (merges are one level deep), expanded to manage them.
 
 	interface Props {
 		files: MediaFile[];
@@ -32,62 +41,42 @@
 
 	loadTags();
 
-	type Filter = 'all' | 'none' | 'alias' | TagKind;
+	type Filter = 'all' | 'none' | 'merged' | TagKind;
 	let filter = $state<Filter>('none');
 	let search = $state('');
 	let page = $state(1);
 	let pageSize = $state(50);
 	let selectedRowIds = $state<string[]>([]);
+	let expandedRowIds = $state<string[]>([]);
 	let saving = $state(false);
 	let mergeOpen = $state(false);
 	let mergePrimary = $state('');
 
 	const live = $derived(files.filter((f) => !f.archived));
 	const sources = $derived(live.map((f) => adapters[f.type].tagSource(f)));
-	const counts = $derived(genTagMap(sources));
-	const rows = $derived(
-		[...counts]
-			.map(([name, count]) => {
-				const row = tagState.index.row(name);
-				return {
-					id: name,
-					name,
-					count,
-					kind: tagState.index.kind(name),
-					alias: row?.canonical ?? null
-				};
-			})
-			.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-	);
-	const filtered = $derived(
-		rows.filter((r) => {
-			if (search && !r.name.toLowerCase().includes(search.toLowerCase())) return false;
-			if (filter === 'all') return true;
-			if (filter === 'alias') return r.alias !== null;
-			if (filter === 'none') return !r.kind && r.alias === null;
-			return r.kind === filter;
-		})
-	);
+	const rows = $derived(classifierRows(sources, tagState.index).map((r) => ({ id: r.name, ...r })));
+	const inFilter = (r: ClassifierRow, f: Filter) =>
+		f === 'all' || (f === 'merged' ? r.aliases.length > 0 : f === 'none' ? !r.kind : r.kind === f);
+	// A search matches a row by its name or any alias.
+	const aliasHit = (r: ClassifierRow, q: string) =>
+		r.aliases.some((a) => a.name.toLowerCase().includes(q));
+	const filtered = $derived.by(() => {
+		const q = search.toLowerCase();
+		return rows.filter(
+			(r) => inFilter(r, filter) && (!q || r.name.toLowerCase().includes(q) || aliasHit(r, q))
+		);
+	});
 	const pageRows = $derived(filtered.slice((page - 1) * pageSize, page * pageSize));
 	// Files with at least one author tag (through aliases too).
 	const withAuthor = $derived(
 		sources.filter((s) => separateFilename(s).some((t) => tagState.index.kind(t) === 'author'))
 			.length
 	);
-	const filterCount = (f: Filter) =>
-		f === 'all'
-			? rows.length
-			: rows.filter((r) =>
-					f === 'alias'
-						? r.alias !== null
-						: f === 'none'
-							? !r.kind && r.alias === null
-							: r.kind === f
-				).length;
+	const filterCount = (f: Filter) => rows.filter((r) => inFilter(r, f)).length;
 	const filters: { value: Filter; label: string }[] = [
 		{ value: 'none', label: 'Unclassified' },
 		...tagKinds.map((k) => ({ value: k, label: kindLabel[k] })),
-		{ value: 'alias', label: 'Aliases' },
+		{ value: 'merged', label: 'Merged' },
 		{ value: 'all', label: 'All' }
 	];
 
@@ -97,6 +86,40 @@
 		void search;
 		page = 1;
 	});
+
+	// Open the rows a search found only through an alias, so the hit shows.
+	// Only on a new search: edits inside an open row must not close it.
+	$effect(() => {
+		const q = search.toLowerCase();
+		untrack(() => {
+			expandedRowIds = q
+				? filtered
+						.filter((r) => !r.name.toLowerCase().includes(q) && aliasHit(r, q))
+						.map((r) => r.id)
+				: [];
+		});
+	});
+
+	async function run(change: Promise<string | undefined>, done: string): Promise<boolean> {
+		saving = true;
+		const error = await change;
+		saving = false;
+		addNotification(
+			error
+				? new ErrorNotification({ subtitle: error })
+				: new SuccessNotification({ subtitle: done })
+		);
+		return !error;
+	}
+
+	// An alias leaves the group unclassified (the primary and the rest stay).
+	const splitOut = (alias: string) => run(setTagKind([alias], null), `${alias} split out`);
+	// The old primary and its other aliases become aliases of the new one,
+	// whose row stays open in place of the old one.
+	async function makePrimary(alias: string, primary: string) {
+		if (await run(mergeTags(alias, [primary]), `${alias} is now the primary tag`))
+			expandedRowIds = [...expandedRowIds.filter((id) => id !== primary), alias];
+	}
 
 	async function apply(kind: TagKind | null) {
 		saving = true;
@@ -118,7 +141,7 @@
 	function openMerge() {
 		// Default primary: an already classified tag, else the most used one.
 		const selected = rows.filter((r) => selectedRowIds.includes(r.id));
-		mergePrimary = (selected.find((r) => r.kind && !r.alias) ?? selected[0])?.name ?? '';
+		mergePrimary = (selected.find((r) => r.kind) ?? selected[0])?.name ?? '';
 		mergeOpen = true;
 	}
 
@@ -142,7 +165,8 @@
 <p class="hint">
 	Mark tags as authors or languages, or ignore noise such as release notes: the comic list's tag
 	sidebar groups them, and Move to folder can gather every author. Merge tags that name the same
-	thing (e.g. an author's romanized name) to make them aliases of one primary tag.
+	thing (e.g. an author's romanized name) to make them aliases of one primary tag; aliases fold into
+	the primary's row, and expanding it splits one out or makes it the primary.
 	{#if live.length}
 		<strong>{Math.round((withAuthor / live.length) * 100)}%</strong> of the {live.length} items have
 		an author tag.
@@ -150,9 +174,11 @@
 </p>
 
 <DataTable
+	expandable
 	selectable
 	batchSelection
 	size="short"
+	nonExpandableRowIds={pageRows.filter((r) => !r.aliases.length).map((r) => r.id)}
 	headers={[
 		{ key: 'name', value: 'Tag' },
 		{ key: 'count', value: 'Items' },
@@ -160,16 +186,20 @@
 	]}
 	rows={pageRows}
 	bind:selectedRowIds
+	bind:expandedRowIds
 >
 	<svelte:fragment slot="cell" let:row let:cell>
 		{#if cell.key === 'name'}
 			<button class="tag-name" title="Show these items" onclick={() => onClickTag?.(row.name)}
 				>{cell.value}</button
 			>
+			{#if row.aliases.length}
+				<span class="muted" title={row.aliases.map((a: { name: string }) => a.name).join(', ')}>
+					+{row.aliases.length} alias{row.aliases.length > 1 ? 'es' : ''}</span
+				>
+			{/if}
 		{:else if cell.key === 'kind'}
-			{#if row.alias}
-				<Tag size="sm" type="outline">Alias of {row.alias}</Tag>
-			{:else if row.kind}
+			{#if row.kind}
 				<Tag size="sm" type={kindColor[row.kind as TagKind]}>{kindLabel[row.kind as TagKind]}</Tag>
 			{:else}
 				<span class="muted">—</span>
@@ -177,6 +207,27 @@
 		{:else}
 			{cell.value}
 		{/if}
+	</svelte:fragment>
+	<svelte:fragment slot="expanded-row" let:row>
+		<ul class="aliases">
+			{#each row.aliases as alias (alias.name)}
+				<li>
+					<button class="tag-name" title="Show these items" onclick={() => onClickTag?.(alias.name)}
+						>{alias.name}</button
+					>
+					<span class="muted">{alias.count} item{alias.count === 1 ? '' : 's'}</span>
+					<Button
+						size="small"
+						kind="ghost"
+						disabled={saving}
+						on:click={() => makePrimary(alias.name, row.name)}>Make primary</Button
+					>
+					<Button size="small" kind="ghost" disabled={saving} on:click={() => splitOut(alias.name)}
+						>Split out</Button
+					>
+				</li>
+			{/each}
+		</ul>
 	</svelte:fragment>
 	<Toolbar>
 		<ToolbarBatchActions>
@@ -250,5 +301,16 @@
 	}
 	.modal-text {
 		margin-bottom: 1rem;
+	}
+	.aliases {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.aliases li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 1rem;
 	}
 </style>

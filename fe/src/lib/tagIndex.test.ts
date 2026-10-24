@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { TagIndex, countTags, groupTags, matchesKeywords, primaryTags } from './tagIndex';
+import {
+	TagIndex,
+	classifierRows,
+	countTags,
+	groupTags,
+	matchesKeywords,
+	primaryTags
+} from './tagIndex';
 
 const index = new TagIndex([
 	{ name: 'アリス', kind: 'author', canonical: null },
@@ -59,6 +66,32 @@ describe('counting and grouping', () => {
 		expect(groups.other.has('Merged')).toBe(true);
 		const withIgnored = groupTags(new Map([['DL版', 1]]), index);
 		expect(withIgnored.other.size).toBe(0);
+	});
+
+	it('folds aliases into one classifier row per primary', () => {
+		const rows = classifierRows(sources, index);
+		const byName = new Map(rows.map((r) => [r.name, r]));
+		expect(rows[0]).toEqual({
+			name: 'アリス',
+			count: 3,
+			kind: 'author',
+			aliases: [{ name: 'Alice', count: 2 }]
+		});
+		expect(byName.has('Alice')).toBe(false);
+		// The primary isn't in any name, but its alias is.
+		expect(byName.get('Merged')).toEqual({
+			name: 'Merged',
+			count: 1,
+			kind: undefined,
+			aliases: [{ name: 'merged-alias', count: 1 }]
+		});
+		expect(byName.get('DL版')?.kind).toBe('ignored');
+		expect(byName.get('Chinese')?.aliases).toEqual([]);
+	});
+
+	it('lists aliases no file uses with a zero count', () => {
+		const row = classifierRows(['[アリス] One.zip'], index).find((r) => r.name === 'アリス');
+		expect(row?.aliases).toEqual([{ name: 'Alice', count: 0 }]);
 	});
 });
 

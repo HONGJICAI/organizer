@@ -92,6 +92,43 @@ export function countTags(sources: string[], index: TagIndex): Map<string, numbe
 	return counts;
 }
 
+export interface ClassifierRow {
+	name: string;
+	/** Files with this tag or any of its aliases, each counted once. */
+	count: number;
+	kind: TagKind | undefined;
+	/** Every alias, also those no file uses now, with its own file count. */
+	aliases: { name: string; count: number }[];
+}
+
+/**
+ * One row per primary tag of `sources`, its aliases folded in. A primary
+ * that no file names itself still gets a row when one of its aliases is used.
+ * Ignored tags are kept (the classifier is where they're undone).
+ */
+export function classifierRows(sources: string[], index: TagIndex): ClassifierRow[] {
+	const own = new Map<string, number>();
+	const total = new Map<string, number>();
+	for (const source of sources) {
+		const tags = new Set(separateFilename(source));
+		for (const tag of tags) own.set(tag, (own.get(tag) ?? 0) + 1);
+		for (const primary of new Set([...tags].map((t) => index.canonical(t))))
+			total.set(primary, (total.get(primary) ?? 0) + 1);
+	}
+	return [...total]
+		.map(([name, count]) => ({
+			name,
+			count,
+			kind: index.kind(name),
+			aliases: index
+				.names(name)
+				.slice(1)
+				.map((alias) => ({ name: alias, count: own.get(alias) ?? 0 }))
+				.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+		}))
+		.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
 export interface TagGroups {
 	author: Map<string, number>;
 	language: Map<string, number>;
