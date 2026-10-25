@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import os
 from unittest.mock import patch
 
 import pytest
@@ -324,6 +325,36 @@ class TestDelete:
         r = client.delete("/api/comics/1?permanent=true")
         assert r.status_code == 200
         assert not d.exists()
+
+    @pytest.mark.parametrize("permanent", ["true", "false"])
+    def test_delete_directory_with_os_metadata(self, client, session, tmp_path, permanent):
+        # Thumbs.db and a stale page count used to make this a 500.
+        d = tmp_path / "mycomic"
+        d.mkdir()
+        for name in ("0.jpg", "1.jpg", "Thumbs.db", "desktop.ini", ".DS_Store"):
+            (d / name).write_bytes(b"x")
+        insert_comic(session, 1, path=str(d), page=5)
+        r = client.delete(f"/api/comics/1?permanent={permanent}")
+        assert r.status_code == 200
+        assert r.json()["detail"] == "Deleted"
+        assert not d.exists()
+
+    @pytest.mark.parametrize("extra", ["a.zip", "sub"])
+    def test_delete_keeps_a_folder_with_other_files(self, client, session, tmp_path, extra):
+        # Not a folder comic any more (e.g. archives moved in): only the record goes.
+        d = tmp_path / "mycomic"
+        d.mkdir()
+        (d / "0.jpg").write_bytes(b"x")
+        if extra == "sub":
+            (d / extra).mkdir()
+        else:
+            (d / extra).write_bytes(b"x")
+        insert_comic(session, 1, path=str(d), page=1)
+        r = client.delete("/api/comics/1?permanent=true")
+        assert r.status_code == 200
+        assert "left as is" in r.json()["detail"]
+        assert sorted(os.listdir(d)) == ["0.jpg", extra]
+        assert client.get("/api/comics/1").status_code == 404
 
 
 # ---------------------------------------------------------------------------

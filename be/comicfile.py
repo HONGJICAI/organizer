@@ -27,6 +27,22 @@ def is_page(name: str) -> bool:
     return os.path.splitext(name)[1].lower() in allowImgs
 
 
+# Files the OS drops into folders it shows (thumbnail caches, view settings).
+_OS_METADATA = {"thumbs.db", "desktop.ini"}
+
+
+def non_page_files(names: List[str]) -> List[str]:
+    """The names in a folder that keep it from being a folder comic.
+
+    A folder comic holds page images only; hidden files and the OS's own
+    metadata (``Thumbs.db``, ``desktop.ini``) don't count against that.
+    """
+    return sorted(
+        n for n in names
+        if not is_page(n) and not n.startswith(".") and n.lower() not in _OS_METADATA
+    )
+
+
 def image_info(fp) -> dict:
     """Width, height and format of the image in ``fp``.
 

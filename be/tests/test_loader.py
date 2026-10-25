@@ -76,6 +76,29 @@ class TestScan:
         (tmp_path / "a.zip").write_bytes(b"x")
         assert scan(ComicLoader.comic_ext, [str(tmp_path)]) == [str(tmp_path / "a.zip")]
 
+    def test_folder_comic_is_images_only(self, tmp_path):
+        # Like an image album; OS metadata doesn't count against it.
+        comic = tmp_path / "comic"
+        comic.mkdir()
+        for name in ("1.jpg", "2.png", "Thumbs.db", "desktop.ini", ".DS_Store"):
+            (comic / name).write_bytes(b"x")
+        assert scan([""], [str(tmp_path)]) == [str(comic)]
+
+    def test_images_with_other_files_are_not_a_folder_comic(self, tmp_path):
+        from core.scan_progress import progress
+        mixed = tmp_path / "author"
+        mixed.mkdir()
+        (mixed / "cover.jpg").write_bytes(b"x")
+        for name in ("a.zip", "b.zip", "c.rar", "d.zip", "notes.txt"):
+            (mixed / name).write_bytes(b"x")
+        progress.start("comics")
+        found = scan(ComicLoader.comic_ext, [str(tmp_path)])
+        # The archives are still comics of their own.
+        assert sorted(found) == sorted(str(mixed / n) for n in ("a.zip", "b.zip", "c.rar", "d.zip"))
+        [issue] = progress.snapshot()["issues"]
+        assert (issue["media"], issue["level"], issue["path"]) == ("comic", "warning", str(mixed))
+        assert issue["reason"].startswith("Not a folder comic: it holds a.zip, b.zip, c.rar and 2 more")
+
     def test_skips_hidden_files_and_macos_metadata(self, tmp_path):
         (tmp_path / "._a.zip").write_bytes(b"x")
         junk = tmp_path / "junk"
@@ -639,6 +662,24 @@ class TestFollowMoves:
         [c] = self.comics(task_engine)
         assert (c.id, c.path, c.missing, c.favorited, c.lastViewedPosition) == (1, str(real), False, True, 3)
         assert os.listdir(covers) == ["1_0.jpg"]
+
+    def test_archives_moved_into_a_folder_comic(self, task_engine, task_session, lib):
+        # The folder isn't a comic any more: its record shows as missing (with
+        # a warning saying why) and the archives are imported on their own.
+        from core.scan_progress import progress
+        root, _ = lib
+        folder = root / "Author"
+        folder.mkdir()
+        (folder / "1.jpg").write_bytes(b"x")
+        self.record(task_session, 1, folder, folder)
+        make_zip_comic(str(folder / "x.zip"), pages=2)
+        progress.start("comics")
+        self.work()
+        old, new = self.comics(task_engine)
+        assert (old.id, old.missing) == (1, True)
+        assert new.path == str(folder / "x.zip")
+        assert any(i["path"] == str(folder) and i["reason"].startswith("Not a folder comic")
+                   for i in progress.snapshot()["issues"])
 
     def test_vanished_new_path_is_skipped(self, task_engine, task_session, lib):
         root, _ = lib

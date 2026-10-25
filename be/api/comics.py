@@ -384,10 +384,18 @@ class ComicCBV:
             cover = os.path.join(global_data.Config.nginx_comic_path, f"{id}_0.jpg")
             if os.path.exists(cover):
                 os.remove(cover)
+        detail = "Deleted"
         try:
-            if path.is_dir() and comic.page == len(list(path.glob("*"))):
-                print("remove dir", comic.path)
-                shutil.rmtree(comic.path)
+            if path.is_dir():
+                # A folder comic goes with its folder, OS metadata (Thumbs.db)
+                # included. A folder holding anything else isn't one any more
+                # (a scan reports it): only the record goes, the files stay.
+                entries = list(path.iterdir())
+                if any(e.is_dir() for e in entries) or comicfile.non_page_files([e.name for e in entries]):
+                    detail = "Deleted the record; the folder holds other files, so it was left as is"
+                else:
+                    print("remove dir", comic.path)
+                    shutil.rmtree(comic.path)
             else:
                 print("remove file", comic.path)
                 os.remove(comic.path)
@@ -397,4 +405,4 @@ class ComicCBV:
             abort(500, f"Failed to delete comic file with ex: {e}")
         self.session.commit()
 
-        return APIMessage(detail="Deleted")
+        return APIMessage(detail=detail)
