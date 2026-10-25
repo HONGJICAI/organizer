@@ -38,6 +38,14 @@ export enum VideoComparison {
 
 export type MediaFileComparisonType = MediaFileComparison | ComicComparison | VideoComparison;
 
+/**
+ * A size-per-unit sort key that is always a number. Items without pages or a
+ * duration (not read yet, no ffmpeg) would give Infinity or NaN, and one NaN
+ * comparison breaks the whole sort: the list comes out unordered and changes
+ * whenever an item is removed. They rank below every real ratio instead.
+ */
+export const perUnit = (size: number, units: number) => (units > 0 ? size / units : -1);
+
 export class MediaFile {
 	name = $state('');
 	path = $state('');
@@ -146,7 +154,7 @@ export class Comic extends MediaFile {
 			case ComicComparison.Page:
 				return this.page - other.page;
 			case ComicComparison.SizePerPage:
-				return this.size / this.page - other.size / other.page;
+				return perUnit(this.size, this.page) - perUnit(other.size, other.page);
 			default:
 				return super.compareTo(other, comparison);
 		}
@@ -187,7 +195,9 @@ export class Video extends MediaFile {
 			case VideoComparison.Duration:
 				return this.durationInSecond - other.durationInSecond;
 			case VideoComparison.SizePerSecond:
-				return this.size / this.durationInSecond - other.size / other.durationInSecond;
+				return (
+					perUnit(this.size, this.durationInSecond) - perUnit(other.size, other.durationInSecond)
+				);
 			default:
 				return super.compareTo(other, comparison);
 		}
