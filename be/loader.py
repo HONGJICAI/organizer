@@ -291,9 +291,12 @@ def scan(exts: List[str], pathes: List[str]):
 
     Files match ``exts`` case-insensitively (``.ZIP`` counts). The empty
     string in ``exts`` stands for folder comics: a folder with no subfolders
-    that holds at least one page image. It never matches extensionless files
-    (``README``, ``.DS_Store``). Hidden files, such as macOS ``._name.zip``
-    metadata, are skipped.
+    that holds page images and nothing else (hidden files and OS metadata
+    aside, see ``comicfile.non_page_files``), like an image album. A folder
+    of images with other files, such as archives moved in later, is left out
+    with a warning. It never matches extensionless files (``README``,
+    ``.DS_Store``). Hidden files, such as macOS ``._name.zip`` metadata, are
+    skipped.
     """
     ret = []
     scan_dir = "" in exts
@@ -301,7 +304,16 @@ def scan(exts: List[str], pathes: List[str]):
     for path in pathes:
         for root, dirs, files in os.walk(path):
             if scan_dir and not dirs and any(comicfile.is_page(f) for f in files):
-                ret.append(root)
+                others = comicfile.non_page_files(files)
+                if not others:
+                    ret.append(root)
+                else:
+                    more = f" and {len(others) - 3} more" if len(others) > 3 else ""
+                    progress.add_issue(
+                        "comic", "warning", root,
+                        f"Not a folder comic: it holds {', '.join(others[:3])}{more} besides page images. "
+                        "Move those out, or the images into a subfolder (a comic recorded here shows as missing)",
+                    )
             for file in files:
                 if file.startswith("."):
                     continue
