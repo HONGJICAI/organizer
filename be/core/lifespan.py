@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     # Saved page numbers (custom covers, progress) follow page order changes
     # first, so the scan and any cover run after it see current numbers.
     import pageorder
-    print(f"Page order remap {pageorder.submit()[1]}", flush=True)
+    print(f"Page order remap {pageorder.submit_if_needed()}", flush=True)
 
     from api.system import start_scan
     print(f"Startup scan {start_scan('all')}", flush=True)

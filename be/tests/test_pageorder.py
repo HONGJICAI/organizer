@@ -128,6 +128,19 @@ class TestJob:
         assert (job["kind"], job["state"]) == ("page-order", "succeeded")
         assert job["progress"] == "2 / 2, 1 unreadable (retried on next start)"
 
+    def test_startup_queues_only_when_needed(self, client, session):
+        insert_comic(session, 1)
+        assert pageorder.submit_if_needed() == "not needed"
+        assert jobs.wait_idle(10)
+        assert client.get("/api/system/jobs").json()["history"] == []
+
+        insert_comic(session, 2, pageOrder=0)
+        insert_comic(session, 3, pageOrder=0)
+        assert pageorder.submit_if_needed() == "started for 2 comic(s)"
+        assert jobs.wait_idle(10)
+        assert pageorder.outdated_count() == 0
+        assert pageorder.submit_if_needed() == "not needed"
+
     def test_skips_a_record_deleted_meanwhile(self, client, session):
         insert_comic(session, 1, pageOrder=0, coverPosition=1)
         real_get = Session.get

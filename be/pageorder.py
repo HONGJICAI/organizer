@@ -7,8 +7,8 @@ were saved under. ``ComicEntity.pageOrder`` records that order's version
 records get their numbers remapped by page name: the page that was number 5 in
 the old order is looked up in the new one.
 
-A queued ``page-order`` job, submitted at startup ahead of the scan, remaps every
-older record it can open; records it can't (an unmounted drive) wait for the
+A queued ``page-order`` job, submitted at startup ahead of the scan when any
+record is outdated, remaps every older record it can open; records it can't (an unmounted drive) wait for the
 next start. Code that saves or uses a page number on a record opened anyway
 (progress, set cover, cover runs) calls ``migrate`` first, so a record the job
 hasn't reached yet never mixes two orders.
@@ -17,7 +17,7 @@ The cover image itself already shows the right page and isn't rewritten.
 """
 from typing import Callable, Dict, List
 
-from sqlmodel import Session, select, update
+from sqlmodel import Session, func, select, update
 
 import comicfile
 import db
@@ -112,6 +112,25 @@ def run(job: Job) -> None:
 def submit():
     """Queue the remap; returns ``(job, status)`` like ``jobs.submit``."""
     return jobs.submit(KIND)
+
+
+def outdated_count() -> int:
+    """Records whose page numbers still count in an older order."""
+    with Session(db.engine) as session:
+        return session.exec(
+            select(func.count()).select_from(ComicEntity)
+            .where(ComicEntity.pageOrder < comicfile.PAGE_ORDER_VERSION)
+        ).one()
+
+
+def submit_if_needed() -> str:
+    """Queue the remap only when some record needs it, so a library that is
+    up to date doesn't get an empty job in the history on every start.
+    Returns the queue status, or ``"not needed"``."""
+    count = outdated_count()
+    if not count:
+        return "not needed"
+    return f"{submit()[1]} for {count} comic(s)"
 
 
 jobs.register(KIND, run)
