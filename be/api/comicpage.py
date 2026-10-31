@@ -13,6 +13,7 @@ import comicfile
 import db
 import events
 import global_data
+import pageorder
 from core.exceptions import abort
 from loader import ComicLoader
 from model import ComicEntity
@@ -120,6 +121,9 @@ class ComicPageCBV:
         comic = self.__get(id)
         if comic.page > 0 and req.position > comic.page:
             abort(400, "Position out of range")
+        # The reader counts pages in the current order; bring the cover's
+        # number along before the record is marked as using it.
+        pageorder.migrate_from_file(comic)
         comic.lastViewedPosition = req.position
         comic.lastViewedTime = datetime.datetime.now()
         self.session.add(comic)
@@ -174,6 +178,7 @@ class ComicPageCBV:
             abort(404, "Comic file not found")
         if ComicLoader.gen_comic_cover(comic, cf, True, page - 1 if page > 0 else 0):
             rsp = Response(status_code=200)
+            pageorder.migrate(comic, cf.namelist)
             comic.coverPosition = page
             # Bump the cover version so the frontend's cache-busting URL changes.
             comic.entityUpdateTime = datetime.datetime.now()

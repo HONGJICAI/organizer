@@ -430,7 +430,7 @@ export type JobCancelResponse = {
 
 export type JobInfo = {
     id: number;
-    kind: 'scan' | 'covers' | 'move' | 'zip';
+    kind: 'scan' | 'covers' | 'move' | 'zip' | 'page-order';
     params: {
         [key: string]: string;
     };

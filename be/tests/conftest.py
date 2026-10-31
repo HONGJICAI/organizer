@@ -164,14 +164,18 @@ def engine_and_client(tmp_path, monkeypatch):
     from main import app
     app.dependency_overrides[db.get_session] = get_session_override
 
-    # Suppress only the boot scan: lifespan queues it via api.system.start_scan,
-    # so swap that for a no-op while the client starts, then restore it so
-    # tests calling /api/system/scan get the genuine implementation.
+    # Suppress only the boot jobs: lifespan queues the scan via
+    # api.system.start_scan and the page order remap via
+    # pageorder.submit_if_needed, so
+    # swap those for no-ops while the client starts, then restore them so
+    # tests calling them get the genuine implementation.
     import api.system as _sys_mod
-    real_start_scan = _sys_mod.start_scan
+    import pageorder
+    real_start_scan, real_page_order = _sys_mod.start_scan, pageorder.submit_if_needed
     _sys_mod.start_scan = lambda *a, **kw: "started"
+    pageorder.submit_if_needed = lambda: "not needed"
     with TestClient(app) as c:
-        _sys_mod.start_scan = real_start_scan
+        _sys_mod.start_scan, pageorder.submit_if_needed = real_start_scan, real_page_order
         yield test_engine, c
 
     app.dependency_overrides.clear()

@@ -207,7 +207,7 @@ class CoverRegenResponse(BaseModel):
 
 class JobInfo(BaseModel):
     id: int
-    kind: Literal["scan", "covers", "move", "zip"]
+    kind: Literal["scan", "covers", "move", "zip", "page-order"]
     params: Dict[str, str]
     state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     created_at: datetime

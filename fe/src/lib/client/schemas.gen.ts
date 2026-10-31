@@ -1090,7 +1090,7 @@ export const JobInfoSchema = {
         },
         kind: {
             type: 'string',
-            enum: ['scan', 'covers', 'move', 'zip'],
+            enum: ['scan', 'covers', 'move', 'zip', 'page-order'],
             title: 'Kind'
         },
         params: {

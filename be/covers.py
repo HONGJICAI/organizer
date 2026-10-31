@@ -31,6 +31,7 @@ from sqlmodel import Session, select
 import comicfile
 import db
 import global_data
+import pageorder
 from loader import ComicLoader
 from model import ComicEntity, FileEntity
 
@@ -174,8 +175,6 @@ def _refresh(comic: ComicEntity):
     None when the file couldn't be opened. The last item says the comic was
     handled: its cover was rewritten or removed.
     """
-    # coverPosition is the 1-based page picked as cover; 0 means the first page.
-    candidates = list(dict.fromkeys([max(comic.coverPosition - 1, 0), 0]))
     reason = "No page could be rendered as a cover"
     found = None
     try:
@@ -186,6 +185,9 @@ def _refresh(comic: ComicEntity):
             with cf:
                 file = FileEntity.from_path(pathlib.Path(comic.path))
                 found = Found(cf.page, file.size, file.updateTime)
+                pageorder.migrate(comic, cf.namelist)
+                # coverPosition is the 1-based page picked as cover; 0 means the first page.
+                candidates = list(dict.fromkeys([max(comic.coverPosition - 1, 0), 0]))
                 if any(ComicLoader.gen_comic_cover(comic, cf, True, p) for p in candidates):
                     return comic, None, found, True
     except Exception as e:
