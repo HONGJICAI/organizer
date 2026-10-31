@@ -28,6 +28,9 @@ def _ensure_column(table: str, column: str, ddl: str) -> None:
 # Backfill columns added after the initial schema (see model.FileEntity).
 _ensure_column("comicentity", "missing", "missing BOOLEAN NOT NULL DEFAULT 0")
 _ensure_column("videoentity", "missing", "missing BOOLEAN NOT NULL DEFAULT 0")
+# Existing records count pages in the order before versioning (0); pageorder.py
+# remaps them.
+_ensure_column("comicentity", "pageOrder", "pageOrder INTEGER NOT NULL DEFAULT 0")
 
 
 def get_session() -> Generator[Session, None, None]:

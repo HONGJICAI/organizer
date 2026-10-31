@@ -5,6 +5,8 @@ from pydantic import NaiveDatetime
 from sqlalchemy import JSON, Column, Index
 from sqlmodel import Field, SQLModel
 
+from comicfile import PAGE_ORDER_VERSION
+
 
 def get_dir_size(path: pathlib.Path) -> int:
     size = 0
@@ -51,6 +53,10 @@ class FileEntity(SQLModel):
 
 class ComicEntity(FileEntity, table=True):
     page: int = Field(default=0)
+    # comicfile.PAGE_ORDER_VERSION that coverPosition and lastViewedPosition
+    # count pages in; pageorder.py brings older records up to date. Internal
+    # bookkeeping, so it's left out of API responses.
+    pageOrder: int = Field(default=PAGE_ORDER_VERSION, exclude=True)
 
     @staticmethod
     def from_path(path: pathlib.Path, id: int):

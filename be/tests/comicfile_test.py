@@ -179,6 +179,20 @@ def test_order_pages_name_sort_when_not_all_numeric():
     assert comicfile.order_pages(["b.jpg", "a.PNG", "c.txt"]) == ["a.PNG", "b.jpg"]
 
 
+def test_order_pages_compares_names_without_extension():
+    names = ["001 (2).jpg", "001.jpg", "000-00.jpg", "000.png"]
+    assert comicfile.order_pages(names) == ["000.png", "000-00.jpg", "001.jpg", "001 (2).jpg"]
+
+
+def test_order_pages_natural_and_case_insensitive():
+    names = ["p10.jpg", "P2.jpg", "p1.jpg", "v10/1.jpg", "v2/1.jpg"]
+    assert comicfile.order_pages(names) == ["p1.jpg", "P2.jpg", "p10.jpg", "v2/1.jpg", "v10/1.jpg"]
+
+
+def test_order_pages_ties_keep_a_stable_order():
+    assert comicfile.order_pages(["01.jpg", "1.jpg", "1.png"]) == ["1.jpg", "1.png", "01.jpg"]
+
+
 def test_comicfile_zip_nested_folder_with_macos_metadata(tmp_path):
     path = tmp_path / "mac.zip"
     jpeg = make_jpeg_bytes()

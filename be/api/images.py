@@ -27,7 +27,7 @@ from sqlmodel import Session, select
 import db
 import global_data
 from api.comicpage import PAGE_CACHE_CONTROL, page_etag, resize_to_width
-from comicfile import allowImgs, image_info, mediaTypes
+from comicfile import allowImgs, image_info, mediaTypes, page_sort_key
 from core.exceptions import abort
 from core.scan_progress import progress
 from loader import ComicLoader
@@ -61,7 +61,7 @@ def _image_files(folder_path: str) -> List[str]:
             ]
     except OSError:
         return []
-    return sorted(names)
+    return sorted(names, key=page_sort_key)
 
 
 def _album_id(path: str, taken: Dict[int, ImageEntity]) -> int:

@@ -210,6 +210,7 @@
 			return `Move ${job.params.count ?? ''} comic(s) → ${folder}`;
 		}
 		if (job.kind === 'zip') return `Convert ${job.params.count ?? ''} comic(s) to zip`;
+		if (job.kind === 'page-order') return 'Update saved page numbers to the new page order';
 		return `Covers (${coverModes[job.params.mode] ?? job.params.mode})`;
 	}
 

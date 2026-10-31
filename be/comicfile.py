@@ -2,6 +2,7 @@ from abc import abstractmethod
 import io
 import os
 import pathlib
+import re
 import threading
 from typing import List
 import zipfile
@@ -53,12 +54,55 @@ def image_info(fp) -> dict:
         return {"width": img.width, "height": img.height, "format": img.format}
 
 
-def order_pages(names) -> List[str]:
-    """Page entries in reading order.
+# Version of the page order below. Records hold page numbers (custom cover,
+# reading progress) in the order they were saved under; pageorder.py remaps
+# them when this changes, so bump it with every change to order_pages().
+PAGE_ORDER_VERSION = 1
 
-    Sorted by name; when every file name (ignoring its folder) is a number,
-    sorted numerically within each folder instead, so ``Title/2.jpg`` comes
-    before ``Title/10.jpg``.
+_DIGITS = re.compile(r"(\d+)")
+
+
+def _natural(text: str) -> tuple:
+    """Sort key that compares runs of digits by value: ``2`` < ``10``.
+
+    ``re.split`` alternates text and digits starting with text, so two keys
+    hold the same kind at every index. Case is ignored; numbers equal in
+    value keep the shorter spelling first (``1`` before ``01``).
+    """
+    parts = _DIGITS.split(text.casefold())
+    return tuple(
+        (int(p), len(p)) if i % 2 else p for i, p in enumerate(parts)
+    )
+
+
+def page_sort_key(name: str) -> tuple:
+    """Reading-order key of one page entry.
+
+    Folders first, then the name without its extension, so ``000.jpg``
+    comes before ``000-00.jpg`` and ``001 (2).jpg`` (comparing whole names
+    put the extension's dot after ``-``, space and brackets). The extension
+    and the exact name only break ties.
+    """
+    folder, base = os.path.split(name.replace("\\", "/"))
+    stem, ext = os.path.splitext(base)
+    return (
+        tuple(_natural(part) for part in folder.split("/") if part),
+        _natural(stem),
+        ext.lower(),
+        name,
+    )
+
+
+def order_pages(names) -> List[str]:
+    """Page entries in reading order (see ``page_sort_key``)."""
+    return sorted((n for n in names if is_page(n)), key=page_sort_key)
+
+
+def legacy_order_pages(names) -> List[str]:
+    """The order before PAGE_ORDER_VERSION 1, kept to remap saved page numbers.
+
+    Sorted by whole name; when every file name (ignoring its folder) is a
+    number, sorted numerically within each folder instead.
     """
     pages = [n for n in names if is_page(n)]
     split = [os.path.split(n.replace("\\", "/")) for n in pages]
@@ -66,6 +110,7 @@ def order_pages(names) -> List[str]:
         order = sorted(range(len(pages)), key=lambda i: (split[i][0], int(os.path.splitext(split[i][1])[0])))
         return [pages[i] for i in order]
     return sorted(pages)
+
 
 mediaTypes = {
     ".jpg": "image/jpeg",
