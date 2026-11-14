@@ -24,7 +24,6 @@
 	} from '$lib/model.svelte';
 	import { separateFilename } from '$lib/utility';
 	import {
-		ApplicationWeb,
 		Book,
 		Edit,
 		Favorite,
@@ -373,12 +372,6 @@
 			on:click={() => {
 				openInNewTab(`/${mediaType}/${file.id}`);
 			}}
-			disabled={file.archived}
-		/>
-		<Button
-			icon={ApplicationWeb}
-			iconDescription="External Application"
-			href={`honeyview:${file.path}`}
 			disabled={file.archived}
 		/>
 		{#if adapter.convertToComic}
