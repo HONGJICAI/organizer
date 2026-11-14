@@ -41,6 +41,8 @@
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { newTabHref, openInNewTab } from '$lib/links';
+	import type { ReaderOpen } from '$lib/reader';
+	import { resumePage } from '$lib/readingProgress';
 	import TagLink from './TagLink.svelte';
 	import { kindColor, kindLabel, tagKinds, type TagKind } from '$lib/tagIndex';
 	import { loadTags, setTagKind, tagState } from '$lib/tags.svelte';
@@ -52,7 +54,8 @@
 		onClickTag?: (tag: string) => void;
 		/** Set to make tags links to this page in a new tab instead of calling onClickTag. */
 		tagHref?: (tag: string) => string;
-		onClickPrimaryButton?: () => void;
+		// Open the reader, at a page and/or in the page overview.
+		onClickPrimaryButton?: (open: ReaderOpen) => void;
 		onFileDeleted?: (permenant: boolean) => void;
 	}
 
@@ -198,6 +201,20 @@
 		}
 		deletingPageIdx = -1;
 	}
+
+	// Footer: [Overview | Read] for comics and albums, picking up where they
+	// were left as [Overview | Continue p.N]; videos just play.
+	const hasPages = $derived(file.type !== MediaType.Video);
+	const resume = $derived(resumePage(file));
+	const openText = $derived(!hasPages ? 'Play' : resume !== null ? `Continue p.${resume}` : 'Read');
+	const openDisabled = $derived(
+		sendingDelete ||
+			sendingRefresh ||
+			sendingFavorite ||
+			sendingRename ||
+			sendingConvert ||
+			file.archived
+	);
 </script>
 
 <Modal
@@ -206,14 +223,14 @@
 	modalHeading={`${file.name}`}
 	size="sm"
 	on:close={() => onCloseModal()}
-	primaryButtonText="Go!"
-	primaryButtonDisabled={sendingDelete ||
-		sendingRefresh ||
-		sendingFavorite ||
-		sendingRename ||
-		sendingConvert ||
-		file.archived}
-	on:click:button--primary={() => onClickPrimaryButton()}
+	primaryButtonText={openText}
+	primaryButtonDisabled={openDisabled}
+	secondaryButtonText={hasPages ? 'Overview' : undefined}
+	on:click:button--primary={() => onClickPrimaryButton({ page: resume ?? 1 })}
+	on:click:button--secondary={() => {
+		// Carbon can't disable the secondary button; ignore it while the primary is.
+		if (!openDisabled) onClickPrimaryButton({ page: resume ?? 1, overview: true });
+	}}
 >
 	<div style="display: flex; align-items: center;">
 		<TextInput labelText="Name" bind:value={newname} inline readonly={!editingName} />

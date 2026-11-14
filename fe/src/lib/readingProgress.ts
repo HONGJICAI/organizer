@@ -47,3 +47,12 @@ export function createProgressReporter(
 		}
 	};
 }
+
+// The page to pick up a partly read comic or album at, or null to start from
+// page 1: never opened, still on page 1, finished (resuming on the last page
+// shows nothing new) or without pages (videos don't record progress).
+export function resumePage(file: MediaFile): number | null {
+	const pages = 'page' in file && typeof file.page === 'number' ? file.page : 0;
+	if (!file.viewed || pages < 1) return null;
+	return file.lastViewed > 1 && file.lastViewed < pages ? file.lastViewed : null;
+}

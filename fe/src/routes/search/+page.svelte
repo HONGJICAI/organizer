@@ -6,6 +6,7 @@
 	import { Search, SkeletonPlaceholder } from 'carbon-components-svelte';
 	import FileCard from '$lib/components/FileCard.svelte';
 	import FileDetailModal from '$lib/components/FileDetailModal.svelte';
+	import { readerPath } from '$lib/reader';
 	import type { MediaFile } from '$lib/model.svelte';
 	import { includeAllKeywords } from '$lib/utility';
 
@@ -120,9 +121,9 @@
 		onCloseModal={() => history.back()}
 		bind:file={selectedFile}
 		onClickTag={(tag) => runSearch(tag)}
-		onClickPrimaryButton={() => {
+		onClickPrimaryButton={(open) => {
 			if (selectedFile) {
-				openInNewTab(`/${selectedFile.type}/${selectedFile.id}`);
+				openInNewTab(readerPath(selectedFile.type, selectedFile.id, open));
 			}
 		}}
 		onFileDeleted={(permenant = false) => {

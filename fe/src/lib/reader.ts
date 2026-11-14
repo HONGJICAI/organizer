@@ -61,3 +61,19 @@ export function viewModeClass(mode: ViewMode): string {
 			return 'fit-to-contain';
 	}
 }
+
+// How the reader opens from the detail dialog: at a page, and/or straight into
+// the page overview.
+export interface ReaderOpen {
+	page?: number;
+	overview?: boolean;
+}
+
+/** The stand-alone reader route for a file, opened as `open` says. */
+export function readerPath(type: MediaType, id: number, open: ReaderOpen = {}): string {
+	const params = new URLSearchParams();
+	if (open.page && open.page > 1) params.set('page', String(open.page));
+	if (open.overview) params.set('overview', '1');
+	const query = params.toString();
+	return `/${type}/${id}${query ? `?${query}` : ''}`;
+}
