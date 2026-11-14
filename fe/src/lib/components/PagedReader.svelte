@@ -9,6 +9,8 @@
 	} from 'carbon-components-svelte';
 	import { Renew, ImageReference } from 'carbon-icons-svelte';
 	import { onMount } from 'svelte';
+	import { innerWidth } from 'svelte/reactivity/window';
+	import { paginationShown } from '$lib/pagination';
 	import {
 		Comic,
 		Image,
@@ -408,7 +410,7 @@
 </div>
 
 <div class="bottom-bar">
-	<PaginationNav bind:page total={maxPage} loop={true} shown={5} />
+	<PaginationNav bind:page total={maxPage} shown={paginationShown(innerWidth.current)} />
 </div>
 
 <style>
