@@ -16,10 +16,11 @@ const basicOptions = [
 	{ value: MediaFileComparison.ViewedDate, text: 'ViewDate' }
 ];
 
-const comicOptions = [
-	{ value: ComicComparison.Page, text: 'Page' },
-	{ value: ComicComparison.SizePerPage, text: 'SizePerPage' }
-];
+const pageOption = { value: ComicComparison.Page, text: 'Page' };
+
+const comicOptions = [pageOption, { value: ComicComparison.SizePerPage, text: 'SizePerPage' }];
+
+const imageOptions = [pageOption];
 
 const videoOptions = [
 	{ value: VideoComparison.Duration, text: 'Duration' },
@@ -34,6 +35,8 @@ export function getOrderByOptions(
 			return [...basicOptions, ...comicOptions];
 		case MediaType.Video:
 			return [...basicOptions, ...videoOptions];
+		case MediaType.Image:
+			return [...basicOptions, ...imageOptions];
 		default:
 			return basicOptions;
 	}
