@@ -228,6 +228,13 @@ export class SuccessNotification extends Notification {
 	}
 }
 
+export class InfoNotification extends Notification {
+	constructor(options: NotificationOptions & { title: string }) {
+		options = { ...{ timeout: 2000 }, ...options };
+		super('info', options.title, options.subtitle, options.timeout);
+	}
+}
+
 export class ErrorNotification extends Notification {
 	constructor(options: NotificationOptions) {
 		super('error', `Error`, options?.subtitle, options?.timeout);
