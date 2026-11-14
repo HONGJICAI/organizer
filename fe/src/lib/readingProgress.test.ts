@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { updateProgress } = vi.hoisted(() => ({ updateProgress: vi.fn() }));
 vi.mock('$lib/mediaAdapters', () => ({ adapters: { comic: { updateProgress } } }));
 
-import { createProgressReporter } from './readingProgress';
+import { createProgressReporter, resumePage } from './readingProgress';
 import type { MediaFile } from './model.svelte';
 
 const file = () => ({ id: 1, type: 'comic', lastViewed: 0 }) as unknown as MediaFile;
@@ -54,5 +54,26 @@ describe('createProgressReporter', () => {
 		r.schedule(5);
 		vi.advanceTimersByTime(1000);
 		expect(updateProgress).toHaveBeenCalledWith(1, 5);
+	});
+});
+
+describe('resumePage', () => {
+	const make = (fields: Record<string, unknown>) =>
+		({ viewed: true, lastViewed: 0, ...fields }) as unknown as MediaFile;
+
+	it('resumes a partly read comic', () => {
+		expect(resumePage(make({ page: 42, lastViewed: 22 }))).toBe(22);
+	});
+
+	it('starts over when never opened, on page 1 or finished', () => {
+		expect(resumePage(make({ page: 42, lastViewed: 22, viewed: false }))).toBeNull();
+		expect(resumePage(make({ page: 42, lastViewed: 1 }))).toBeNull();
+		expect(resumePage(make({ page: 42, lastViewed: 42 }))).toBeNull();
+		expect(resumePage(make({ page: 42, lastViewed: 50 }))).toBeNull();
+	});
+
+	it('has nothing to resume without pages (videos)', () => {
+		expect(resumePage(make({ lastViewed: 22 }))).toBeNull();
+		expect(resumePage(make({ page: 0, lastViewed: 22 }))).toBeNull();
 	});
 });

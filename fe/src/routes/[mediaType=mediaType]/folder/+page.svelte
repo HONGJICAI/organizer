@@ -195,8 +195,13 @@
 			onCloseModal={() => history.back()}
 			bind:file={selectedFile}
 			tagHref={(tag) => `/${mediaType}?q=${encodeURIComponent(tag)}`}
-			onClickPrimaryButton={() => {
-				pushState('', { showFileDetailModal: false, showFileContent: true });
+			onClickPrimaryButton={(open) => {
+				pushState('', {
+					showFileDetailModal: false,
+					showFileContent: true,
+					readerPage: open.page,
+					readerOverview: open.overview
+				});
 			}}
 			onFileDeleted={(permenant = false) => {
 				if (!selectedFile) {
@@ -212,7 +217,12 @@
 	{/if}
 </div>
 {#if page.state.showFileContent && selectedFile}
-	<FileContent file={selectedFile} onClose={() => history.back()} />
+	<FileContent
+		file={selectedFile}
+		initialPage={page.state.readerPage ?? 1}
+		initialOverview={page.state.readerOverview ?? false}
+		onClose={() => history.back()}
+	/>
 {/if}
 
 <style>

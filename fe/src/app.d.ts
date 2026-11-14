@@ -9,6 +9,10 @@ declare global {
 		interface PageState {
 			showFileDetailModal?: boolean;
 			showFileContent?: boolean;
+			// How the reader opens from the detail dialog: at this page, and/or
+			// straight into the page overview.
+			readerPage?: number;
+			readerOverview?: boolean;
 		}
 	}
 }
