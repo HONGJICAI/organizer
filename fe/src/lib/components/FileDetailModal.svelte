@@ -45,7 +45,6 @@
 	import { newTabHref, openInNewTab } from '$lib/links';
 	import type { ReaderOpen } from '$lib/reader';
 	import { resumePage } from '$lib/readingProgress';
-	import { onMount } from 'svelte';
 	import TagLink from './TagLink.svelte';
 	import { kindColor, kindLabel, tagKinds, type TagKind } from '$lib/tagIndex';
 	import { loadTags, setTagKind, tagState } from '$lib/tags.svelte';
@@ -170,6 +169,7 @@
 	}
 
 	let loadingDetail = $state(false);
+	let detailFailed = $state(false);
 	let detail = $state<{ pageDetails: PageDetail[] }>();
 	let pagesOpen = $state(false);
 	const fileWithPages = $derived('page' in file ? (file as { page: number }) : null);
@@ -181,18 +181,24 @@
 		return parts.join(' · ');
 	}
 	async function onClickDetail() {
-		if (!adapter.detail) return;
+		if (!adapter.detail || loadingDetail) return;
 		loadingDetail = true;
+		detailFailed = false;
 		const result = await adapter.detail(file.id);
 		if (result.error !== undefined) {
+			detailFailed = true;
 			addNotification(new ErrorNotification({ subtitle: result.error }));
 		} else {
 			detail = result.data;
 		}
 		loadingDetail = false;
 	}
-	onMount(() => {
-		if (!file.archived && adapter.detail) onClickDetail();
+	// Load the list the first time it's expanded: listing a folder comic or an
+	// album stats every file, which adds up on a network share, and the list is
+	// rarely needed. Collapsed, the header shows the page count the file
+	// already has.
+	$effect(() => {
+		if (pagesOpen && !detail && !detailFailed) onClickDetail();
 	});
 
 	// Index of the album page currently being deleted (-1 when idle), so only its
@@ -232,11 +238,17 @@
 	);
 </script>
 
+<!-- Opens with the Read/Continue button focused, so Enter starts reading.
+     Carbon's submit-on-Enter is off: it fires the primary action on any Enter in
+     the dialog, which with the button focused opened the reader twice, and made
+     Enter in the name field open it too. Enter now acts on what has focus. -->
 <Modal
 	bind:open
 	modalLabel={`ID: ${file.id}`}
 	modalHeading={`${file.name}`}
 	size="sm"
+	selectorPrimaryFocus=".bx--modal-footer .bx--btn--primary"
+	shouldSubmitOnEnter={false}
 	on:close={() => onCloseModal()}
 	primaryButtonText={openText}
 	primaryButtonDisabled={openDisabled}
@@ -404,9 +416,8 @@
 	</div>
 	<TextArea labelText="Path" value={file.path} readonly rows={3} />
 	{#if !file.archived && adapter.detail}
-		<!-- Page list, collapsed so long comics don't stretch the dialog. It loads as
-		     the dialog opens (one cheap request: names and sizes come from the
-		     archive's directory), so the header can show the totals. -->
+		<!-- Page list, collapsed so long comics don't stretch the dialog. It loads
+		     when first expanded; the header then adds the totals. -->
 		<Accordion class="pages" size="sm">
 			<AccordionItem bind:open={pagesOpen}>
 				<svelte:fragment slot="title">
@@ -418,8 +429,10 @@
 							{:else if loadingDetail}
 								{pageCountText(fileWithPages?.page ?? 0)}
 								<InlineLoading class="pages-loading" />
-							{:else}
+							{:else if detailFailed}
 								{pageCountText(fileWithPages?.page ?? 0)} · couldn't load the list
+							{:else}
+								{pageCountText(fileWithPages?.page ?? 0)}
 							{/if}
 						</span>
 					</span>
@@ -474,7 +487,7 @@
 							{/if}
 						</svelte:fragment>
 					</DataTable>
-				{:else if !loadingDetail}
+				{:else if detailFailed && !loadingDetail}
 					<Button kind="ghost" size="small" icon={Renew} on:click={() => onClickDetail()}
 						>Retry</Button
 					>
