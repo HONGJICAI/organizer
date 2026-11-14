@@ -9,6 +9,7 @@
 		HeaderPanelLink,
 		SkipToContent,
 		Content,
+		Modal,
 		ToastNotification
 	} from 'carbon-components-svelte';
 	import SettingsAdjust from 'carbon-icons-svelte/lib/SettingsAdjust.svelte';
@@ -25,6 +26,8 @@
 	import { notifications } from '$lib/state.svelte';
 	import { setPrivateReading, viewerState } from '$lib/viewerState.svelte';
 	import { authState } from '$lib/auth.svelte';
+	import { onMount } from 'svelte';
+	import { activeHotkeys, keyLabel, setHotkeyHelp, type Hotkey } from '$lib/hotkeys';
 	import Logout from 'carbon-icons-svelte/lib/Logout.svelte';
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -32,6 +35,18 @@
 
 	let { children }: Props = $props();
 	let openSettingsModal = $state(false);
+
+	// '?' lists the shortcuts that work right now (the list page's, the
+	// reader's or the overview's, whichever is on top).
+	let helpOpen = $state(false);
+	let helpKeys: Hotkey[] = $state([]);
+	onMount(() => {
+		setHotkeyHelp(() => {
+			helpKeys = activeHotkeys();
+			helpOpen = true;
+		});
+		return () => setHotkeyHelp(null);
+	});
 	let isOpen2 = $state(false);
 
 	function onClickSettings(): void {
@@ -176,6 +191,19 @@
 	<SettingsModal open={openSettingsModal} onCloseModal={() => (openSettingsModal = false)} />
 {/if}
 
+<Modal passiveModal bind:open={helpOpen} modalHeading="Keyboard shortcuts" size="sm">
+	<dl class="shortcuts">
+		{#each helpKeys as hotkey (hotkey.keys.join())}
+			<dt>
+				{#each hotkey.keys as key (key)}<kbd>{keyLabel(key)}</kbd>{/each}
+			</dt>
+			<dd>{hotkey.description}</dd>
+		{/each}
+		<dt><kbd>?</kbd></dt>
+		<dd>Show this list</dd>
+	</dl>
+</Modal>
+
 {#if notifications.length > 0}
 	<div class="notification-stack">
 		{#each notifications as notification}
@@ -195,6 +223,33 @@
 {/if}
 
 <style>
+	.shortcuts {
+		display: grid;
+		grid-template-columns: max-content 1fr;
+		gap: 0.5rem 1rem;
+		align-items: baseline;
+	}
+
+	.shortcuts dt {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+	}
+
+	.shortcuts kbd {
+		min-width: 1.5rem;
+		padding: 0.125rem 0.375rem;
+		border: 1px solid var(--cds-ui-04, #6f6f6f);
+		border-radius: 0.25rem;
+		font-family: inherit;
+		font-size: 0.75rem;
+		text-align: center;
+	}
+
+	.shortcuts dd {
+		font-size: 0.875rem;
+	}
+
 	.viewer-center {
 		position: absolute;
 		left: 50%;

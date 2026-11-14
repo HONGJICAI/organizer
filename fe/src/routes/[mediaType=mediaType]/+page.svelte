@@ -42,6 +42,8 @@
 	import { flip } from 'svelte/animate';
 	import FileCard from '$lib/components/FileCard.svelte';
 	import { getOrderByOptions } from './orderByOptions.js';
+	import { onMount } from 'svelte';
+	import { registerListHotkeys } from '$lib/listHotkeys';
 
 	let { data } = $props();
 	let dataLoaded = $state(false);
@@ -90,9 +92,7 @@
 		category = c ? parseInt(c) : Category.Home;
 	});
 
-	const syncStateToUrl = () => {
-		goto(`?q=${searchStr}&p=${curPage}&c=${category}`);
-	};
+	const syncStateToUrl = () => goto(`?q=${searchStr}&p=${curPage}&c=${category}`);
 
 	// The tag sidebar links to the same list searched for the tag (middle-click opens a new tab).
 	const tagHref = (tag: string) => `?q=${encodeURIComponent(tag)}&p=1&c=${category}`;
@@ -117,7 +117,7 @@
 	};
 	const onPageChange = (page: number) => {
 		curPage = page;
-		syncStateToUrl();
+		return syncStateToUrl();
 	};
 	const onRefresh = () => {
 		refreshMediaFiles(page.params.mediaType);
@@ -126,11 +126,26 @@
 		openedThisSession = new Set();
 		invalidate(`app:media:${page.params.mediaType}`);
 	};
-	const onCategoryChange = (e: CustomEvent<number>) => {
-		category = e.detail;
+	const setCategory = (c: Category) => {
+		category = c;
 		curPage = 1;
 		syncStateToUrl();
 	};
+	const onCategoryChange = (e: CustomEvent<number>) => setCategory(e.detail);
+
+	let searchInput: HTMLInputElement | null = $state(null);
+	onMount(() =>
+		registerListHotkeys({
+			page: () => curPage,
+			totalPages: () => Math.max(1, Math.ceil(searchFiles.length / pageSize)),
+			goToPage: onPageChange,
+			search: () => searchInput,
+			categories: {
+				names: ['Home', 'Favorites', 'Recent', 'Archive'],
+				select: (i) => setCategory(i as Category)
+			}
+		})
+	);
 	const onPaginationChange = (newpage?: number, newpageSize?: number) => {
 		if (newpage && newpage !== curPage) {
 			onPageChange?.(newpage);
@@ -265,7 +280,18 @@
 			/>
 		</div>
 		<div class="search-bar">
-			<Search bind:value={searchStr} on:blur={() => onSearchBlur(searchStr)} />
+			<!-- Esc clears the search (Carbon) and leaves the box, so arrows move cards again. -->
+			<Search
+				bind:value={searchStr}
+				bind:ref={searchInput}
+				on:blur={() => onSearchBlur(searchStr)}
+				on:keydown={(e) => {
+					if (e.key !== 'Escape') return;
+					// Clear it here too: the blur below reads searchStr before Carbon's own clear lands.
+					searchStr = '';
+					searchInput?.blur();
+				}}
+			/>
 			<Button
 				icon={SearchIcon}
 				iconDescription="Search everywhere"

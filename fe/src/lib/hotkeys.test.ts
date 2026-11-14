@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { dispatch, Layer, registerHotkeys } from './hotkeys';
+import {
+	activeHotkeys,
+	dispatch,
+	keyLabel,
+	Layer,
+	registerHotkeys,
+	setHotkeyHelp
+} from './hotkeys';
 
 function key(k: string, init: Partial<KeyboardEvent> = {}) {
 	const e = {
@@ -27,6 +34,7 @@ function register(layer: Layer, keys: string[], opts: { repeat?: boolean } = {})
 
 afterEach(() => {
 	cleanups.splice(0).forEach((c) => c());
+	setHotkeyHelp(null);
 	vi.unstubAllGlobals();
 });
 
@@ -146,5 +154,61 @@ describe('registerHotkeys', () => {
 		// Unregistering twice is harmless.
 		b();
 		expect(remove).toHaveBeenCalledOnce();
+	});
+});
+
+describe('keys the focused element handles', () => {
+	it('are never claimed', () => {
+		cleanups.push(
+			registerHotkeys(Layer.Page, [{ keys: ['Enter'], description: 'Open the selected item' }])
+		);
+		const e = key('Enter');
+		expect(dispatch(e)).toBe(false);
+		expect(e.preventDefault).not.toHaveBeenCalled();
+	});
+});
+
+describe('help', () => {
+	it("opens on '?' wherever shortcuts are registered", () => {
+		register(Layer.Reader, ['ArrowLeft']);
+		const help = vi.fn();
+		setHotkeyHelp(help);
+		const e = key('?', { shiftKey: true });
+		expect(dispatch(e)).toBe(true);
+		expect(help).toHaveBeenCalledOnce();
+		expect(e.preventDefault).toHaveBeenCalled();
+	});
+
+	it("leaves '?' alone without a help handler", () => {
+		register(Layer.Reader, ['ArrowLeft']);
+		expect(dispatch(key('?'))).toBe(false);
+	});
+
+	it('lists the top layer only, latest scope first, each key once', () => {
+		register(Layer.Page, ['ArrowLeft', '/']);
+		cleanups.push(
+			registerHotkeys(Layer.Reader, [
+				{ keys: ['ArrowLeft', 'ArrowRight'], description: 'turn', run: vi.fn() }
+			]),
+			registerHotkeys(Layer.Reader, [
+				{ keys: ['Escape'], description: 'close', run: vi.fn() },
+				{ keys: ['ArrowLeft'], description: 'shadowed', run: vi.fn() }
+			])
+		);
+		const list = activeHotkeys();
+		expect(list.map((h) => h.description)).toEqual(['close', 'shadowed', 'turn']);
+		expect(list.find((h) => h.description === 'turn')?.keys).toEqual(['ArrowRight']);
+		expect(list.some((h) => h.keys.includes('/'))).toBe(false);
+	});
+
+	it('is empty with nothing registered', () => {
+		expect(activeHotkeys()).toEqual([]);
+	});
+
+	it('shows keys readably', () => {
+		expect(keyLabel('ArrowLeft')).toBe('←');
+		expect(keyLabel('PageDown')).toBe('PgDn');
+		expect(keyLabel('Escape')).toBe('Esc');
+		expect(keyLabel('o')).toBe('o');
 	});
 });
