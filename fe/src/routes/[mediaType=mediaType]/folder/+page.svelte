@@ -9,6 +9,8 @@
 	} from 'carbon-components-svelte';
 	import { Folder, Home } from 'carbon-icons-svelte';
 	import { goto, pushState } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { registerListHotkeys } from '$lib/listHotkeys';
 	import { page } from '$app/state';
 	import { MediaFile, MediaFileComparison, type MediaFileComparisonType } from '$lib/model.svelte';
 	import { buildFolderTree, findNode, collectFiles, nodeKey } from '$lib/folderTree';
@@ -92,6 +94,13 @@
 	const goToDir = (key: string) => {
 		goto(`?dir=${encodeURIComponent(key)}`);
 	};
+	onMount(() =>
+		registerListHotkeys({
+			page: () => curPage,
+			totalPages: () => Math.max(1, Math.ceil(displayFiles.length / pageSize)),
+			goToPage: (p) => goto(`?dir=${encodeURIComponent(dir)}&p=${p}`)
+		})
+	);
 	const onPaginationChange = (newPage?: number, newPageSize?: number) => {
 		pageSize = newPageSize ?? pageSize;
 		if (newPage && newPage !== curPage) {
@@ -152,7 +161,12 @@
 		{#if subfolders.length > 0}
 			<div class="folder-grid">
 				{#each subfolders as folder (folder.name)}
-					<button class="folder-tile" title={folder.name} onclick={() => goToDir(nodeKey(folder))}>
+					<button
+						class="folder-tile"
+						data-nav-item
+						title={folder.name}
+						onclick={() => goToDir(nodeKey(folder))}
+					>
 						<Folder size={20} />
 						<span class="folder-name">{folder.name}</span>
 						<span class="folder-meta">

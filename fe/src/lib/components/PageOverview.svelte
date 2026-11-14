@@ -223,6 +223,7 @@
 				run: () => moveFocus(columns()),
 				repeat: true
 			},
+			{ keys: ['Enter'], description: 'Open the selected page' },
 			{
 				keys: ['PageUp'],
 				description: 'Previous screen, then previous batch',

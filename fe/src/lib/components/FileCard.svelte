@@ -36,7 +36,24 @@
 	}
 </script>
 
-<svelte:element this={href ? 'a' : 'div'} class="card" {href}>
+<!-- Focusable so the list's arrow keys can select it; Enter or Space opens it
+     (a link card opens natively). -->
+<svelte:element
+	this={href ? 'a' : 'div'}
+	class="card"
+	{href}
+	data-nav-item
+	role={href ? undefined : 'button'}
+	tabindex={href ? undefined : 0}
+	aria-label={file.name}
+	onkeydown={(e: KeyboardEvent) => {
+		if (href || e.target !== e.currentTarget) return;
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			onClickFile(file);
+		}
+	}}
+>
 	<Tile bind:light on:click={() => onClickFile(file)}>
 		<!-- size 0 means "not computed yet" (image folders skip it at scan time) -->
 		{#if showType}
@@ -90,6 +107,11 @@
 		:root {
 			--card-width: 48vw;
 		}
+	}
+
+	.card:focus-visible {
+		outline: 2px solid var(--cds-focus, #ffffff);
+		outline-offset: 2px;
 	}
 
 	.card {

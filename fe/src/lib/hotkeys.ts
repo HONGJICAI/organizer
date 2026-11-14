@@ -18,7 +18,9 @@ export interface Hotkey {
 	keys: string[];
 	// What it does, for a shortcut list.
 	description: string;
-	run: (e: KeyboardEvent) => void;
+	// Omitted for keys the focused element handles itself (Enter on a card or
+	// button): listed in the shortcut help, never claimed here.
+	run?: (e: KeyboardEvent) => void;
 	// Fire on auto-repeat while held. Off by default: holding a key would
 	// otherwise queue dozens of actions (e.g. close the reader, then the next
 	// Escape lands on whatever is underneath).
@@ -60,12 +62,17 @@ export function dispatch(e: KeyboardEvent): boolean {
 	if (e.ctrlKey || e.metaKey || e.altKey) return false;
 	if (isEditable(e.target) || modalOpen()) return false;
 	if (scopes.length === 0) return false;
+	if (e.key === '?' && helpHandler) {
+		e.preventDefault();
+		if (!e.repeat) helpHandler();
+		return true;
+	}
 	const top = Math.max(...scopes.map((s) => s.layer));
 	for (let i = scopes.length - 1; i >= 0; i--) {
 		const scope = scopes[i];
 		if (scope.layer !== top) continue;
-		const hotkey = scope.hotkeys.find((h) => h.keys.includes(e.key));
-		if (!hotkey) continue;
+		const hotkey = scope.hotkeys.find((h) => h.run && h.keys.includes(e.key));
+		if (!hotkey?.run) continue;
 		e.preventDefault();
 		if (!e.repeat || hotkey.repeat) hotkey.run(e);
 		return true;
@@ -92,4 +99,46 @@ export function registerHotkeys(layer: Layer, hotkeys: Hotkey[]): () => void {
 		if (scopes.length === 0 && typeof window !== 'undefined')
 			window.removeEventListener('keydown', onKeydown);
 	};
+}
+
+// '?' shows the shortcut list, wherever shortcuts are registered. The layout
+// sets the handler that opens it.
+let helpHandler: (() => void) | null = null;
+
+export function setHotkeyHelp(handler: (() => void) | null) {
+	helpHandler = handler;
+}
+
+// The shortcuts that currently react (the top layer's, latest scope first),
+// for the help list. A key listed twice keeps its first description.
+export function activeHotkeys(): Hotkey[] {
+	if (scopes.length === 0) return [];
+	const top = Math.max(...scopes.map((s) => s.layer));
+	const seen = new Set<string>();
+	const list: Hotkey[] = [];
+	for (const scope of scopes.filter((s) => s.layer === top).reverse()) {
+		for (const hotkey of scope.hotkeys) {
+			const keys = hotkey.keys.filter((k) => !seen.has(k));
+			if (keys.length === 0) continue;
+			keys.forEach((k) => seen.add(k));
+			list.push({ ...hotkey, keys });
+		}
+	}
+	return list;
+}
+
+const KEY_LABELS: Record<string, string> = {
+	ArrowLeft: '←',
+	ArrowRight: '→',
+	ArrowUp: '↑',
+	ArrowDown: '↓',
+	Escape: 'Esc',
+	PageUp: 'PgUp',
+	PageDown: 'PgDn',
+	' ': 'Space'
+};
+
+/** How a KeyboardEvent.key value is shown in the shortcut list. */
+export function keyLabel(key: string): string {
+	return KEY_LABELS[key] ?? key;
 }
