@@ -2,7 +2,9 @@
 	import { Button } from 'carbon-components-svelte';
 	import { Renew, ImageReference } from 'carbon-icons-svelte';
 	import { onMount, tick } from 'svelte';
-	import { Comic, Image, MediaType } from '$lib/model.svelte';
+	import { Comic, Image, InfoNotification, MediaType } from '$lib/model.svelte';
+	import { addNotificationOnce } from '$lib/state.svelte';
+	import { Layer, registerHotkeys } from '$lib/hotkeys';
 	import { pageApiUrl } from '$lib/reader';
 	import { viewerState } from '$lib/viewerState.svelte';
 
@@ -28,35 +30,52 @@
 		window.scrollTo(0, 0);
 		// Let the overview grid jump us to a page.
 		viewerState.gotoPage = (p: number) => jumpToPage(p);
+		// No End key: page heights are unknown until images load, so a long jump
+		// lands short once the pages above it load (overview jumps do too).
+		return registerHotkeys(Layer.Reader, [
+			{ keys: ['ArrowLeft'], description: 'Previous page', run: () => stepPage(-1), repeat: true },
+			{ keys: ['ArrowRight'], description: 'Next page', run: () => stepPage(1), repeat: true },
+			{ keys: ['Home'], description: 'First page', run: () => jumpToPage(1, false) }
+		]);
 	});
 
-	// Sentinel observer — load 5 more pages when the user nears the bottom. The
-	// guard lives inside the callback (not the effect body) so loadedCount/maxPage
-	// are not reactive dependencies here: the effect only re-runs when the
-	// sentinel appears/disappears, preventing a cascade where every batch fires
-	// immediately.
-	$effect(() => {
-		if (!sentinel) return;
-		const obs = new IntersectionObserver(
-			([entry]) => {
-				if (entry.isIntersecting && loadedCount < maxPage) {
-					loadedCount = Math.min(loadedCount + 5, maxPage);
-				}
-			},
-			{ rootMargin: '400px' }
-		);
-		obs.observe(sentinel);
-		return () => obs.disconnect();
-	});
+	// Keys step by what is on screen, not by the page counter: the counter is
+	// whichever page crosses the middle of the viewport, which is ambiguous when
+	// pages are short. Next is the first page starting below the top edge,
+	// previous the last one starting above it. Jumps are instant, so a held key
+	// doesn't aim at pages a smooth scroll hasn't reached yet.
+	function pageElements(): HTMLElement[] {
+		return Array.from(document.querySelectorAll<HTMLElement>('.fit-to-scroll [data-page]'));
+	}
 
-	async function jumpToPage(target: number) {
+	async function stepPage(delta: 1 | -1) {
+		const els = pageElements();
+		if (delta < 0) {
+			const prev = els.filter((el) => el.getBoundingClientRect().top < -1).pop();
+			prev?.scrollIntoView({ behavior: 'instant' });
+			return;
+		}
+		const root = document.documentElement;
+		const atBottom = window.scrollY + window.innerHeight >= root.scrollHeight - 2;
+		const next = els.find((el) => el.getBoundingClientRect().top > 1);
+		if (loadedCount >= maxPage && (atBottom || !next)) {
+			addNotificationOnce(
+				new InfoNotification({ title: 'Last page', subtitle: `${file.name} has ${maxPage} pages` })
+			);
+			return;
+		}
+		if (next) next.scrollIntoView({ behavior: 'instant' });
+		else await jumpToPage(loadedCount + 1, false);
+	}
+
+	async function jumpToPage(target: number, smooth = true) {
 		const p = Math.max(1, Math.min(target, maxPage));
 		if (loadedCount < p) {
 			loadedCount = p;
 			await tick();
 		}
 		const el = document.querySelector(`[data-page="${p}"]`);
-		el?.scrollIntoView({ behavior: 'smooth' });
+		el?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
 	}
 
 	// Action: track which page is in the center of the viewport.

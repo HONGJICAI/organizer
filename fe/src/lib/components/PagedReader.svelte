@@ -9,11 +9,18 @@
 	} from 'carbon-components-svelte';
 	import { Renew, ImageReference } from 'carbon-icons-svelte';
 	import { onMount } from 'svelte';
-	import { Comic, Image, ErrorNotification, SuccessNotification } from '$lib/model.svelte';
+	import {
+		Comic,
+		Image,
+		ErrorNotification,
+		InfoNotification,
+		SuccessNotification
+	} from '$lib/model.svelte';
 	import { config, ViewMode } from '$lib/config.svelte';
 	import { pageApiUrl, viewModeClass } from '$lib/reader';
 	import { viewerState } from '$lib/viewerState.svelte';
-	import { addNotification } from '$lib/state.svelte';
+	import { addNotification, addNotificationOnce } from '$lib/state.svelte';
+	import { Layer, registerHotkeys } from '$lib/hotkeys';
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import { adapters } from '$lib/mediaAdapters';
 
@@ -73,46 +80,52 @@
 
 	onMount(() => {
 		window.scrollTo(0, 0);
-		window.addEventListener('keydown', handleKeydown);
 		// Let the overview grid jump us to a page.
 		viewerState.gotoPage = (p: number) => {
 			loading = true;
 			page = Math.min(Math.max(p, 1), maxPage);
 			window.scrollTo(0, 0);
 		};
-		return () => window.removeEventListener('keydown', handleKeydown);
+		return registerHotkeys(Layer.Reader, [
+			{ keys: ['ArrowLeft'], description: 'Previous page', run: goPrevPage, repeat: true },
+			{ keys: ['ArrowRight'], description: 'Next page', run: goNextPage, repeat: true },
+			{ keys: ['Home'], description: 'First page', run: () => goToPage(1) },
+			{ keys: ['End'], description: 'Last page', run: () => goToPage(maxPage) }
+		]);
 	});
 
-	const preloadImageAsync = (url: string) => {
-		new Promise((resolve, reject) => {
-			const img = new window.Image();
-			img.onload = resolve;
-			img.onerror = reject;
-			img.src = url;
-		});
+	// Warm the cache for the next page. Fire and forget: a failed preload just
+	// means the page loads (or shows its error) when it's turned to. There's no
+	// next page on the last one.
+	const preloadImage = (url: string) => {
+		if (!url) return;
+		const img = new window.Image();
+		img.src = url;
 	};
 
-	const handleKeydown = (event: KeyboardEvent) => {
-		if (event.key === 'ArrowLeft') {
-			page = (page - 1 + maxPage) % maxPage;
-		} else if (event.key === 'ArrowRight') {
-			page = (page + 1) % maxPage;
+	// Every page turn (clicks, taps, keys) goes through here. Turning past either
+	// end stays put; past the last page it says so, since a reader at the end
+	// may expect the next page to be there.
+	function goToPage(target: number) {
+		if (loading || maxPage < 1) return;
+		const next = Math.min(Math.max(target, 1), maxPage);
+		if (next === page) {
+			if (target > maxPage)
+				addNotificationOnce(
+					new InfoNotification({
+						title: 'Last page',
+						subtitle: `${file.name} has ${maxPage} pages`
+					})
+				);
+			return;
 		}
-	};
-
-	const goNextPage = () => {
-		if (loading) return;
 		loading = true;
-		page = Math.min(page + 1, maxPage);
+		page = next;
 		window.scrollTo(0, 0);
-	};
+	}
 
-	const goPrevPage = () => {
-		if (loading) return;
-		loading = true;
-		page = Math.max(page - 1, 1);
-		window.scrollTo(0, 0);
-	};
+	const goNextPage = () => goToPage(page + 1);
+	const goPrevPage = () => goToPage(page - 1);
 
 	// Navigate by left/right half. Used directly by the non-zoomable modes; the
 	// zoomable mode routes taps through here only when not zoomed in.
@@ -355,7 +368,7 @@
 			style={`transform: translate3d(${tx}px, ${ty}px, 0) scale(${scale}); transition: ${gesturing ? 'none' : 'transform 0.12s ease-out'};`}
 			onload={() => {
 				loading = false;
-				preloadImageAsync(nextUrl);
+				preloadImage(nextUrl);
 			}}
 			onerror={() => {
 				loading = false;

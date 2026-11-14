@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { MediaType, Comic, Image, Video, type MediaFile } from '$lib/model.svelte';
-	import { config, ViewMode } from '$lib/config.svelte';
+	import { config, savePrefs, ViewMode } from '$lib/config.svelte';
+	import { Layer, registerHotkeys, type Hotkey } from '$lib/hotkeys';
 	import { viewerState } from '$lib/viewerState.svelte';
 	import { createProgressReporter } from '$lib/readingProgress';
 	import { adapters } from '$lib/mediaAdapters';
@@ -73,6 +74,31 @@
 
 	// Only paged/scroll media (comics, image albums) have a page overview.
 	const hasPages = $derived(file.type !== MediaType.Video);
+
+	// Keys for the whole reader; page turning lives in the readers themselves.
+	onMount(() => {
+		const hotkeys: Hotkey[] = [
+			{ keys: ['Escape'], description: 'Close the reader', run: () => viewerState.onClose() }
+		];
+		if (hasPages) {
+			hotkeys.push(
+				{
+					keys: ['o'],
+					description: 'Open the page overview',
+					run: () => (viewerState.overviewOpen = true)
+				},
+				{
+					keys: ['i'],
+					description: 'Show or hide page info',
+					run: () => {
+						config.showPageInfo = !config.showPageInfo;
+						savePrefs();
+					}
+				}
+			);
+		}
+		return registerHotkeys(Layer.Reader, hotkeys);
+	});
 
 	onMount(() => {
 		viewerState.active = true;

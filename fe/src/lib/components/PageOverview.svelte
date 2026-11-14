@@ -4,6 +4,7 @@
 	import { Comic, Image } from '$lib/model.svelte';
 	import { pageApiUrl } from '$lib/reader';
 	import { viewerState } from '$lib/viewerState.svelte';
+	import { Layer, registerHotkeys } from '$lib/hotkeys';
 	import {
 		OVERVIEW_SIZES,
 		batchOf,
@@ -71,9 +72,10 @@
 		void level;
 		if (!grid) return;
 		if (pendingAnchor !== null) {
-			grid
-				.querySelector(`.overview-tile[data-page="${pendingAnchor}"]`)
-				?.scrollIntoView({ block: 'center' });
+			const tile = grid.querySelector<HTMLElement>(`.overview-tile[data-page="${pendingAnchor}"]`);
+			tile?.scrollIntoView({ block: 'center' });
+			// Focus it too, so arrow keys and Enter start from there.
+			tile?.focus({ preventScroll: true });
 			pendingAnchor = null;
 		} else {
 			grid.scrollTo({ top: 0 });
@@ -109,20 +111,44 @@
 		batch = batchOf(anchor, OVERVIEW_SIZES[next].batch);
 	}
 
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			onClose();
+	const tiles = () =>
+		grid ? Array.from(grid.querySelectorAll<HTMLElement>('.overview-tile')) : [];
+
+	// Columns the grid currently lays out, for moving a row up or down.
+	function columns(): number {
+		if (!grid) return 1;
+		return getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+	}
+
+	// Arrow keys move the focused tile (Enter opens it, as the tiles are
+	// buttons). Moving past the batch's first or last tile goes on into the
+	// neighbouring batch.
+	function moveFocus(delta: number) {
+		const list = tiles();
+		const from = list.indexOf(document.activeElement as HTMLElement);
+		if (from === -1) {
+			// Nothing focused yet: the first press picks the reader's page.
+			const current = list.find((t) => Number(t.dataset.page) === viewerState.page) ?? list[0];
+			current?.focus();
 			return;
 		}
-		// Ctrl/Cmd +/- stays the browser's zoom.
-		if (e.ctrlKey || e.metaKey || e.altKey) return;
-		if (e.key === '+' || e.key === '=') {
-			e.preventDefault();
-			setLevel(level + 1);
-		} else if (e.key === '-' || e.key === '_') {
-			e.preventDefault();
-			setLevel(level - 1);
+		const target = pages[from] + delta;
+		if (target < 1 || target > maxPage) return;
+		const inBatch = list[from + delta];
+		if (inBatch) {
+			inBatch.focus();
+			inBatch.scrollIntoView({ block: 'nearest' });
+		} else {
+			pendingAnchor = target;
+			batch = batchOf(target, batchSize);
 		}
+	}
+
+	function stepBatch(delta: number) {
+		const next = Math.min(Math.max(batch + delta, 1), totalBatches);
+		if (next === batch) return;
+		pendingAnchor = (next - 1) * batchSize + 1;
+		batch = next;
 	}
 
 	// Ctrl + wheel (and trackpad pinch, which browsers report as one) resizes
@@ -146,12 +172,32 @@
 			pixelRatio = window.devicePixelRatio || 1;
 		};
 		measure();
-		window.addEventListener('keydown', handleKeydown);
+		const unregister = registerHotkeys(Layer.Overlay, [
+			{ keys: ['Escape', 'o'], description: 'Close the overview', run: onClose },
+			{ keys: ['+', '='], description: 'Larger thumbnails', run: () => setLevel(level + 1) },
+			{ keys: ['-', '_'], description: 'Smaller thumbnails', run: () => setLevel(level - 1) },
+			{ keys: ['ArrowLeft'], description: 'Previous page', run: () => moveFocus(-1), repeat: true },
+			{ keys: ['ArrowRight'], description: 'Next page', run: () => moveFocus(1), repeat: true },
+			{
+				keys: ['ArrowUp'],
+				description: 'Page above',
+				run: () => moveFocus(-columns()),
+				repeat: true
+			},
+			{
+				keys: ['ArrowDown'],
+				description: 'Page below',
+				run: () => moveFocus(columns()),
+				repeat: true
+			},
+			{ keys: ['PageUp'], description: 'Previous batch', run: () => stepBatch(-1) },
+			{ keys: ['PageDown'], description: 'Next batch', run: () => stepBatch(1) }
+		]);
 		window.addEventListener('resize', measure);
 		// Not passive: preventDefault must stop the browser zoom.
 		grid?.addEventListener('wheel', handleWheel, { passive: false });
 		return () => {
-			window.removeEventListener('keydown', handleKeydown);
+			unregister();
 			window.removeEventListener('resize', measure);
 			grid?.removeEventListener('wheel', handleWheel);
 		};
@@ -309,6 +355,11 @@
 		background: var(--cds-ui-01, #262626);
 		cursor: pointer;
 		overflow: hidden;
+	}
+
+	.overview-tile:focus-visible {
+		outline: 2px solid var(--cds-focus, #ffffff);
+		outline-offset: 2px;
 	}
 
 	.overview-tile.current {

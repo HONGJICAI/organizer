@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { ProgressBar } from 'carbon-components-svelte';
 	import { config, ViewMode } from '$lib/config.svelte';
 	import { viewModeClass } from '$lib/reader';
@@ -15,6 +16,10 @@
 
 	const src = $derived(`${config.apiServer}/videos/${file.id}`);
 	const viewClass = $derived(viewModeClass(config.viewMode as ViewMode));
+
+	// Focus the player so the browser's own video keys (space to pause, arrows
+	// to seek) work without clicking it first.
+	onMount(() => videoTarget?.focus({ preventScroll: true }));
 </script>
 
 <div class="viewer-root">
