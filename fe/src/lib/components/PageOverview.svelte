@@ -144,11 +144,42 @@
 		}
 	}
 
-	function stepBatch(delta: number) {
-		const next = Math.min(Math.max(batch + delta, 1), totalBatches);
-		if (next === batch) return;
-		pendingAnchor = (next - 1) * batchSize + 1;
-		batch = next;
+	// PageDown/PageUp page through the batch a screen at a time, like a page
+	// scroll, and only move to the next/previous batch from its bottom/top, so
+	// paging from start to end shows every tile. The screen moves to the first
+	// row cut off at the bottom (or, going back, puts the last row cut off at the
+	// top just above the bottom edge), and focus goes to that row so arrows and
+	// Enter carry on from what is in view.
+	function pageScroll(delta: 1 | -1) {
+		if (!grid) return;
+		const atEdge =
+			delta > 0 ? grid.scrollTop >= grid.scrollHeight - grid.clientHeight - 2 : grid.scrollTop <= 2;
+		if (atEdge) {
+			const next = batch + delta;
+			if (next < 1 || next > totalBatches) return;
+			// Centering a first/last tile clamps to the top/bottom of its batch.
+			pendingAnchor = delta > 0 ? (next - 1) * batchSize + 1 : Math.min(next * batchSize, maxPage);
+			batch = next;
+			return;
+		}
+		const box = grid.getBoundingClientRect();
+		const style = getComputedStyle(grid);
+		const padTop = parseFloat(style.paddingTop) || 0;
+		const padBottom = parseFloat(style.paddingBottom) || 0;
+		const list = tiles();
+		let target: HTMLElement | undefined;
+		let by: number;
+		if (delta > 0) {
+			target = list.find((t) => t.getBoundingClientRect().bottom > box.bottom - padBottom + 1);
+			by = target ? target.getBoundingClientRect().top - box.top - padTop : grid.clientHeight;
+		} else {
+			target = list.filter((t) => t.getBoundingClientRect().top < box.top + padTop - 1).pop();
+			by = target
+				? target.getBoundingClientRect().bottom - (box.bottom - padBottom)
+				: -grid.clientHeight;
+		}
+		grid.scrollBy({ top: by, behavior: 'instant' });
+		target?.focus({ preventScroll: true });
 	}
 
 	// Ctrl + wheel (and trackpad pinch, which browsers report as one) resizes
@@ -190,8 +221,18 @@
 				run: () => moveFocus(columns()),
 				repeat: true
 			},
-			{ keys: ['PageUp'], description: 'Previous batch', run: () => stepBatch(-1) },
-			{ keys: ['PageDown'], description: 'Next batch', run: () => stepBatch(1) }
+			{
+				keys: ['PageUp'],
+				description: 'Previous screen, then previous batch',
+				run: () => pageScroll(-1),
+				repeat: true
+			},
+			{
+				keys: ['PageDown'],
+				description: 'Next screen, then next batch',
+				run: () => pageScroll(1),
+				repeat: true
+			}
 		]);
 		window.addEventListener('resize', measure);
 		// Not passive: preventDefault must stop the browser zoom.
