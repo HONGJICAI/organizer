@@ -21,7 +21,6 @@ interface Config {
 	// Default thumbnail size level of the page overview (0 = S … 3 = XL). The
 	// overview's own size control changes it for the session only.
 	overviewSize: number;
-	OrderByPosition: 'NextToSearchBar' | 'InFilterPanel';
 	DeviceType?: 'Desktop' | 'Mobile';
 }
 
@@ -32,7 +31,6 @@ const DefaultConfig: Config = {
 	pageWidthCustom: 1080,
 	showPageInfo: false,
 	overviewSize: 0,
-	OrderByPosition: 'NextToSearchBar',
 	DeviceType: 'Desktop'
 };
 
@@ -43,7 +41,6 @@ const DesktopConfig: Config = {
 const MobileConfig: Config = {
 	...DefaultConfig,
 	viewMode: ViewMode.Width,
-	OrderByPosition: 'InFilterPanel',
 	DeviceType: 'Mobile'
 };
 

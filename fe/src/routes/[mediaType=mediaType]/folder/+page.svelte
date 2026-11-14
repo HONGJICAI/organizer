@@ -1,15 +1,10 @@
 <script lang="ts">
-	import {
-		Breadcrumb,
-		BreadcrumbItem,
-		Select,
-		SelectItem,
-		SkeletonPlaceholder,
-		Toggle
-	} from 'carbon-components-svelte';
+	import { Breadcrumb, BreadcrumbItem, SkeletonPlaceholder } from 'carbon-components-svelte';
 	import { Folder, Home } from 'carbon-icons-svelte';
 	import { goto, pushState } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import SortBar from '$lib/components/SortBar.svelte';
+	import { effectiveOrderBy, loadListPrefs, saveListPrefs } from '$lib/listPrefs';
 	import { registerListHotkeys } from '$lib/listHotkeys';
 	import { page } from '$app/state';
 	import { MediaFile, MediaFileComparison, type MediaFileComparisonType } from '$lib/model.svelte';
@@ -46,12 +41,36 @@
 	});
 
 	let mediaType = $derived(page.params.mediaType);
-	let includeSub = $state(false);
 	let pageSize = $state(20);
 	let selectedFile: MediaFile | undefined = $state();
-	let orderBy = $state<MediaFileComparisonType>(MediaFileComparison.Name);
-	let reverse = $state(false);
+	// Sort and "include subfolders", remembered per media type for the session
+	// (listPrefs), separately from the media list, which sorts by date.
+	const FOLDER_DEFAULTS = {
+		orderBy: MediaFileComparison.Name,
+		reverse: false,
+		unreadOnly: false,
+		includeSub: false
+	};
+	const prefsKey = $derived(`${mediaType}.folder`);
+	let orderBy = $state<MediaFileComparisonType>(FOLDER_DEFAULTS.orderBy);
+	let reverse = $state(FOLDER_DEFAULTS.reverse);
+	let includeSub = $state(FOLDER_DEFAULTS.includeSub);
+	$effect(() => {
+		const prefs = loadListPrefs(prefsKey, FOLDER_DEFAULTS);
+		orderBy = prefs.orderBy as MediaFileComparisonType;
+		reverse = prefs.reverse;
+		includeSub = prefs.includeSub;
+	});
+	function updatePrefs(
+		change: Partial<{ orderBy: number; reverse: boolean; includeSub: boolean }>
+	) {
+		if (change.orderBy !== undefined) orderBy = change.orderBy as MediaFileComparisonType;
+		if (change.reverse !== undefined) reverse = change.reverse;
+		if (change.includeSub !== undefined) includeSub = change.includeSub;
+		saveListPrefs(prefsKey, { orderBy, reverse, unreadOnly: false, includeSub });
+	}
 	let orderByOptions = $derived(files[0] ? getOrderByOptions(files[0].type) : []);
+	const sortKey = $derived(effectiveOrderBy(orderBy, orderByOptions));
 
 	// archived files belong to the Archive view, not the folder browser
 	let visibleFiles = $derived(files.filter((f) => !f.archived));
@@ -77,7 +96,7 @@
 		const list = currentNode.children.slice();
 		list.sort((a, b) => {
 			const cmp =
-				orderBy === MediaFileComparison.Size
+				sortKey === MediaFileComparison.Size
 					? a.totalSize - b.totalSize
 					: a.name.localeCompare(b.name);
 			return reverse ? -cmp : cmp;
@@ -87,7 +106,7 @@
 	let displayFiles = $derived(
 		(includeSub ? collectFiles(currentNode) : currentNode.files)
 			.slice()
-			.sort((a, b) => (reverse ? -a.compareTo(b, orderBy) : a.compareTo(b, orderBy)))
+			.sort((a, b) => (reverse ? -a.compareTo(b, sortKey) : a.compareTo(b, sortKey)))
 	);
 	let filesInPage = $derived(displayFiles.slice((curPage - 1) * pageSize, curPage * pageSize));
 
@@ -131,24 +150,22 @@
 				</BreadcrumbItem>
 			{/each}
 		</Breadcrumb>
-		<div class="controls">
-			{#if orderByOptions.length > 0}
-				<Select size="sm" hideLabel bind:selected={orderBy}>
-					{#each orderByOptions as { value, text } (value)}
-						<SelectItem {value} {text} />
-					{/each}
-				</Select>
-			{/if}
-			<!-- No Off/On text: it overflows the label's width into the next toggle. -->
-			<Toggle labelText="Reverse" labelA="" labelB="" size="sm" bind:toggled={reverse} />
-			<Toggle
-				labelText="Include subfolders"
-				labelA=""
-				labelB=""
-				size="sm"
-				bind:toggled={includeSub}
+		{#if orderByOptions.length > 0}
+			<SortBar
+				options={orderByOptions}
+				orderBy={sortKey}
+				{reverse}
+				onOrderBy={(value) => updatePrefs({ orderBy: value })}
+				onReverse={(value) => updatePrefs({ reverse: value })}
+				checks={[
+					{
+						label: 'Include subfolders',
+						checked: includeSub,
+						onChange: (checked) => updatePrefs({ includeSub: checked })
+					}
+				]}
 			/>
-		</div>
+		{/if}
 	</div>
 
 	{#if !dataLoaded}
@@ -277,12 +294,6 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		vertical-align: bottom;
-	}
-	.controls {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.5rem 1rem;
 	}
 	/* Equal-width columns that fill the row, one column on a phone. */
 	.folder-grid {
