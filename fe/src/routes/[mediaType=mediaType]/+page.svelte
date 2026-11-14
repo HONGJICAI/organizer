@@ -19,10 +19,7 @@
 		Button,
 		SkeletonPlaceholder,
 		Search,
-		Select,
-		SelectItem,
-		Link,
-		Toggle
+		Link
 	} from 'carbon-components-svelte';
 	import {
 		Home,
@@ -30,18 +27,18 @@
 		RecentlyViewed,
 		UpdateNow,
 		Recycle,
-		Filter,
 		FolderMoveTo,
 		Search as SearchIcon
 	} from 'carbon-icons-svelte';
 	import { page } from '$app/state';
-	import { config } from '$lib/config.svelte.js';
 	import { refreshMediaFiles } from '$lib/mediaStore';
 	import PaginationContainer from '$lib/components/PaginationContainer.svelte';
-	import { slide, scale } from 'svelte/transition';
+	import { scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import FileCard from '$lib/components/FileCard.svelte';
 	import { getOrderByOptions } from './orderByOptions.js';
+	import SortBar from '$lib/components/SortBar.svelte';
+	import { effectiveOrderBy, loadListPrefs, saveListPrefs } from '$lib/listPrefs';
 	import { onMount } from 'svelte';
 	import { registerListHotkeys } from '$lib/listHotkeys';
 
@@ -80,9 +77,35 @@
 	// the moment the reader closes; keeping opened ids visible until the next
 	// refresh/reload avoids yanking the item the user just interacted with.
 	let openedThisSession = $state(new Set<number>());
-	let orderBy = $state<MediaFileComparisonType>(MediaFileComparison.UpdatedDate);
-	let reverse = $state(true);
-	let showFilter = $state(config.DeviceType === 'Desktop');
+	// Sort and filter, remembered per media type for the session (listPrefs).
+	const LIST_DEFAULTS = {
+		orderBy: MediaFileComparison.UpdatedDate,
+		reverse: true,
+		unreadOnly: false,
+		includeSub: false
+	};
+	let orderBy = $state<MediaFileComparisonType>(LIST_DEFAULTS.orderBy);
+	let reverse = $state(LIST_DEFAULTS.reverse);
+	// The same component serves every media type, so reload on a switch.
+	$effect(() => {
+		const prefs = loadListPrefs(page.params.mediaType ?? '', LIST_DEFAULTS);
+		orderBy = prefs.orderBy as MediaFileComparisonType;
+		reverse = prefs.reverse;
+		unreadOnly = prefs.unreadOnly;
+	});
+	function updatePrefs(
+		change: Partial<{ orderBy: number; reverse: boolean; unreadOnly: boolean }>
+	) {
+		if (change.orderBy !== undefined) orderBy = change.orderBy as MediaFileComparisonType;
+		if (change.reverse !== undefined) reverse = change.reverse;
+		if (change.unreadOnly !== undefined) unreadOnly = change.unreadOnly;
+		saveListPrefs(page.params.mediaType ?? '', {
+			orderBy,
+			reverse,
+			unreadOnly,
+			includeSub: false
+		});
+	}
 	// sync url state
 	$effect(() => {
 		searchStr = page.url.searchParams.get('q') ?? '';
@@ -220,12 +243,15 @@
 				return [{ value: MediaFileComparison.ViewedDate, text: 'ViewDate' }];
 		}
 	});
+	// Recent and Archive only sort by view date; the key chosen for Home and
+	// Favorites stays saved for when they're back.
+	const sortKey = $derived(effectiveOrderBy(orderBy, orderByOptions ?? []));
 	let searchFilesInCurrentPage = $derived(
 		(category === Category.Home && unreadOnly
 			? searchFiles.filter((f) => !f.viewed || openedThisSession.has(f.id))
 			: searchFiles
 		)
-			.sort((a, b) => (reverse ? -a.compareTo(b, orderBy) : a.compareTo(b, orderBy)))
+			.sort((a, b) => (reverse ? -a.compareTo(b, sortKey) : a.compareTo(b, sortKey)))
 			.slice((curPage - 1) * pageSize, curPage * pageSize)
 	);
 </script>
@@ -273,7 +299,9 @@
 				</Switch>
 			</ContentSwitcher>
 			<Button
-				iconDescription="refresh"
+				kind="ghost"
+				iconDescription="Refresh"
+				tooltipPosition="left"
 				icon={UpdateNow}
 				on:click={onRefresh}
 				disabled={!dataLoaded}
@@ -298,20 +326,25 @@
 				kind="ghost"
 				on:click={() => goto(`/search?q=${encodeURIComponent(searchStr)}`)}
 			/>
-			{#if config.OrderByPosition === 'NextToSearchBar' && orderByOptions}
-				<Select bind:selected={orderBy} labelText="Order By">
-					{#each orderByOptions as { value, text }}
-						<SelectItem {value} {text} />
-					{/each}
-				</Select>
-			{/if}
-			<Button
-				icon={Filter}
-				iconDescription="filter"
-				kind="ghost"
-				on:click={() => (showFilter = !showFilter)}
-			/>
 		</div>
+		{#if orderByOptions}
+			<SortBar
+				options={orderByOptions}
+				orderBy={sortKey}
+				{reverse}
+				onOrderBy={(value) => updatePrefs({ orderBy: value })}
+				onReverse={(value) => updatePrefs({ reverse: value })}
+				checks={category === Category.Home
+					? [
+							{
+								label: 'Unread only',
+								checked: unreadOnly,
+								onChange: (checked) => updatePrefs({ unreadOnly: checked })
+							}
+						]
+					: []}
+			/>
+		{/if}
 		{#if tagMatches > 0}
 			<p class="move-hint">
 				<FolderMoveTo size={16} />
@@ -330,21 +363,6 @@
 				{pageSize}
 				{onPaginationChange}
 			>
-				{#if showFilter}
-					<div transition:slide style="display: flex;gap:1rem; align-items:flex-end;">
-						{#if category === Category.Home}
-							<Toggle labelText="Unread Only" bind:toggled={unreadOnly} />
-						{/if}
-						{#if config.OrderByPosition === 'InFilterPanel' && orderByOptions}
-							<Select bind:selected={orderBy} labelText="Order By">
-								{#each orderByOptions as { value, text }}
-									<SelectItem {value} {text} />
-								{/each}
-							</Select>
-						{/if}
-						<Toggle labelText="Reverse Order" bind:toggled={reverse} />
-					</div>
-				{/if}
 				<div class="card-flexbox">
 					{#if searchFilesInCurrentPage.length === 0}
 						<div class="empty-state">
@@ -453,10 +471,6 @@
 		#right {
 			width: 100%;
 		}
-		.top-bar {
-			flex-wrap: wrap;
-			gap: 0.5rem;
-		}
 		.switch-label span {
 			display: none;
 		}
@@ -465,12 +479,17 @@
 		}
 	}
 
+	/* Tabs and the refresh button share one row on every screen; the tabs take
+	   the width that's left. */
 	.top-bar {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		overflow: hidden;
+		gap: 0.25rem;
 		margin-bottom: 0.25rem;
+	}
+	.top-bar :global(.bx--content-switcher) {
+		flex: 1;
+		min-width: 0;
 	}
 
 	.switch-label {
