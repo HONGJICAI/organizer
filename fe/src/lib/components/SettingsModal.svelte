@@ -7,6 +7,7 @@
 		probeServer,
 		SERVER_ERRORS
 	} from '$lib/connection.svelte';
+	import { clearSessionOverviewSize, OVERVIEW_SIZES } from '$lib/overviewSize';
 	import { ContentSwitcher, Modal, NumberInput, Switch, TextInput } from 'carbon-components-svelte';
 	import { FitToHeight, FitToScreen, FitToWidth, ArrowsVertical } from 'carbon-icons-svelte';
 
@@ -18,7 +19,8 @@
 	let apiServer = $state(config.apiServer),
 		viewMode = $state(config.viewMode),
 		pageWidthMode = $state(config.pageWidthMode),
-		pageWidthCustom = $state(config.pageWidthCustom);
+		pageWidthCustom = $state(config.pageWidthCustom),
+		overviewSize = $state(config.overviewSize);
 	let serverError = $state<string | null>(null);
 	let checking = $state(false);
 
@@ -48,6 +50,9 @@
 		config.viewMode = viewMode;
 		config.pageWidthMode = pageWidthMode;
 		config.pageWidthCustom = pageWidthCustom;
+		// A new default takes over from the size picked in the overview this session.
+		if (overviewSize !== config.overviewSize) clearSessionOverviewSize();
+		config.overviewSize = overviewSize;
 		savePrefs();
 		open = false;
 	}
@@ -114,9 +119,28 @@
 			/>
 		{/if}
 	</div>
+	<h>Page Overview Thumbnails</h>
+	<div>
+		<ContentSwitcher bind:selectedIndex={overviewSize}>
+			{#each OVERVIEW_SIZES as size (size.label)}
+				<Switch>
+					<div class="switch-label"><span>{size.label}</span></div>
+				</Switch>
+			{/each}
+		</ContentSwitcher>
+		<p class="setting-hint">
+			Default size. Changing it in the overview (or with +/−) lasts for this tab only.
+		</p>
+	</div>
 </Modal>
 
 <style>
+	.setting-hint {
+		margin-top: 0.5rem;
+		font-size: 0.75rem;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+
 	.switch-label {
 		display: flex;
 		align-items: center;

@@ -18,6 +18,9 @@ interface Config {
 	pageWidthCustom: number;
 	// Reader header shows the current page's file name and size.
 	showPageInfo: boolean;
+	// Default thumbnail size level of the page overview (0 = S … 3 = XL). The
+	// overview's own size control changes it for the session only.
+	overviewSize: number;
 	OrderByPosition: 'NextToSearchBar' | 'InFilterPanel';
 	DeviceType?: 'Desktop' | 'Mobile';
 }
@@ -28,6 +31,7 @@ const DefaultConfig: Config = {
 	pageWidthMode: PageWidthMode.Original,
 	pageWidthCustom: 1080,
 	showPageInfo: false,
+	overviewSize: 0,
 	OrderByPosition: 'NextToSearchBar',
 	DeviceType: 'Desktop'
 };
@@ -65,6 +69,13 @@ function loadPrefs(): Partial<Config> {
 	if (typeof saved.pageWidthCustom === 'number' && saved.pageWidthCustom > 0)
 		prefs.pageWidthCustom = saved.pageWidthCustom;
 	if (typeof saved.showPageInfo === 'boolean') prefs.showPageInfo = saved.showPageInfo;
+	if (
+		typeof saved.overviewSize === 'number' &&
+		Number.isInteger(saved.overviewSize) &&
+		saved.overviewSize >= 0 &&
+		saved.overviewSize <= 3
+	)
+		prefs.overviewSize = saved.overviewSize;
 	return prefs;
 }
 
@@ -76,7 +87,8 @@ export function savePrefs() {
 			viewMode: config.viewMode,
 			pageWidthMode: config.pageWidthMode,
 			pageWidthCustom: config.pageWidthCustom,
-			showPageInfo: config.showPageInfo
+			showPageInfo: config.showPageInfo,
+			overviewSize: config.overviewSize
 		})
 	);
 }
