@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { innerWidth } from 'svelte/reactivity/window';
+	import { paginationShown } from '$lib/pagination';
 	import { PaginationNav } from 'carbon-components-svelte';
 	import { Comic, Image } from '$lib/model.svelte';
 	import { pageApiUrl } from '$lib/reader';
@@ -286,7 +288,11 @@
 	</div>
 	{#if totalBatches > 1}
 		<div class="overview-pager">
-			<PaginationNav bind:page={batch} total={totalBatches} shown={5} />
+			<PaginationNav
+				bind:page={batch}
+				total={totalBatches}
+				shown={paginationShown(innerWidth.current)}
+			/>
 		</div>
 	{/if}
 </div>
