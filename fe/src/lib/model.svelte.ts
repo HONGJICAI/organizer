@@ -165,6 +165,12 @@ export class Image extends MediaFile {
 		super.update(json);
 		this.page = (json as ImageEntity).page ?? ImageEntitySchema.properties.page.default;
 	}
+	// Albums sort by page count like comics. Not by size per page: the scan
+	// leaves an album's size at 0 until it is refreshed by hand.
+	compareTo(other: Image, comparison: MediaFileComparisonType): number {
+		if (comparison === ComicComparison.Page) return this.page - other.page;
+		return super.compareTo(other, comparison);
+	}
 }
 export class Video extends MediaFile {
 	durationInSecond = $state(0);
