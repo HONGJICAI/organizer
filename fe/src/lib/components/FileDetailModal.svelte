@@ -1,5 +1,7 @@
 <script lang="ts">
 	import {
+		Accordion,
+		AccordionItem,
 		Button,
 		Checkbox,
 		ComposedModal,
@@ -29,6 +31,7 @@
 		Favorite,
 		FavoriteFilled,
 		NewTab,
+		Renew,
 		Save,
 		Search as SearchIcon,
 		TagEdit,
@@ -166,18 +169,37 @@
 	}
 
 	let loadingDetail = $state(false);
+	let detailFailed = $state(false);
 	let detail = $state<{ pageDetails: PageDetail[] }>();
+	let pagesOpen = $state(false);
+	const fileWithPages = $derived('page' in file ? (file as { page: number }) : null);
+	const pageCountText = (n: number) => `${n} page${n === 1 ? '' : 's'}`;
+	function pageSummary(pages: PageDetail[]): string {
+		const total = pages.reduce((sum, p) => sum + p.size, 0);
+		const parts = [pageCountText(pages.length), formatBytes(total)];
+		if (pages.length > 1) parts.push(`avg ${formatBytes(total / pages.length)}`);
+		return parts.join(' · ');
+	}
 	async function onClickDetail() {
-		if (!adapter.detail) return;
+		if (!adapter.detail || loadingDetail) return;
 		loadingDetail = true;
+		detailFailed = false;
 		const result = await adapter.detail(file.id);
 		if (result.error !== undefined) {
+			detailFailed = true;
 			addNotification(new ErrorNotification({ subtitle: result.error }));
 		} else {
 			detail = result.data;
 		}
 		loadingDetail = false;
 	}
+	// Load the list the first time it's expanded: listing a folder comic or an
+	// album stats every file, which adds up on a network share, and the list is
+	// rarely needed. Collapsed, the header shows the page count the file
+	// already has.
+	$effect(() => {
+		if (pagesOpen && !detail && !detailFailed) onClickDetail();
+	});
 
 	// Index of the album page currently being deleted (-1 when idle), so only its
 	// row shows a spinner and double-clicks are ignored.
@@ -216,11 +238,17 @@
 	);
 </script>
 
+<!-- Opens with the Read/Continue button focused, so Enter starts reading.
+     Carbon's submit-on-Enter is off: it fires the primary action on any Enter in
+     the dialog, which with the button focused opened the reader twice, and made
+     Enter in the name field open it too. Enter now acts on what has focus. -->
 <Modal
 	bind:open
 	modalLabel={`ID: ${file.id}`}
 	modalHeading={`${file.name}`}
 	size="sm"
+	selectorPrimaryFocus=".bx--modal-footer .bx--btn--primary"
+	shouldSubmitOnEnter={false}
 	on:close={() => onCloseModal()}
 	primaryButtonText={openText}
 	primaryButtonDisabled={openDisabled}
@@ -388,57 +416,84 @@
 	</div>
 	<TextArea labelText="Path" value={file.path} readonly rows={3} />
 	{#if !file.archived && adapter.detail}
-		<p>Details</p>
-		<DataTable
-			sortable
-			headers={[
-				{ key: 'page', value: '#' },
-				{ key: 'name', value: 'Name' },
-				{ key: 'size', value: 'Size' },
-				...(adapter.deletePage ? [{ key: 'actions', empty: true, sort: false as const }] : [])
-			]}
-			rows={detail?.pageDetails.map((page, idx) => ({
-				id: idx,
-				page: idx + 1,
-				name: page.name,
-				size: page.size
-			})) ?? []}
-		>
-			<svelte:fragment slot="cell" let:row let:cell>
-				{#if cell.key === 'size'}
-					{formatBytes(cell.value)}
-				{:else if cell.key === 'actions'}
-					{#if deletingPageIdx === row.id}
-						<InlineLoading />
-					{:else}
-						<Button
-							kind="danger-ghost"
-							size="small"
-							icon={TrashCan}
-							iconDescription="Delete image"
-							tooltipPosition="left"
-							disabled={deletingPageIdx !== -1}
-							on:click={() => onClickDeletePage(row.id)}
-						/>
-					{/if}
-				{:else}
-					{cell.value}
+		<!-- Page list, collapsed so long comics don't stretch the dialog. It loads
+		     when first expanded; the header then adds the totals. -->
+		<Accordion class="pages" size="sm">
+			<AccordionItem bind:open={pagesOpen}>
+				<svelte:fragment slot="title">
+					<span class="pages-title">
+						<span>Pages</span>
+						<span class="pages-summary">
+							{#if detail}
+								{pageSummary(detail.pageDetails)}
+							{:else if loadingDetail}
+								{pageCountText(fileWithPages?.page ?? 0)}
+								<InlineLoading class="pages-loading" />
+							{:else if detailFailed}
+								{pageCountText(fileWithPages?.page ?? 0)} · couldn't load the list
+							{:else}
+								{pageCountText(fileWithPages?.page ?? 0)}
+							{/if}
+						</span>
+					</span>
+				</svelte:fragment>
+				{#if detail}
+					<p class="pages-hint">Click a page to open it.</p>
+					<DataTable
+						size="short"
+						sortable
+						headers={[
+							{ key: 'page', value: '#', width: '3.5rem' },
+							{ key: 'name', value: 'Name' },
+							{ key: 'size', value: 'Size', width: '6.5rem' },
+							...(adapter.deletePage
+								? [{ key: 'actions', empty: true, sort: false as const, width: '3rem' }]
+								: [])
+						]}
+						rows={detail.pageDetails.map((page, idx) => ({
+							id: idx,
+							page: idx + 1,
+							name: page.name,
+							size: page.size
+						}))}
+						on:click:row={(e) => onClickPrimaryButton({ page: e.detail.page })}
+					>
+						<svelte:fragment slot="cell" let:row let:cell>
+							{#if cell.key === 'page'}
+								<span class="tabular">{cell.value}</span>
+							{:else if cell.key === 'name'}
+								<span class="page-name" title={cell.value}>{cell.value}</span>
+							{:else if cell.key === 'size'}
+								<span class="num">{formatBytes(cell.value)}</span>
+							{:else if cell.key === 'actions'}
+								{#if deletingPageIdx === row.id}
+									<InlineLoading />
+								{:else}
+									<Button
+										class="delete-page"
+										kind="ghost"
+										size="small"
+										icon={TrashCan}
+										iconDescription="Delete image"
+										tooltipPosition="left"
+										disabled={deletingPageIdx !== -1}
+										on:click={(e) => {
+											// Not a row click: that would open the reader.
+											e.stopPropagation();
+											onClickDeletePage(row.id);
+										}}
+									/>
+								{/if}
+							{/if}
+						</svelte:fragment>
+					</DataTable>
+				{:else if detailFailed && !loadingDetail}
+					<Button kind="ghost" size="small" icon={Renew} on:click={() => onClickDetail()}
+						>Retry</Button
+					>
 				{/if}
-			</svelte:fragment>
-		</DataTable>
-		{#if loadingDetail}
-			<InlineLoading description="Loading..." />
-		{/if}
-		{#if detail === undefined && !loadingDetail}
-			<div class="center">
-				<Button
-					kind="secondary"
-					on:click={() => {
-						onClickDetail();
-					}}>Load</Button
-				>
-			</div>
-		{/if}
+			</AccordionItem>
+		</Accordion>
 	{/if}
 </Modal>
 
@@ -456,6 +511,94 @@
 </ComposedModal>
 
 <style>
+	/* Page list: compact rows in their own scroll box with a sticky header, so
+	   a long comic doesn't stretch the dialog. */
+	:global(.pages) {
+		margin-top: 1rem;
+	}
+	:global(.pages .bx--accordion__content) {
+		padding: 0 0 0.5rem;
+	}
+	.pages-title {
+		display: flex;
+		align-items: baseline;
+		gap: 0.75rem;
+		min-width: 0;
+	}
+	.pages-summary {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+	.pages-summary :global(.pages-loading) {
+		width: auto;
+		min-height: 0;
+	}
+	.pages-hint {
+		margin: 0.25rem 0 0.5rem;
+		font-size: 0.75rem;
+		color: var(--cds-text-02, #c6c6c6);
+	}
+	:global(.pages .bx--data-table-container) {
+		max-height: 18rem;
+		overflow-y: auto;
+	}
+	:global(.pages .bx--data-table thead th) {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+	}
+	:global(.pages .bx--data-table tbody tr) {
+		cursor: pointer;
+	}
+	.num {
+		display: block;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+	.page-name {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 100%;
+	}
+	:global(.pages .bx--data-table td) {
+		max-width: 0;
+	}
+	.tabular {
+		font-variant-numeric: tabular-nums;
+	}
+	/* Size header lines up with its right-aligned numbers. */
+	:global(.pages th:nth-child(3) .bx--table-sort) {
+		justify-content: flex-end;
+	}
+	/* Delete stays quiet until its row is pointed at or focused (Carbon draws
+	   the icon in currentColor), and doesn't make its row taller. */
+	:global(.pages .delete-page.bx--btn) {
+		min-height: 0;
+		padding: 0.25rem;
+		color: var(--cds-icon-03, #8d8d8d);
+		opacity: 0.6;
+	}
+	/* Outranks Carbon's icon-only ghost rule, which paints the path itself. */
+	:global(
+		.pages
+			.delete-page.bx--btn.bx--btn--ghost.bx--btn--icon-only
+			svg
+			path:not([data-icon-path]):not([fill='none'])
+	) {
+		fill: currentColor;
+	}
+	:global(.pages tr:hover .delete-page.bx--btn),
+	:global(.pages .delete-page.bx--btn:focus) {
+		color: var(--cds-support-01, #fa4d56);
+		opacity: 1;
+	}
+
 	.actions {
 		display: flex;
 		flex-wrap: wrap;
@@ -486,12 +629,6 @@
 		100% {
 			transform: scale(1);
 		}
-	}
-
-	.center {
-		display: flex;
-		justify-content: center;
-		align-items: center;
 	}
 
 	.horizontal {
