@@ -1307,16 +1307,23 @@ export const MediaSourceInfoSchema = {
                 }
             ],
             title: 'Id',
-            description: 'Set on added folders; built-in ones have none'
+            description: 'Set on added sources; built-in ones have none'
         },
         media: {
             type: 'string',
             enum: ['comic', 'video', 'image'],
             title: 'Media'
         },
+        kind: {
+            type: 'string',
+            enum: ['local', 'smb'],
+            title: 'Kind',
+            default: 'local'
+        },
         path: {
             type: 'string',
-            title: 'Path'
+            title: 'Path',
+            description: 'Where it is scanned; for an SMB share, its mount point'
         },
         builtin: {
             type: 'boolean',
@@ -1325,9 +1332,32 @@ export const MediaSourceInfoSchema = {
         },
         status: {
             type: 'string',
-            enum: ['ok', 'not_found', 'not_mounted'],
+            enum: ['ok', 'not_found', 'not_mounted', 'not_connected'],
             title: 'Status',
-            description: "not_found: the folder is missing (an unmounted drive?); not_mounted: it is in the container's own filesystem, not on a mounted drive"
+            description: "not_found: the folder is missing (an unmounted drive?); not_mounted: it is in the container's own filesystem, not on a mounted drive; not_connected: an SMB share that isn't mounted (see error)"
+        },
+        error: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error',
+            description: "Why an SMB share isn't connected, when known"
+        },
+        smb: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/SmbInfo'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            description: 'Set on SMB shares'
         }
     },
     type: 'object',
@@ -1356,14 +1386,38 @@ export const MediaSourceRequestSchema = {
             enum: ['comic', 'video', 'image'],
             title: 'Media'
         },
-        path: {
+        kind: {
             type: 'string',
+            enum: ['local', 'smb'],
+            title: 'Kind',
+            default: 'local'
+        },
+        path: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
             title: 'Path',
-            description: 'Absolute folder path as the server (container) sees it'
+            description: 'Local folders: absolute folder path as the server (container) sees it'
+        },
+        smb: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/SmbRequest'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            description: 'SMB shares: how to connect'
         }
     },
     type: 'object',
-    required: ['media', 'path'],
+    required: ['media'],
     title: 'MediaSourceRequest'
 } as const;
 
@@ -1619,6 +1673,143 @@ export const SlowFileSchema = {
     type: 'object',
     required: ['path', 'ms'],
     title: 'SlowFile'
+} as const;
+
+export const SmbInfoSchema = {
+    properties: {
+        share: {
+            type: 'string',
+            title: 'Share',
+            description: '//server/share[/folder]'
+        },
+        username: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Username',
+            description: 'None: guest access'
+        },
+        domain: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Domain'
+        },
+        options: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Options',
+            description: 'Extra mount.cifs options, comma-separated'
+        },
+        hasPassword: {
+            type: 'boolean',
+            title: 'Haspassword',
+            description: 'A password is saved; it is never sent back'
+        }
+    },
+    type: 'object',
+    required: ['share', 'hasPassword'],
+    title: 'SmbInfo'
+} as const;
+
+export const SmbRequestSchema = {
+    properties: {
+        share: {
+            type: 'string',
+            title: 'Share',
+            description: '//server/share[/folder] or \\\\server\\share[\\folder]'
+        },
+        username: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Username',
+            description: 'Empty: guest access'
+        },
+        password: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Password',
+            description: 'When editing, empty keeps the saved one'
+        },
+        domain: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Domain'
+        },
+        options: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Options',
+            description: 'Extra mount.cifs options, e.g. vers=2.0'
+        }
+    },
+    type: 'object',
+    required: ['share'],
+    title: 'SmbRequest'
+} as const;
+
+export const SmbSupportSchema = {
+    properties: {
+        supported: {
+            type: 'boolean',
+            title: 'Supported'
+        },
+        reason: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Reason',
+            description: "Why shares can't be mounted here"
+        }
+    },
+    type: 'object',
+    required: ['supported'],
+    title: 'SmbSupport'
 } as const;
 
 export const TagInfoSchema = {
