@@ -502,6 +502,50 @@ export async function setupMock(authRequired: boolean) {
 	}
 	const tagRows = () => [...tags.values()].sort((a, b) => a.name.localeCompare(b.name));
 
+	// Media sources (api/sources.py): the container's folders, built-in scan
+	// folders from the environment, and folders added at runtime.
+	type MockSource = {
+		id: number | null;
+		media: 'comic' | 'video' | 'image';
+		path: string;
+		builtin: boolean;
+	};
+	// Every folder the container sees; mounted ones are drives or shares.
+	const mockMounts = ['/data/comics', '/data/videos', '/data/images', '/data/liked', '/data/nas'];
+	const mockFolders = new Set<string>(['/', '/data', ...mockMounts]);
+	for (const sub of ['manga', 'photos', 'anime', 'backup']) mockFolders.add(`/data/nas/${sub}`);
+	for (const sub of ['inbox', 'artist', 'converted']) mockFolders.add(`/data/comics/${sub}`);
+	for (const sub of ['app', 'config', 'etc', 'usr']) mockFolders.add(`/${sub}`);
+	for (let i = 0; i < 4; i++) {
+		const trip = `${faker.location.city()} ${faker.date.past({ years: 3 }).getFullYear()}`;
+		mockFolders.add(`/data/nas/photos/${trip}`);
+	}
+	const mediaSources: MockSource[] = [
+		{ id: null, media: 'comic', path: '/data/comics', builtin: true },
+		{ id: null, media: 'video', path: '/data/videos', builtin: true },
+		{ id: null, media: 'image', path: '/data/images', builtin: true },
+		{ id: null, media: 'image', path: '/data/liked', builtin: true },
+		{ id: 1, media: 'image', path: '/data/nas/photos', builtin: false },
+		// An added folder whose drive isn't plugged in.
+		{ id: 2, media: 'comic', path: '/data/usb/manga', builtin: false }
+	];
+	let nextSourceId = 3;
+	const sourceStatus = (path: string) => {
+		if (!mockFolders.has(path)) return 'not_found' as const;
+		const mounted = mockMounts.some((m) => path === m || path.startsWith(`${m}/`));
+		return mounted ? ('ok' as const) : ('not_mounted' as const);
+	};
+	const sourceInfo = (s: MockSource) => ({ ...s, status: sourceStatus(s.path) });
+	const sortedSources = () => [
+		...mediaSources.filter((s) => s.builtin),
+		...mediaSources.filter((s) => !s.builtin)
+	];
+	const normPath = (path: string) => path.trim().replace(/\/+$/, '') || '/';
+	const insidePath = (path: string, root: string) =>
+		path === root || path.startsWith(root === '/' ? '/' : `${root}/`);
+	const scanType = { comic: 'comics', video: 'videos', image: 'images' } as const;
+	const sourceError = (msg: string) => HttpResponse.json({ msg }, { status: 400 });
+
 	const handlers = [
 		http.get('/api/system/jobs', async () => {
 			await delay(100);
@@ -710,6 +754,68 @@ export async function setupMock(authRequired: boolean) {
 					cadence_hours: 24
 				}
 			});
+		}),
+		http.get('/api/system/sources', async () => {
+			await delay(150);
+			return HttpResponse.json(sortedSources().map(sourceInfo));
+		}),
+		http.post('/api/system/sources', async ({ request }) => {
+			await delay(200);
+			const body = (await request.json()) as { media: MockSource['media']; path: string };
+			if (!['comic', 'video', 'image'].includes(body.media)) {
+				return sourceError(`Unknown media type '${body.media}'`);
+			}
+			if (!body.path?.trim().startsWith('/'))
+				return sourceError('The folder must be an absolute path');
+			const path = normPath(body.path);
+			if (!mockFolders.has(path)) {
+				return sourceError(
+					'Folder not found (the container only sees folders mounted in compose.yaml)'
+				);
+			}
+			const overlap = mediaSources.find(
+				(s) => insidePath(path, s.path) || insidePath(s.path, path)
+			);
+			if (overlap) {
+				const what = overlap.builtin ? 'built-in' : 'added';
+				return sourceError(`Overlaps the ${what} ${overlap.media} folder ${overlap.path}`);
+			}
+			if (sourceStatus(path) === 'not_mounted') {
+				return sourceError(
+					'Not on a mounted drive: nothing from the host is there. Mount a volume in compose.yaml first'
+				);
+			}
+			const source: MockSource = { id: nextSourceId++, media: body.media, path, builtin: false };
+			mediaSources.push(source);
+			const scan = enqueueJob('scan', { media_type: scanType[source.media] });
+			return HttpResponse.json({ source: sourceInfo(source), scan });
+		}),
+		http.delete('/api/system/sources/:id', async ({ params }) => {
+			await delay(150);
+			const idx = mediaSources.findIndex((s) => s.id === Number(params.id));
+			if (idx === -1) {
+				return HttpResponse.json({ msg: 'No added media source with that id' }, { status: 404 });
+			}
+			const [source] = mediaSources.splice(idx, 1);
+			const scan = enqueueJob('scan', { media_type: scanType[source.media] });
+			return HttpResponse.json({ scan });
+		}),
+		http.get('/api/system/folders', async ({ request }) => {
+			await delay(100);
+			const asked = new URL(request.url).searchParams.get('path') || '/data';
+			if (!asked.startsWith('/')) return sourceError('The folder must be an absolute path');
+			const path = normPath(asked);
+			if (!mockFolders.has(path)) return sourceError('Folder not found');
+			const dirs = [...mockFolders]
+				.filter((f) => f !== path && f.slice(0, f.lastIndexOf('/')) === (path === '/' ? '' : path))
+				.sort((a, b) => a.localeCompare(b))
+				.map((f) => ({
+					name: f.slice(f.lastIndexOf('/') + 1),
+					path: f,
+					mount: mockMounts.includes(f)
+				}));
+			const parent = path === '/' ? null : path.slice(0, path.lastIndexOf('/')) || '/';
+			return HttpResponse.json({ path, parent, dirs });
 		}),
 		http.get('/api/auth/status', async () => {
 			await delay(100);

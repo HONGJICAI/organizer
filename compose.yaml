@@ -15,6 +15,9 @@ services:
       # they're scanned too. Moving between them copies, then deletes.
       # - /mnt/nas2/manga:/data/comics/nas2
       # - /mnt/gdrive/manga:/data/comics/gdrive
+      # Or mount a drive anywhere under /data and add its folders as comic,
+      # video or image sources in Admin -> Media sources, no restart needed:
+      # - D:/Media:/data/media
       - ${VIDEO_PATH:?Set VIDEO_PATH in .env to your video folder}:/data/videos
       - ${IMAGE_PATH}:/data/images
       - ${LIKED_PATH}:/data/liked

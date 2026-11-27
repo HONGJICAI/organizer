@@ -795,6 +795,8 @@ class TestBootstrapIssues:
         img_api.bootstrap()
         assert self.issues(fresh_progress) == [
             ("warning", str(scan_env / "locked"), "Can't read folder: Permission denied"),
+            # Nothing else was readable, so the folder is held as empty.
+            ("warning", str(scan_env), "No media files found"),
         ]
 
     def test_scan_path_error(self, fresh_progress, scan_env, monkeypatch):

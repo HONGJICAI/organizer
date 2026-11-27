@@ -6,7 +6,7 @@ import os
 import pathlib
 import subprocess
 import time
-from typing import List
+from typing import Callable, List
 import threading
 import unicodedata
 
@@ -22,6 +22,7 @@ from core.scan_progress import progress
 from model import ActivityEvent, ComicEntity, FileEntity, VideoEntity
 import db
 import events
+import sources
 import util
 
 p = ThreadPool(8)
@@ -67,30 +68,32 @@ class Loader:
         """Issue label for this loader's media: "comic" or "video"."""
         return self.phase[:-1]
 
-    def _scan_pathes(self) -> List[str]:
-        return []
+    # File extensions scan() looks for; "" stands for folder comics.
+    exts: List[str] = []
 
     def work(self):
         progress.set_phase(self.phase, 0)
-        # A missing scan path is usually an unmounted drive; say so, since the
-        # scan would otherwise just find nothing there.
-        for path in self._scan_pathes():
-            if not os.path.isdir(path):
-                progress.add_issue(self.media, "warning", path, "Scan path not found (not mounted?)")
+        # A missing or empty scan folder is usually an unmounted drive or a
+        # share that is down: its records are held as they are (see
+        # sources.py) instead of being flagged missing, and it is reported.
+        check = sources.check(self.media)
         old_pathes = set(self._load_old())
-        all_pathes = set(self._load_all())
+        all_pathes = set()
+        for root in list(check.scan):
+            found = scan(self.exts, [root])
+            if not found:
+                check.hold(root)
+            all_pathes.update(found)
+        held = check.is_held()
         print(f"old: {len(old_pathes)}, all: {len(all_pathes)}")
         # Before anything treats a moved file as new: carry records over to
         # where their files went.
-        if self._follow_moves(all_pathes, old_pathes):
+        if self._follow_moves(all_pathes, old_pathes, held):
             old_pathes = set(self._load_old())
         # Reconcile the missing flag first: a file can disappear without any new
         # file appearing, so this must run even when the early-returns below fire.
-        progress.add_reconciled(self._reconcile_missing(all_pathes))
+        progress.add_reconciled(self._reconcile_missing(all_pathes, held))
         if len(all_pathes) == 0:
-            present = [p for p in self._scan_pathes() if os.path.isdir(p)]
-            if present:
-                progress.add_issue(self.media, "warning", ", ".join(present), "No media files found")
             print("not work due to no file, perhaps specify wrong pathes?")
             return
         new_pathes = list(all_pathes.difference(old_pathes))
@@ -129,7 +132,7 @@ class Loader:
         """The cover file of a record, removed when the record is merged away."""
         return None
 
-    def _follow_moves(self, present: set, known: set) -> int:
+    def _follow_moves(self, present: set, known: set, held: Callable[[str], bool] = lambda p: False) -> int:
         """Recognize files that moved instead of importing them as new.
 
         Records are keyed by path, so a file whose path changed (moved or
@@ -147,6 +150,9 @@ class Loader:
           and takes the path that is present. Paths that differ otherwise are
           left alone: they may be a second copy on another drive.
 
+        Records in a held scan folder (``held``, see sources.py) are not gone,
+        just out of reach for now, and are left alone.
+
         Returns how many records changed.
         """
         if self.entity_cls is None or not present:
@@ -156,7 +162,7 @@ class Loader:
             rows = session.exec(select(cls).where(cls.archived == False)).all()  # noqa: E712
             gone = defaultdict(list)
             for e in rows:
-                if e.path not in present:
+                if e.path not in present and not held(e.path):
                     gone[(e.size, e.updateTime)].append(e)
             if not gone:
                 return 0
@@ -229,7 +235,7 @@ class Loader:
             except OSError:
                 pass
 
-    def _reconcile_missing(self, present_pathes: set):
+    def _reconcile_missing(self, present_pathes: set, held: Callable[[str], bool] = lambda p: False):
         """Flag DB rows whose file is gone and clear ones that reappeared.
 
         Scoped to non-archived rows — archived entries are deliberate
@@ -238,7 +244,10 @@ class Loader:
         empty result almost always means a misconfigured or unmounted scan
         path, and flagging the whole library missing in that case is exactly
         the data-loss footgun we're trying to avoid. The next successful scan
-        self-heals the flag once files reappear.
+        self-heals the flag once files reappear. Rows in a held scan folder
+        (``held``: one that is missing or empty, see sources.py) are left as
+        they are for the same reason, so one unmounted drive among several
+        doesn't flag its part of the library.
 
         Returns the number of rows whose flag changed (for progress/metrics).
         """
@@ -250,6 +259,8 @@ class Loader:
             ).all()
             changed = 0
             for e in entities:
+                if held(e.path):
+                    continue
                 should_miss = e.path not in present_pathes
                 if e.missing != should_miss:
                     e.missing = should_miss
@@ -262,10 +273,6 @@ class Loader:
 
     @abstractmethod
     def _load_old(self) -> List[str]:
-        pass
-
-    @abstractmethod
-    def _load_all(self) -> List[str]:
         pass
 
     @abstractmethod
@@ -325,6 +332,7 @@ def scan(exts: List[str], pathes: List[str]):
 
 class ComicLoader(Loader):
     comic_ext = [".zip", ".rar", ""]
+    exts = comic_ext
     entity_cls = ComicEntity
     phase = "comics"
     media_type = events.COMIC
@@ -360,12 +368,6 @@ class ComicLoader(Loader):
             print(f"read {len(entities)} entities from db.")
 
             return [e.path for e in entities]
-
-    def _scan_pathes(self) -> List[str]:
-        return global_data.Config.Comic.scan_pathes
-
-    def _load_all(self) -> List[str]:
-        return scan(self.comic_ext, self._scan_pathes())
 
     def _to_entity(self, path: str):
         """Build the entity for a new comic; raises when it can't be imported."""
@@ -425,6 +427,7 @@ class VideoLoader(Loader):
         ".m4v",
         ".webm",
     ]
+    exts = video_ext
     entity_cls = VideoEntity
     phase = "videos"
     _starting_id: int
@@ -457,12 +460,6 @@ class VideoLoader(Loader):
             entities = session.exec(statement).all()
             print(f"read {len(entities)} entities from db.")
             return [e.path for e in entities]
-
-    def _scan_pathes(self) -> List[str]:
-        return global_data.Config.Video.scan_pathes
-
-    def _load_all(self) -> List[str]:
-        return scan(self.video_ext, self._scan_pathes())
 
     def _to_entity(self, path: str):
         ret = VideoEntity.from_path(pathlib.Path(path), self._get_id())

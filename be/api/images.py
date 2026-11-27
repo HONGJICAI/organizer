@@ -26,6 +26,7 @@ from sqlmodel import Session, select
 
 import db
 import global_data
+import sources
 from api.comicpage import PAGE_CACHE_CONTROL, page_etag, resize_to_width
 from comicfile import allowImgs, image_info, mediaTypes, page_sort_key
 from core.exceptions import abort
@@ -157,42 +158,52 @@ def _leaf_image_dirs(scan_path: str) -> List[str]:
 def bootstrap():
     """Scan image folders and (re)populate the in-memory store."""
     new_store: Dict[int, ImageEntity] = {}
-    for scan_path in global_data.Config.Image.scan_pathes:
-        if not os.path.isdir(scan_path):
-            progress.add_issue("image", "warning", scan_path, "Scan path not found (not mounted?)")
-            continue
+    # A missing or empty scan folder (an unmounted drive, a share that is
+    # down) keeps the albums the last scan found there; see sources.py.
+    check = sources.check("image")
+    found: List[str] = []
+    for scan_path in list(check.scan):
         try:
             leaves = _leaf_image_dirs(scan_path)
         except OSError as e:
             print(f"Failed to scan {scan_path}: {e}")
-            progress.add_issue("image", "warning", scan_path, f"Can't scan: {e}")
+            check.hold(scan_path, f"Can't scan: {e}")
             continue
-        for leaf in leaves:
-            files = _image_files(leaf)
-            if not files:
-                continue
-            try:
-                mtime = datetime.datetime.fromtimestamp(os.stat(leaf).st_mtime)
-            except OSError as e:
-                # Removed or moved mid-scan: skip it rather than fail the scan.
-                progress.add_issue("image", "warning", leaf, f"Folder vanished during scan: {e.strerror or e}")
-                continue
-            id = _album_id(leaf, new_store)
-            # size is not computed here: that means a recursive stat() of every
-            # file (see get_dir_size), which makes bootstrap minutes-slow on
-            # large/remote folders. The refresh endpoint fills it on demand, and
-            # it is carried over below while the folder stays unchanged.
-            new_store[id] = ImageEntity(
-                id=id,
-                size=0,
-                name=os.path.basename(leaf),
-                path=leaf,
-                updateTime=mtime,
-                # Cover cache-bust token: tie it to the folder, not the scan,
-                # so a rescan doesn't make browsers refetch every cover.
-                entityUpdateTime=mtime,
-                page=len(files),
-            )
+        if not leaves:
+            # The liked folder is empty until a page is liked: nothing to report.
+            liked = os.path.normpath(scan_path) == os.path.normpath(global_data.Config.Image.liked_path)
+            check.hold(scan_path, None if liked else sources.EMPTY)
+            continue
+        found.extend(leaves)
+    held = check.is_held()
+    with _store_lock:
+        new_store.update({id: e for id, e in _store.items() if held(e.path)})
+    for leaf in found:
+        files = _image_files(leaf)
+        if not files:
+            continue
+        try:
+            mtime = datetime.datetime.fromtimestamp(os.stat(leaf).st_mtime)
+        except OSError as e:
+            # Removed or moved mid-scan: skip it rather than fail the scan.
+            progress.add_issue("image", "warning", leaf, f"Folder vanished during scan: {e.strerror or e}")
+            continue
+        id = _album_id(leaf, new_store)
+        # size is not computed here: that means a recursive stat() of every
+        # file (see get_dir_size), which makes bootstrap minutes-slow on
+        # large/remote folders. The refresh endpoint fills it on demand, and
+        # it is carried over below while the folder stays unchanged.
+        new_store[id] = ImageEntity(
+            id=id,
+            size=0,
+            name=os.path.basename(leaf),
+            path=leaf,
+            updateTime=mtime,
+            # Cover cache-bust token: tie it to the folder, not the scan,
+            # so a rescan doesn't make browsers refetch every cover.
+            entityUpdateTime=mtime,
+            page=len(files),
+        )
 
     with _store_lock:
         # Keep what the scan cannot cheaply recompute: reading progress, and a

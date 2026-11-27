@@ -13,6 +13,7 @@
 	import { ErrorNotification, SuccessNotification } from '$lib/model.svelte';
 	import { addNotification } from '$lib/state.svelte';
 	import { refreshMediaFiles } from '$lib/mediaStore';
+	import MediaSources from '$lib/components/MediaSources.svelte';
 	import {
 		Breadcrumb,
 		BreadcrumbItem,
@@ -433,6 +434,13 @@
 			</Button>
 		</div>
 	</Tile>
+
+	<MediaSources
+		onscan={() => {
+			clearTimeout(timer);
+			poll();
+		}}
+	/>
 
 	<Tile class="card">
 		<div class="card-head"><h3>Open timing</h3></div>
