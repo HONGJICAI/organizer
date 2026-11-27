@@ -120,6 +120,21 @@ def image_snapshot_path(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolated_db(monkeypatch):
+    # Code that reads the database outside the client/task fixtures (such as
+    # the added media sources every scan reads) must not see the developer's
+    # own prod.sqlite. Those fixtures swap in their own engine on top.
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine)
+    monkeypatch.setattr(db, "engine", engine)
+    return engine
+
+
+@pytest.fixture(autouse=True)
 def clear_job_queue():
     # Let a job a test started finish before the next test, so it can't touch
     # that test's database or progress state.

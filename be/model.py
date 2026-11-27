@@ -115,3 +115,16 @@ class TagInfo(SQLModel, table=True):
     kind: Optional[str] = Field(default=None)  # author | language | ignored
     canonical: Optional[str] = Field(default=None, index=True)
     updateTime: NaiveDatetime = Field(default_factory=datetime.now)
+
+
+class MediaSource(SQLModel, table=True):
+    """A scan folder added at runtime (Admin -> Media sources).
+
+    Comes on top of the built-in folders from the environment
+    (``global_data.Config.*.scan_pathes``), which are always scanned and can't
+    be removed here. See ``sources.py``.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    media: str  # comic | video | image
+    path: str
+    createdTime: NaiveDatetime = Field(default_factory=datetime.now)

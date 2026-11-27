@@ -366,6 +366,27 @@ export type FavorResponse = {
     favorited: boolean;
 };
 
+export type FolderEntry = {
+    name: string;
+    path: string;
+    /**
+     * A mount point: a drive or share mounted into the container
+     */
+    mount: boolean;
+};
+
+export type FolderListing = {
+    path: string;
+    /**
+     * None at the filesystem root
+     */
+    parent?: string | null;
+    /**
+     * Subfolders, hidden ones left out
+     */
+    dirs: Array<FolderEntry>;
+};
+
 export type HttpValidationError = {
     detail?: Array<ValidationError>;
 };
@@ -464,6 +485,46 @@ export type LoginRequest = {
 
 export type LoginResponse = {
     token: string;
+};
+
+export type MediaSourceAddResponse = {
+    source: MediaSourceInfo;
+    /**
+     * The scan of that media type queued to pick the folder up
+     */
+    scan: 'started' | 'queued' | 'already_queued';
+};
+
+export type MediaSourceInfo = {
+    /**
+     * Set on added folders; built-in ones have none
+     */
+    id?: number | null;
+    media: 'comic' | 'video' | 'image';
+    path: string;
+    /**
+     * From the environment (compose.yaml): always scanned, can't be removed here
+     */
+    builtin: boolean;
+    /**
+     * not_found: the folder is missing (an unmounted drive?); not_mounted: it is in the container's own filesystem, not on a mounted drive
+     */
+    status: 'ok' | 'not_found' | 'not_mounted';
+};
+
+export type MediaSourceRemoveResponse = {
+    /**
+     * The scan of that media type queued to flag its records missing
+     */
+    scan: 'started' | 'queued' | 'already_queued';
+};
+
+export type MediaSourceRequest = {
+    media: 'comic' | 'video' | 'image';
+    /**
+     * Absolute folder path as the server (container) sees it
+     */
+    path: string;
 };
 
 /**
@@ -2625,6 +2686,174 @@ export type TriggerBackupResponses = {
 };
 
 export type TriggerBackupResponse = TriggerBackupResponses[keyof TriggerBackupResponses];
+
+export type ListMediaSourcesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/sources';
+};
+
+export type ListMediaSourcesErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ListMediaSourcesError = ListMediaSourcesErrors[keyof ListMediaSourcesErrors];
+
+export type ListMediaSourcesResponses = {
+    /**
+     * Successful Response
+     */
+    200: Array<MediaSourceInfo>;
+};
+
+export type ListMediaSourcesResponse = ListMediaSourcesResponses[keyof ListMediaSourcesResponses];
+
+export type AddMediaSourceData = {
+    body: MediaSourceRequest;
+    path?: never;
+    query?: never;
+    url: '/api/system/sources';
+};
+
+export type AddMediaSourceErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type AddMediaSourceError = AddMediaSourceErrors[keyof AddMediaSourceErrors];
+
+export type AddMediaSourceResponses = {
+    /**
+     * Successful Response
+     */
+    200: MediaSourceAddResponse;
+};
+
+export type AddMediaSourceResponse = AddMediaSourceResponses[keyof AddMediaSourceResponses];
+
+export type RemoveMediaSourceData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/system/sources/{id}';
+};
+
+export type RemoveMediaSourceErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type RemoveMediaSourceError = RemoveMediaSourceErrors[keyof RemoveMediaSourceErrors];
+
+export type RemoveMediaSourceResponses = {
+    /**
+     * Successful Response
+     */
+    200: MediaSourceRemoveResponse;
+};
+
+export type RemoveMediaSourceResponse = RemoveMediaSourceResponses[keyof RemoveMediaSourceResponses];
+
+export type ListFoldersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        path?: string | null;
+    };
+    url: '/api/system/folders';
+};
+
+export type ListFoldersErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ListFoldersError = ListFoldersErrors[keyof ListFoldersErrors];
+
+export type ListFoldersResponses = {
+    /**
+     * Successful Response
+     */
+    200: FolderListing;
+};
+
+export type ListFoldersResponse = ListFoldersResponses[keyof ListFoldersResponses];
 
 export type HomeGetData = {
     body?: never;

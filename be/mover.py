@@ -117,7 +117,8 @@ def check_target(session: Session, target: str) -> str:
     if not target or not os.path.isabs(target):
         raise MoveError("Target must be an absolute folder path")
     target = os.path.normpath(target)
-    roots = [os.path.normpath(p) for p in global_data.Config.Comic.scan_pathes]
+    import sources
+    roots = [os.path.normpath(p) for p in sources.paths("comic")]
     if not any(_inside(target, root) for root in roots):
         raise MoveError(
             "Target must be inside a comic scan folder (" + ", ".join(roots) + ")"
@@ -198,7 +199,8 @@ def unmounted_paths() -> List[str]:
     """Comic scan folders and the artist folder that sit in the container's
     own filesystem (see ``in_container_fs``): media there is lost with the
     container, and moves into them are refused."""
-    paths = list(global_data.Config.Comic.scan_pathes) + [global_data.Config.Comic.artist_root()]
+    import sources
+    paths = sources.paths("comic") + [global_data.Config.Comic.artist_root()]
     return [p for p in dict.fromkeys(os.path.normpath(p) for p in paths) if in_container_fs(p)]
 
 

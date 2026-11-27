@@ -856,6 +856,59 @@ export const FavorResponseSchema = {
     description: 'Response for favor/unfavor operations'
 } as const;
 
+export const FolderEntrySchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        path: {
+            type: 'string',
+            title: 'Path'
+        },
+        mount: {
+            type: 'boolean',
+            title: 'Mount',
+            description: 'A mount point: a drive or share mounted into the container'
+        }
+    },
+    type: 'object',
+    required: ['name', 'path', 'mount'],
+    title: 'FolderEntry'
+} as const;
+
+export const FolderListingSchema = {
+    properties: {
+        path: {
+            type: 'string',
+            title: 'Path'
+        },
+        parent: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Parent',
+            description: 'None at the filesystem root'
+        },
+        dirs: {
+            items: {
+                '$ref': '#/components/schemas/FolderEntry'
+            },
+            type: 'array',
+            title: 'Dirs',
+            description: 'Subfolders, hidden ones left out'
+        }
+    },
+    type: 'object',
+    required: ['path', 'dirs'],
+    title: 'FolderListing'
+} as const;
+
 export const HTTPValidationErrorSchema = {
     properties: {
         detail: {
@@ -1223,6 +1276,95 @@ export const LoginResponseSchema = {
     type: 'object',
     required: ['token'],
     title: 'LoginResponse'
+} as const;
+
+export const MediaSourceAddResponseSchema = {
+    properties: {
+        source: {
+            '$ref': '#/components/schemas/MediaSourceInfo'
+        },
+        scan: {
+            type: 'string',
+            enum: ['started', 'queued', 'already_queued'],
+            title: 'Scan',
+            description: 'The scan of that media type queued to pick the folder up'
+        }
+    },
+    type: 'object',
+    required: ['source', 'scan'],
+    title: 'MediaSourceAddResponse'
+} as const;
+
+export const MediaSourceInfoSchema = {
+    properties: {
+        id: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Id',
+            description: 'Set on added folders; built-in ones have none'
+        },
+        media: {
+            type: 'string',
+            enum: ['comic', 'video', 'image'],
+            title: 'Media'
+        },
+        path: {
+            type: 'string',
+            title: 'Path'
+        },
+        builtin: {
+            type: 'boolean',
+            title: 'Builtin',
+            description: "From the environment (compose.yaml): always scanned, can't be removed here"
+        },
+        status: {
+            type: 'string',
+            enum: ['ok', 'not_found', 'not_mounted'],
+            title: 'Status',
+            description: "not_found: the folder is missing (an unmounted drive?); not_mounted: it is in the container's own filesystem, not on a mounted drive"
+        }
+    },
+    type: 'object',
+    required: ['media', 'path', 'builtin', 'status'],
+    title: 'MediaSourceInfo'
+} as const;
+
+export const MediaSourceRemoveResponseSchema = {
+    properties: {
+        scan: {
+            type: 'string',
+            enum: ['started', 'queued', 'already_queued'],
+            title: 'Scan',
+            description: 'The scan of that media type queued to flag its records missing'
+        }
+    },
+    type: 'object',
+    required: ['scan'],
+    title: 'MediaSourceRemoveResponse'
+} as const;
+
+export const MediaSourceRequestSchema = {
+    properties: {
+        media: {
+            type: 'string',
+            enum: ['comic', 'video', 'image'],
+            title: 'Media'
+        },
+        path: {
+            type: 'string',
+            title: 'Path',
+            description: 'Absolute folder path as the server (container) sees it'
+        }
+    },
+    type: 'object',
+    required: ['media', 'path'],
+    title: 'MediaSourceRequest'
 } as const;
 
 export const PageInfoResponseSchema = {
