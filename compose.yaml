@@ -25,6 +25,16 @@ services:
     environment:
       # Optional, see .env.example; empty means /data/comics/artist.
       COMIC_ARTIST_PATH: ${COMIC_ARTIST_PATH:-}
+    # SMB shares can be added in Admin -> Media sources instead of mounted
+    # here: the app mounts them itself (under /data/smb), so the container
+    # still starts when a share is down, and it reconnects them later.
+    # Mounting needs these. SYS_ADMIN gives the container much more power over
+    # the host's kernel, so leave it off unless you add SMB shares that way.
+    # cap_add:
+    #   - SYS_ADMIN
+    #   - DAC_READ_SEARCH
+    # security_opt:
+    #   - apparmor:unconfined   # hosts with AppArmor (Ubuntu, Debian) block mounts otherwise
     restart: unless-stopped
     # Uncomment to let Watchtower (below) auto-update only this container.
     # labels:

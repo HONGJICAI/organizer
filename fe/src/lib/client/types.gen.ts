@@ -497,19 +497,31 @@ export type MediaSourceAddResponse = {
 
 export type MediaSourceInfo = {
     /**
-     * Set on added folders; built-in ones have none
+     * Set on added sources; built-in ones have none
      */
     id?: number | null;
     media: 'comic' | 'video' | 'image';
+    kind?: 'local' | 'smb';
+    /**
+     * Where it is scanned; for an SMB share, its mount point
+     */
     path: string;
     /**
      * From the environment (compose.yaml): always scanned, can't be removed here
      */
     builtin: boolean;
     /**
-     * not_found: the folder is missing (an unmounted drive?); not_mounted: it is in the container's own filesystem, not on a mounted drive
+     * not_found: the folder is missing (an unmounted drive?); not_mounted: it is in the container's own filesystem, not on a mounted drive; not_connected: an SMB share that isn't mounted (see error)
      */
-    status: 'ok' | 'not_found' | 'not_mounted';
+    status: 'ok' | 'not_found' | 'not_mounted' | 'not_connected';
+    /**
+     * Why an SMB share isn't connected, when known
+     */
+    error?: string | null;
+    /**
+     * Set on SMB shares
+     */
+    smb?: SmbInfo | null;
 };
 
 export type MediaSourceRemoveResponse = {
@@ -521,10 +533,15 @@ export type MediaSourceRemoveResponse = {
 
 export type MediaSourceRequest = {
     media: 'comic' | 'video' | 'image';
+    kind?: 'local' | 'smb';
     /**
-     * Absolute folder path as the server (container) sees it
+     * Local folders: absolute folder path as the server (container) sees it
      */
-    path: string;
+    path?: string | null;
+    /**
+     * SMB shares: how to connect
+     */
+    smb?: SmbRequest | null;
 };
 
 /**
@@ -609,6 +626,54 @@ export type ScanTiming = {
 export type SlowFile = {
     path: string;
     ms: number;
+};
+
+export type SmbInfo = {
+    /**
+     * //server/share[/folder]
+     */
+    share: string;
+    /**
+     * None: guest access
+     */
+    username?: string | null;
+    domain?: string | null;
+    /**
+     * Extra mount.cifs options, comma-separated
+     */
+    options?: string | null;
+    /**
+     * A password is saved; it is never sent back
+     */
+    hasPassword: boolean;
+};
+
+export type SmbRequest = {
+    /**
+     * //server/share[/folder] or \\server\share[\folder]
+     */
+    share: string;
+    /**
+     * Empty: guest access
+     */
+    username?: string | null;
+    /**
+     * When editing, empty keeps the saved one
+     */
+    password?: string | null;
+    domain?: string | null;
+    /**
+     * Extra mount.cifs options, e.g. vers=2.0
+     */
+    options?: string | null;
+};
+
+export type SmbSupport = {
+    supported: boolean;
+    /**
+     * Why shares can't be mounted here
+     */
+    reason?: string | null;
 };
 
 /**
@@ -2811,6 +2876,133 @@ export type RemoveMediaSourceResponses = {
 };
 
 export type RemoveMediaSourceResponse = RemoveMediaSourceResponses[keyof RemoveMediaSourceResponses];
+
+export type UpdateMediaSourceData = {
+    body: SmbRequest;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/system/sources/{id}';
+};
+
+export type UpdateMediaSourceErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type UpdateMediaSourceError = UpdateMediaSourceErrors[keyof UpdateMediaSourceErrors];
+
+export type UpdateMediaSourceResponses = {
+    /**
+     * Successful Response
+     */
+    200: MediaSourceInfo;
+};
+
+export type UpdateMediaSourceResponse = UpdateMediaSourceResponses[keyof UpdateMediaSourceResponses];
+
+export type ConnectMediaSourceData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/api/system/sources/{id}/connect';
+};
+
+export type ConnectMediaSourceErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type ConnectMediaSourceError = ConnectMediaSourceErrors[keyof ConnectMediaSourceErrors];
+
+export type ConnectMediaSourceResponses = {
+    /**
+     * Successful Response
+     */
+    200: MediaSourceInfo;
+};
+
+export type ConnectMediaSourceResponse = ConnectMediaSourceResponses[keyof ConnectMediaSourceResponses];
+
+export type SmbSupportData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/smb';
+};
+
+export type SmbSupportErrors = {
+    /**
+     * Bad Request
+     */
+    400: MessageResponse;
+    /**
+     * Unauthorized
+     */
+    401: MessageResponse;
+    /**
+     * Not Found
+     */
+    404: MessageResponse;
+    /**
+     * Validation Error
+     */
+    422: MessageResponse;
+    /**
+     * Internal Server Error
+     */
+    500: MessageResponse;
+};
+
+export type SmbSupportError = SmbSupportErrors[keyof SmbSupportErrors];
+
+export type SmbSupportResponses = {
+    /**
+     * Successful Response
+     */
+    200: SmbSupport;
+};
+
+export type SmbSupportResponse = SmbSupportResponses[keyof SmbSupportResponses];
 
 export type ListFoldersData = {
     body?: never;

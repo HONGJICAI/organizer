@@ -11,7 +11,8 @@ RUN npm run build
 # ── Stage 2: production runtime ───────────────────────────────────────────────
 FROM ghcr.io/astral-sh/uv:python3.13-alpine
 
-RUN apk add --no-cache nginx supervisor
+# cifs-utils: mount.cifs, for SMB shares added in Admin -> Media sources (be/smb.py).
+RUN apk add --no-cache nginx supervisor cifs-utils
 
 # ── RAR support ──
 # rarfile shells out to a decompressor, and Alpine packages none that fully
@@ -66,6 +67,7 @@ RUN mkdir -p \
       /data/videos \
       /data/images \
       /data/liked \
+      /data/smb \
       /run/nginx
 
 ENV DB_PATH=/config/db/prod.sqlite \

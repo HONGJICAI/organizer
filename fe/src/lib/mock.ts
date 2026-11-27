@@ -503,16 +503,29 @@ export async function setupMock(authRequired: boolean) {
 	const tagRows = () => [...tags.values()].sort((a, b) => a.name.localeCompare(b.name));
 
 	// Media sources (api/sources.py): the container's folders, built-in scan
-	// folders from the environment, and folders added at runtime.
+	// folders from the environment, folders added at runtime, and SMB shares
+	// the app mounts itself (smb.py) at /data/smb/<id>.
+	type MockSmb = {
+		share: string;
+		username: string | null;
+		password: string | null;
+		domain: string | null;
+		options: string | null;
+	};
 	type MockSource = {
 		id: number | null;
 		media: 'comic' | 'video' | 'image';
+		kind: 'local' | 'smb';
 		path: string;
 		builtin: boolean;
+		smb?: MockSmb;
+		// SMB only: mounted now, else why not.
+		connected?: boolean;
+		error?: string | null;
 	};
 	// Every folder the container sees; mounted ones are drives or shares.
 	const mockMounts = ['/data/comics', '/data/videos', '/data/images', '/data/liked', '/data/nas'];
-	const mockFolders = new Set<string>(['/', '/data', ...mockMounts]);
+	const mockFolders = new Set<string>(['/', '/data', '/data/smb', ...mockMounts]);
 	for (const sub of ['manga', 'photos', 'anime', 'backup']) mockFolders.add(`/data/nas/${sub}`);
 	for (const sub of ['inbox', 'artist', 'converted']) mockFolders.add(`/data/comics/${sub}`);
 	for (const sub of ['app', 'config', 'etc', 'usr']) mockFolders.add(`/${sub}`);
@@ -520,22 +533,90 @@ export async function setupMock(authRequired: boolean) {
 		const trip = `${faker.location.city()} ${faker.date.past({ years: 3 }).getFullYear()}`;
 		mockFolders.add(`/data/nas/photos/${trip}`);
 	}
+	// Servers named old* or offline* are down; the password "wrong" is refused.
+	const mountError = (smb: MockSmb) => {
+		if (/^\/\/(old|offline)/i.test(smb.share)) {
+			return "Can't reach the server (it's down) (mount error(112): Host is down)";
+		}
+		if (smb.password === 'wrong') {
+			return 'Permission denied: check the user name and password (mount error(13): Permission denied)';
+		}
+		return null;
+	};
+	// smb.new_mount_point: a random name under /data/smb.
+	const mountPoint = () =>
+		`/data/smb/${faker.string.hexadecimal({ length: 12, casing: 'lower', prefix: '' })}`;
+	const local = (id: number | null, media: MockSource['media'], path: string, builtin = false) =>
+		({ id, media, kind: 'local', path, builtin }) as MockSource;
 	const mediaSources: MockSource[] = [
-		{ id: null, media: 'comic', path: '/data/comics', builtin: true },
-		{ id: null, media: 'video', path: '/data/videos', builtin: true },
-		{ id: null, media: 'image', path: '/data/images', builtin: true },
-		{ id: null, media: 'image', path: '/data/liked', builtin: true },
-		{ id: 1, media: 'image', path: '/data/nas/photos', builtin: false },
+		local(null, 'comic', '/data/comics', true),
+		local(null, 'video', '/data/videos', true),
+		local(null, 'image', '/data/images', true),
+		local(null, 'image', '/data/liked', true),
+		local(1, 'image', '/data/nas/photos'),
 		// An added folder whose drive isn't plugged in.
-		{ id: 2, media: 'comic', path: '/data/usb/manga', builtin: false }
+		local(2, 'comic', '/data/usb/manga'),
+		{
+			id: 3,
+			media: 'comic',
+			kind: 'smb',
+			path: mountPoint(),
+			builtin: false,
+			smb: {
+				share: '//diskstation/manga',
+				username: faker.internet.username().toLowerCase(),
+				password: faker.internet.password(),
+				domain: null,
+				options: null
+			},
+			connected: true,
+			error: null
+		},
+		{
+			id: 4,
+			media: 'video',
+			kind: 'smb',
+			path: mountPoint(),
+			builtin: false,
+			smb: {
+				share: '//oldnas/anime',
+				username: null,
+				password: null,
+				domain: null,
+				options: 'vers=1.0'
+			},
+			connected: false,
+			error: "Can't reach the server (it's down) (mount error(112): Host is down)"
+		}
 	];
-	let nextSourceId = 3;
-	const sourceStatus = (path: string) => {
-		if (!mockFolders.has(path)) return 'not_found' as const;
-		const mounted = mockMounts.some((m) => path === m || path.startsWith(`${m}/`));
+	let nextSourceId = 5;
+	const sourceStatus = (s: MockSource) => {
+		if (s.kind === 'smb') return s.connected ? ('ok' as const) : ('not_connected' as const);
+		if (!mockFolders.has(s.path)) return 'not_found' as const;
+		const mounted = mockMounts.some((m) => s.path === m || s.path.startsWith(`${m}/`));
 		return mounted ? ('ok' as const) : ('not_mounted' as const);
 	};
-	const sourceInfo = (s: MockSource) => ({ ...s, status: sourceStatus(s.path) });
+	const sourceInfo = (s: MockSource) => {
+		const status = sourceStatus(s);
+		return {
+			id: s.id,
+			media: s.media,
+			kind: s.kind,
+			path: s.path,
+			builtin: s.builtin,
+			status,
+			error: s.kind === 'smb' && status !== 'ok' ? (s.error ?? 'Not connected yet') : null,
+			smb: s.smb
+				? {
+						share: s.smb.share,
+						username: s.smb.username,
+						domain: s.smb.domain,
+						options: s.smb.options,
+						hasPassword: !!s.smb.password
+					}
+				: null
+		};
+	};
 	const sortedSources = () => [
 		...mediaSources.filter((s) => s.builtin),
 		...mediaSources.filter((s) => !s.builtin)
@@ -545,6 +626,38 @@ export async function setupMock(authRequired: boolean) {
 		path === root || path.startsWith(root === '/' ? '/' : `${root}/`);
 	const scanType = { comic: 'comics', video: 'videos', image: 'images' } as const;
 	const sourceError = (msg: string) => HttpResponse.json({ msg }, { status: 400 });
+	type SmbBody = {
+		share: string;
+		username?: string | null;
+		password?: string | null;
+		domain?: string | null;
+		options?: string | null;
+	};
+	// Like sources._check_smb: a normalized share, or why it can't be used.
+	const checkSmb = (body: SmbBody, exclude: number | null): MockSmb | string => {
+		let share = (body.share ?? '').trim().replace(/\\/g, '/');
+		if (share.toLowerCase().startsWith('smb:')) share = share.slice(4);
+		const parts = share.split('/').filter(Boolean);
+		if (!share.startsWith('//') || parts.length < 2) {
+			return 'Enter the share as //server/share or \\\\server\\share, optionally with a folder after it';
+		}
+		share = `//${parts.join('/')}`;
+		const key = share.toLowerCase();
+		for (const other of mediaSources) {
+			if (other.kind !== 'smb' || other.id === exclude || !other.smb) continue;
+			const o = other.smb.share.toLowerCase();
+			if (insidePath(key, o) || insidePath(o, key)) {
+				return `Overlaps the added ${other.media} share ${other.smb.share}`;
+			}
+		}
+		return {
+			share,
+			username: body.username?.trim() || null,
+			password: body.password || null,
+			domain: body.domain?.trim() || null,
+			options: body.options?.trim() || null
+		};
+	};
 
 	const handlers = [
 		http.get('/api/system/jobs', async () => {
@@ -761,34 +874,92 @@ export async function setupMock(authRequired: boolean) {
 		}),
 		http.post('/api/system/sources', async ({ request }) => {
 			await delay(200);
-			const body = (await request.json()) as { media: MockSource['media']; path: string };
+			const body = (await request.json()) as {
+				media: MockSource['media'];
+				kind?: MockSource['kind'];
+				path?: string | null;
+				smb?: SmbBody | null;
+			};
 			if (!['comic', 'video', 'image'].includes(body.media)) {
 				return sourceError(`Unknown media type '${body.media}'`);
 			}
-			if (!body.path?.trim().startsWith('/'))
-				return sourceError('The folder must be an absolute path');
-			const path = normPath(body.path);
-			if (!mockFolders.has(path)) {
-				return sourceError(
-					'Folder not found (the container only sees folders mounted in compose.yaml)'
+			let source: MockSource;
+			if (body.kind === 'smb') {
+				if (!body.smb) return sourceError('SMB settings are missing');
+				const smb = checkSmb(body.smb, null);
+				if (typeof smb === 'string') return sourceError(smb);
+				await delay(600); // mounting takes a moment
+				const error = mountError(smb);
+				if (error) return sourceError(`Can't connect: ${error}`);
+				source = {
+					id: nextSourceId++,
+					media: body.media,
+					kind: 'smb',
+					path: mountPoint(),
+					builtin: false,
+					smb,
+					connected: true,
+					error: null
+				};
+			} else {
+				if (!body.path?.trim().startsWith('/')) {
+					return sourceError('The folder must be an absolute path');
+				}
+				const path = normPath(body.path);
+				if (!mockFolders.has(path)) {
+					return sourceError(
+						'Folder not found (the container only sees folders mounted in compose.yaml)'
+					);
+				}
+				if (insidePath(path, '/data/smb')) {
+					return sourceError(
+						"This folder holds the app's SMB mounts: add the share as an SMB source instead"
+					);
+				}
+				const overlap = mediaSources.find(
+					(s) => insidePath(path, s.path) || insidePath(s.path, path)
 				);
+				if (overlap) {
+					const what = overlap.builtin ? 'built-in' : 'added';
+					return sourceError(`Overlaps the ${what} ${overlap.media} folder ${overlap.path}`);
+				}
+				if (sourceStatus(local(null, body.media, path)) === 'not_mounted') {
+					return sourceError(
+						'Not on a mounted drive: nothing from the host is there. Mount a volume in compose.yaml first'
+					);
+				}
+				source = local(nextSourceId++, body.media, path);
 			}
-			const overlap = mediaSources.find(
-				(s) => insidePath(path, s.path) || insidePath(s.path, path)
-			);
-			if (overlap) {
-				const what = overlap.builtin ? 'built-in' : 'added';
-				return sourceError(`Overlaps the ${what} ${overlap.media} folder ${overlap.path}`);
-			}
-			if (sourceStatus(path) === 'not_mounted') {
-				return sourceError(
-					'Not on a mounted drive: nothing from the host is there. Mount a volume in compose.yaml first'
-				);
-			}
-			const source: MockSource = { id: nextSourceId++, media: body.media, path, builtin: false };
 			mediaSources.push(source);
 			const scan = enqueueJob('scan', { media_type: scanType[source.media] });
 			return HttpResponse.json({ source: sourceInfo(source), scan });
+		}),
+		http.patch('/api/system/sources/:id', async ({ params, request }) => {
+			await delay(200);
+			const source = mediaSources.find((s) => s.id === Number(params.id));
+			if (!source) {
+				return HttpResponse.json({ msg: 'No added media source with that id' }, { status: 404 });
+			}
+			if (source.kind !== 'smb' || !source.smb) return sourceError('Not an SMB share');
+			const body = (await request.json()) as SmbBody;
+			const smb = checkSmb({ ...body, password: body.password || source.smb.password }, source.id);
+			if (typeof smb === 'string') return sourceError(smb);
+			await delay(600);
+			const error = mountError(smb);
+			if (error) return sourceError(`Can't connect: ${error}`);
+			Object.assign(source, { smb, connected: true, error: null });
+			return HttpResponse.json(sourceInfo(source));
+		}),
+		http.post('/api/system/sources/:id/connect', async ({ params }) => {
+			await delay(600);
+			const source = mediaSources.find((s) => s.id === Number(params.id));
+			if (!source) {
+				return HttpResponse.json({ msg: 'No added media source with that id' }, { status: 404 });
+			}
+			if (source.kind !== 'smb' || !source.smb) return sourceError('Not an SMB share');
+			source.error = mountError(source.smb);
+			source.connected = !source.error;
+			return HttpResponse.json(sourceInfo(source));
 		}),
 		http.delete('/api/system/sources/:id', async ({ params }) => {
 			await delay(150);
@@ -799,6 +970,10 @@ export async function setupMock(authRequired: boolean) {
 			const [source] = mediaSources.splice(idx, 1);
 			const scan = enqueueJob('scan', { media_type: scanType[source.media] });
 			return HttpResponse.json({ scan });
+		}),
+		http.get('/api/system/smb', async () => {
+			await delay(100);
+			return HttpResponse.json({ supported: true, reason: null });
 		}),
 		http.get('/api/system/folders', async ({ request }) => {
 			await delay(100);

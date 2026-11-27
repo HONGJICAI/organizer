@@ -126,5 +126,14 @@ class MediaSource(SQLModel, table=True):
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     media: str  # comic | video | image
+    # Where it's scanned; for an SMB share, its mount point (smb.new_mount_point).
     path: str
     createdTime: NaiveDatetime = Field(default_factory=datetime.now)
+    kind: str = Field(default="local")  # local | smb
+    # SMB shares (kind "smb") only, mounted by smb.py. The password is stored
+    # as is, like it would be in .env, and never sent back by the API.
+    smbShare: Optional[str] = Field(default=None)  # //host/share[/folder]
+    smbUsername: Optional[str] = Field(default=None)  # empty: guest
+    smbPassword: Optional[str] = Field(default=None)
+    smbDomain: Optional[str] = Field(default=None)
+    smbOptions: Optional[str] = Field(default=None)  # extra mount.cifs options

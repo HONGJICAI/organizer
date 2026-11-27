@@ -3,6 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
+import smb
 from tasks.backup import backup_database_loop
 from tasks.scan import daily_scan_loop
 
@@ -39,6 +40,10 @@ async def lifespan(app: FastAPI):
     tasks = []
     tasks.append(asyncio.create_task(backup_database_loop()))
     tasks.append(asyncio.create_task(daily_scan_loop()))
+    # Mounts the SMB shares added as media sources right away (in a thread,
+    # so an unreachable one doesn't hold up startup), then retries the ones
+    # that aren't connected every few minutes.
+    tasks.append(asyncio.create_task(smb.reconnect_loop()))
     
     # Store tasks in app state to prevent garbage collection
     app.state.background_tasks = tasks

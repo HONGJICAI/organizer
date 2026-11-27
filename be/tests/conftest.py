@@ -1,4 +1,6 @@
 import io
+import os
+import subprocess
 import zipfile
 from datetime import datetime
 
@@ -11,6 +13,7 @@ from sqlmodel.pool import StaticPool
 import comicfile
 import db
 import global_data
+import smb
 from model import ComicEntity, VideoEntity
 
 
@@ -155,6 +158,10 @@ def clear_module_caches():
     progress.reset()
 
 
+async def _idle():
+    """Stands in for a background loop the tests don't want running."""
+
+
 @pytest.fixture
 def engine_and_client(tmp_path, monkeypatch):
     test_engine = create_engine(
@@ -189,6 +196,9 @@ def engine_and_client(tmp_path, monkeypatch):
     real_start_scan, real_page_order = _sys_mod.start_scan, pageorder.submit_if_needed
     _sys_mod.start_scan = lambda *a, **kw: "started"
     pageorder.submit_if_needed = lambda: "not needed"
+    # The SMB reconnect task would query the database from a thread, on the
+    # one connection the tests share (StaticPool), while a test uses it.
+    monkeypatch.setattr(smb, "reconnect_loop", _idle)
     with TestClient(app) as c:
         _sys_mod.start_scan, pageorder.submit_if_needed = real_start_scan, real_page_order
         yield test_engine, c
@@ -226,3 +236,55 @@ def task_engine(monkeypatch):
 def task_session(task_engine):
     with Session(task_engine) as s:
         yield s
+
+
+# ---------------------------------------------------------------------------
+# Fake SMB mounts (smb.py): no CIFS in tests
+# ---------------------------------------------------------------------------
+
+class FakeMounts:
+    """Stands in for mount.cifs/umount and the mount table."""
+
+    def __init__(self):
+        self.mounted = set()
+        self.calls = []
+        self.credentials = []
+        # share -> (returncode, stderr) for mounts that fail; or an exception
+        self.fail = {}
+        self.umount_fail = 0
+        self.raise_on = None
+
+    def run(self, args, timeout):
+        self.calls.append(args)
+        if self.raise_on and args[0] == self.raise_on:
+            raise subprocess.TimeoutExpired(args, timeout)
+        if args[0] == "mount.cifs":
+            share, path, options = args[1], args[2], args[4]
+            cred = next((o[12:] for o in options.split(",") if o.startswith("credentials=")), None)
+            if cred:
+                with open(cred) as f:
+                    self.credentials.append((f.read(), oct(os.stat(cred).st_mode & 0o777)))
+            if share in self.fail:
+                code, err = self.fail[share]
+                return subprocess.CompletedProcess(args, code, "", err)
+            self.mounted.add(path)
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if args[0] == "umount":
+            if self.umount_fail:
+                self.umount_fail -= 1
+                return subprocess.CompletedProcess(args, 32, "", "target is busy")
+            self.mounted.discard(args[-1])
+            return subprocess.CompletedProcess(args, 0, "", "")
+        raise AssertionError(args)
+
+
+@pytest.fixture
+def mounts(tmp_path, monkeypatch):
+    fake = FakeMounts()
+    monkeypatch.setattr(smb, "MOUNT_ROOT", str(tmp_path / "smb"))
+    monkeypatch.setattr(smb, "_run", fake.run)
+    monkeypatch.setattr(smb, "is_mounted", lambda path: path in fake.mounted)
+    monkeypatch.setattr(smb, "unsupported", lambda: None)
+    smb._errors.clear()
+    yield fake
+    smb._errors.clear()

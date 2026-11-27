@@ -32,6 +32,11 @@ _ensure_column("videoentity", "missing", "missing BOOLEAN NOT NULL DEFAULT 0")
 # remaps them.
 _ensure_column("comicentity", "pageOrder", "pageOrder INTEGER NOT NULL DEFAULT 0")
 
+# SMB media sources (smb.py) came after local ones.
+_ensure_column("mediasource", "kind", "kind VARCHAR NOT NULL DEFAULT 'local'")
+for _column in ("smbShare", "smbUsername", "smbPassword", "smbDomain", "smbOptions"):
+    _ensure_column("mediasource", _column, f"{_column} VARCHAR")
+
 
 def get_session() -> Generator[Session, None, None]:
     with Session(engine) as session:
