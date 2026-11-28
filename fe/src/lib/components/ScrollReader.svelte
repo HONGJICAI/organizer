@@ -20,11 +20,49 @@
 	let jumpInput = $state(1);
 	let scrollErrors = $state(new Set<number>());
 
+	// Only pages near the screen keep their image. Every page loaded so far
+	// stays in the DOM, so without this a long comic held all of its images
+	// and kept growing (about 1.5 GB for 400 scan-sized pages in Chromium),
+	// enough for a phone to kill the tab. A page further than NEAR_SCREENS
+	// screens away whose size is known (it loaded once) becomes an empty slot
+	// of the same height, so nothing moves; scrolling back reloads it from the
+	// browser cache. A page that never loaded keeps its image so it gets a size.
+	const NEAR_SCREENS = 3;
+	// Height / width of each page that has loaded.
+	let ratios = $state<Record<number, number>>({});
+	let near = $state(new Set<number>());
+	const showImage = (pageNum: number) => near.has(pageNum) || !(pageNum in ratios);
+
 	$effect(() => {
 		viewerState.maxPage = maxPage;
 	});
 
+	let nearObserver: IntersectionObserver | undefined;
+
+	// Action: keep `near` up to date for a page's slot.
+	function watchNear(node: HTMLElement) {
+		nearObserver?.observe(node);
+		return { destroy: () => nearObserver?.unobserve(node) };
+	}
+
+	function pageLoaded(pageNum: number, img: HTMLImageElement) {
+		if (img.naturalWidth > 0) ratios[pageNum] = img.naturalHeight / img.naturalWidth;
+		loadMore();
+	}
+
 	onMount(() => {
+		nearObserver = new IntersectionObserver(
+			(entries) => {
+				const next = new Set(near);
+				for (const e of entries) {
+					const pageNum = Number((e.target as HTMLElement).dataset.page);
+					if (e.isIntersecting) next.add(pageNum);
+					else next.delete(pageNum);
+				}
+				near = next;
+			},
+			{ rootMargin: `${NEAR_SCREENS * 100}% 0px` }
+		);
 		loadedCount = Math.min(BATCH, maxPage);
 		viewerState.page = 1;
 		window.scrollTo(0, 0);
@@ -32,11 +70,15 @@
 		viewerState.gotoPage = (p: number) => jumpToPage(p);
 		// No End key: page heights are unknown until images load, so a long jump
 		// lands short once the pages above it load (overview jumps do too).
-		return registerHotkeys(Layer.Reader, [
+		const unregister = registerHotkeys(Layer.Reader, [
 			{ keys: ['ArrowLeft'], description: 'Previous page', run: () => stepPage(-1), repeat: true },
 			{ keys: ['ArrowRight'], description: 'Next page', run: () => stepPage(1), repeat: true },
 			{ keys: ['Home'], description: 'First page', run: () => jumpToPage(1, false) }
 		]);
+		return () => {
+			unregister();
+			nearObserver?.disconnect();
+		};
 	});
 
 	// Load the next batch of pages as the end of the loaded ones comes near
@@ -123,37 +165,45 @@
 
 <div class="viewer-root">
 	<div class="fit-to-scroll">
-		{#each Array.from({ length: loadedCount }, (_, i) => i + 1) as pageNum}
-			{#if scrollErrors.has(pageNum)}
-				<div class="page-error scroll-page-error" use:trackPage={pageNum} data-page={pageNum}>
-					<ImageReference size={32} />
-					<span>Page {pageNum} failed to load</span>
-					<Button
-						size="small"
-						kind="ghost"
-						icon={Renew}
-						on:click={() => {
-							scrollErrors.delete(pageNum);
-							scrollErrors = new Set(scrollErrors);
+		{#each Array.from({ length: loadedCount }, (_, i) => i + 1) as pageNum (pageNum)}
+			<div
+				class="scroll-slot"
+				data-page={pageNum}
+				use:trackPage={pageNum}
+				use:watchNear
+				style:aspect-ratio={!scrollErrors.has(pageNum) && !showImage(pageNum)
+					? `1 / ${ratios[pageNum]}`
+					: undefined}
+			>
+				{#if scrollErrors.has(pageNum)}
+					<div class="page-error scroll-page-error">
+						<ImageReference size={32} />
+						<span>Page {pageNum} failed to load</span>
+						<Button
+							size="small"
+							kind="ghost"
+							icon={Renew}
+							on:click={() => {
+								scrollErrors.delete(pageNum);
+								scrollErrors = new Set(scrollErrors);
+							}}
+						>
+							Retry
+						</Button>
+					</div>
+				{:else if showImage(pageNum)}
+					<img
+						src={pageApiUrl(file.type, file.id, pageNum)}
+						alt={`Page ${pageNum}`}
+						class="scroll-page"
+						onload={(e) => pageLoaded(pageNum, e.currentTarget as HTMLImageElement)}
+						onerror={() => {
+							scrollErrors = new Set([...scrollErrors, pageNum]);
+							tick().then(loadMore);
 						}}
-					>
-						Retry
-					</Button>
-				</div>
-			{:else}
-				<img
-					use:trackPage={pageNum}
-					data-page={pageNum}
-					src={pageApiUrl(file.type, file.id, pageNum)}
-					alt={`Page ${pageNum}`}
-					class="scroll-page"
-					onload={loadMore}
-					onerror={() => {
-						scrollErrors = new Set([...scrollErrors, pageNum]);
-						tick().then(loadMore);
-					}}
-				/>
-			{/if}
+					/>
+				{/if}
+			</div>
 		{/each}
 		{#if loadedCount < maxPage}
 			<div bind:this={sentinel} class="load-sentinel">
@@ -270,11 +320,14 @@
 		padding-bottom: 4rem;
 	}
 
+	.scroll-slot {
+		margin-bottom: 2px;
+	}
+
 	.scroll-page {
 		width: 100%;
 		height: auto;
 		display: block;
-		margin-bottom: 2px;
 	}
 
 	.load-sentinel {
