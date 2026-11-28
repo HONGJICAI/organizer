@@ -25,7 +25,7 @@
 	});
 
 	onMount(() => {
-		loadedCount = Math.min(5, maxPage);
+		loadedCount = Math.min(BATCH, maxPage);
 		viewerState.page = 1;
 		window.scrollTo(0, 0);
 		// Let the overview grid jump us to a page.
@@ -37,6 +37,36 @@
 			{ keys: ['ArrowRight'], description: 'Next page', run: () => stepPage(1), repeat: true },
 			{ keys: ['Home'], description: 'First page', run: () => jumpToPage(1, false) }
 		]);
+	});
+
+	// Load the next batch of pages as the end of the loaded ones comes near
+	// (within 400px). Checked when the sentinel enters that range and again
+	// whenever a page finishes loading: a page has no height until its image
+	// loads, so the sentinel stays in range while a batch loads (an observer
+	// alone wouldn't fire again then), and short pages can leave it in range
+	// after they load. Waiting for the batch keeps unsized pages from pulling
+	// in the whole comic at once.
+	const BATCH = 5;
+	const AHEAD = 400;
+
+	function loadMore() {
+		if (!sentinel || loadedCount >= maxPage) return;
+		if (sentinel.getBoundingClientRect().top > window.innerHeight + AHEAD) return;
+		const pending = Array.from(
+			document.querySelectorAll<HTMLImageElement>('.fit-to-scroll img.scroll-page')
+		).some((img) => !img.complete);
+		if (pending) return;
+		loadedCount = Math.min(loadedCount + BATCH, maxPage);
+	}
+
+	$effect(() => {
+		const node = sentinel;
+		if (!node) return;
+		const obs = new IntersectionObserver(([entry]) => entry.isIntersecting && loadMore(), {
+			rootMargin: `${AHEAD}px`
+		});
+		obs.observe(node);
+		return () => obs.disconnect();
 	});
 
 	// Keys step by what is on screen, not by the page counter: the counter is
@@ -117,8 +147,10 @@
 					src={pageApiUrl(file.type, file.id, pageNum)}
 					alt={`Page ${pageNum}`}
 					class="scroll-page"
+					onload={loadMore}
 					onerror={() => {
 						scrollErrors = new Set([...scrollErrors, pageNum]);
+						tick().then(loadMore);
 					}}
 				/>
 			{/if}
