@@ -55,44 +55,86 @@ def destination(path: str) -> str:
     return root + ".zip" if ext.lower() == ".rar" else path + ".zip"
 
 
+class _Listings:
+    """What is in each folder, listed once.
+
+    A folder comic or RAR and the zip it becomes sit in the same folder, so
+    one listing answers both "is it still a folder / a file?" and "is the zip
+    name taken?". On a network share that is one request per folder instead of
+    two per comic, which for a library of thousands of folder comics is the
+    difference between seconds and the request timing out.
+    """
+
+    def __init__(self):
+        self._dirs: Dict[str, Optional[Dict[str, Tuple[bool, bool]]]] = {}
+
+    def entry(self, path: str) -> Optional[Tuple[bool, bool]]:
+        """``(is_dir, is_file)`` of ``path``, or None when it isn't there."""
+        parent, name = os.path.split(path)
+        if parent not in self._dirs:
+            try:
+                with os.scandir(parent) as it:
+                    self._dirs[parent] = {e.name: (e.is_dir(), e.is_file()) for e in it}
+            except OSError:
+                self._dirs[parent] = None
+        names = self._dirs[parent]
+        return names.get(name) if names is not None else None
+
+
+def _recorded(session: Session, paths: List[str]) -> set:
+    """Which of ``paths`` a comic is recorded at, in a few queries."""
+    found = set()
+    # SQLite caps the number of bound parameters per statement.
+    for start in range(0, len(paths), 900):
+        chunk = paths[start:start + 900]
+        found.update(session.exec(select(ComicEntity.path).where(col(ComicEntity.path).in_(chunk))))
+    return found
+
+
 def plan(session: Session, ids: Optional[List[int]] = None) -> List[ComicZipPlanItem]:
     """The folder comics and RARs (of ``ids``, or all) and what converting
     each would do.
 
     Comic records don't say whether they are folders, so only paths without an
     archive extension are checked on disk: the zips, almost all of a library,
-    cost nothing.
+    cost nothing. Those are checked with one listing per folder (``_Listings``).
     """
     query = select(ComicEntity.id, ComicEntity.name, ComicEntity.path, ComicEntity.page).where(
         col(ComicEntity.archived).is_(False), col(ComicEntity.missing).is_(False)
     )
     if ids is not None:
         query = query.where(col(ComicEntity.id).in_(ids))
+    listings = _Listings()
     items: List[ComicZipPlanItem] = []
-    taken = set()
     for id, name, path, pages in session.exec(query.order_by(ComicEntity.path)):
         ext = os.path.splitext(path)[1].lower()
         if ext == ".rar":
-            if not os.path.isfile(path):
+            entry = listings.entry(os.path.normpath(path))
+            if entry is None or not entry[1]:
                 continue
             kind = "rar"
-        elif ext in ARCHIVE_EXTS or not os.path.isdir(path):
+        elif ext in ARCHIVE_EXTS:
             continue
         else:
+            entry = listings.entry(os.path.normpath(path))
+            if entry is None or not entry[0]:
+                continue
             kind = "folder"
-        dest = destination(path)
-        item = ComicZipPlanItem(
-            id=id, name=name, kind=kind, source=path, destination=dest, pages=pages, status="zip"
-        )
-        if os.path.lexists(dest):
+        items.append(ComicZipPlanItem(
+            id=id, name=name, kind=kind, source=path, destination=destination(path), pages=pages, status="zip"
+        ))
+    recorded = _recorded(session, [item.destination for item in items])
+    taken = set()
+    for item in items:
+        dest = item.destination
+        if listings.entry(dest) is not None:
             item.status, item.reason = "conflict", "A file with this name is already there"
-        elif session.exec(select(ComicEntity.id).where(ComicEntity.path == dest)).first() is not None:
+        elif dest in recorded:
             item.status, item.reason = "conflict", "Another comic is recorded at this path"
         elif dest in taken:
             # A folder "A" and a RAR "A.rar" side by side both make "A.zip".
             item.status, item.reason = "conflict", "Another comic here converts to the same name"
         taken.add(dest)
-        items.append(item)
     return items
 
 
