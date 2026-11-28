@@ -95,6 +95,48 @@ class TestPreview:
         assert {i["status"] for i in items} == {"conflict"}
 
 
+    def test_lists_each_folder_once(self, client, session, root, monkeypatch):
+        # Over a network share every stat is a round trip: one listing per
+        # folder answers both what each comic is and whether its zip name is
+        # taken. 950 folders also takes the recorded-path lookup past one
+        # query's parameter limit.
+        for i in range(950):
+            folder = root / ("a" if i % 2 else "b") / f"F{i:04d}"
+            folder.mkdir(parents=True)
+            session.add(ComicEntity(id=i + 1, name=folder.name, path=str(folder), size=1,
+                                    updateTime=datetime.now(), page=1))
+        session.add(ComicEntity(id=2000, name="F0949.zip", path=str(root / "a" / "F0949.zip"),
+                                size=1, updateTime=datetime.now(), page=1, missing=True))
+        session.commit()
+        listed = []
+        real_scandir = zipper.os.scandir
+
+        def scandir(path):
+            listed.append(path)
+            return real_scandir(path)
+
+        def no_stat(*args):
+            raise AssertionError("stat per comic")
+
+        monkeypatch.setattr(zipper.os, "scandir", scandir)
+        for name in ("isdir", "isfile", "lexists", "exists"):
+            monkeypatch.setattr(zipper.os.path, name, no_stat)
+        items = client.get("/api/comics/zip").json()["items"]
+        assert sorted(listed) == [str(root / "a"), str(root / "b")]
+        assert len(items) == 950
+        [taken] = [i for i in items if i["status"] == "conflict"]
+        assert (taken["id"], taken["reason"]) == (950, "Another comic is recorded at this path")
+
+    def test_unreadable_folder_is_skipped(self, client, session, root, monkeypatch):
+        add_folder(session, root, 1, "a/Folder")
+
+        def scandir(path):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(zipper.os, "scandir", scandir)
+        assert client.get("/api/comics/zip").json()["items"] == []
+
+
 class TestSubmit:
     def test_queues_and_converts(self, client, session, root, deferred_jobs):
         add_folder(session, root, 1, "Folder")
